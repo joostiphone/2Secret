@@ -112,6 +112,16 @@ DATABASE_PASSWORD="2s://Work/Postgres/password" 2secret run -- ./deploy.sh
 
 Full reference: [docs/CLI.md](docs/CLI.md).
 
+## Not (yet) included
+
+Compared with 1Password, these are missing today – contributions welcome:
+
+- Unlocking with Touch ID / Face ID / Windows Hello (the master password is always required).
+- Storing and using passkeys.
+- iOS system AutoFill and a Safari extension; an Android app.
+- Rotating a vault key when someone is removed from a shared vault (see [docs/SECURITY.md](docs/SECURITY.md#sharing)).
+- An independent security audit.
+
 ## Security
 
 2Secret's design follows 1Password's published security model:
@@ -215,6 +225,13 @@ Windows, Linux, BSD, iOS, het web en je browser.
   KeePass, Dashlane en meer.
 - **Automatisch vergrendelen** en klembord wissen.
 - **Nederlands en Engels.**
+
+### Nog niet aanwezig
+
+Biometrisch ontgrendelen (Touch ID, Face ID, Windows Hello), passkeys,
+automatisch invullen in iOS en Safari, een Android-app, het vervangen van de
+kluissleutel na het verwijderen van een lid, en een onafhankelijke
+beveiligingsaudit.
 
 ### Snel aan de slag
 
