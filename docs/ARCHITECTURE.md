@@ -36,6 +36,7 @@ target including `wasm32-unknown-unknown`.
 | `api` | Shared DTOs of the HTTP API |
 | `generator`, `wordlist`, `strength` | Password/passphrase/PIN generator, EFF wordlist, zxcvbn strength |
 | `totp` | RFC 6238 TOTP, `otpauth://` parsing, Steam Guard |
+| `ssh` | Ed25519 SSH key generation (OpenSSH format) for SSH Key items |
 | `watchtower` | Security audit and Have I Been Pwned k-anonymity helpers |
 | `import`, `export` | 1Password, Bitwarden, KeePass, CSV importers; JSON/CSV/encrypted export |
 | `secret_ref` | `2s://` references, template injection |
