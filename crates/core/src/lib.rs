@@ -10,6 +10,7 @@
 
 pub mod api;
 pub mod crypto;
+pub mod emergency_kit;
 pub mod error;
 pub mod export;
 pub mod generator;
