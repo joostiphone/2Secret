@@ -7,6 +7,9 @@ use crate::util::{new_id, now, url_host};
 
 /// Maximum size of a single attachment (before base64 encoding).
 pub const MAX_ATTACHMENT_BYTES: usize = 5 * 1024 * 1024;
+/// Maximum size of a serialized item (all attachments included). Encrypted
+/// and encoded this stays well below the server's per-item limit.
+pub const MAX_ITEM_BYTES: usize = 7 * 1024 * 1024;
 /// Maximum number of remembered previous passwords per item.
 pub const MAX_PASSWORD_HISTORY: usize = 50;
 
@@ -641,6 +644,19 @@ impl Item {
         tags.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         self.tags = tags;
         self.fields.retain(|f| !(f.is_custom() && f.value.is_empty() && f.label.trim().is_empty()));
+    }
+
+    /// Check limits before saving.
+    pub fn validate(&self) -> crate::Result<()> {
+        let size = serde_json::to_vec(self).map(|v| v.len()).unwrap_or(usize::MAX);
+        if size > MAX_ITEM_BYTES {
+            return Err(crate::Error::invalid(format!(
+                "this item is too large ({} MB); items including attachments are limited to {} MB",
+                size / 1024 / 1024,
+                MAX_ITEM_BYTES / 1024 / 1024
+            )));
+        }
+        Ok(())
     }
 
     pub fn summary(&self, vault_id: &str) -> ItemSummary {

@@ -47,7 +47,12 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    use_hook(init);
+    use_hook(|| {
+        spawn(async move {
+            platform::prepare().await;
+            init();
+        });
+    });
     let theme = PREFS.read().theme.id();
     let phase = PHASE.read().clone();
     rsx! {

@@ -535,6 +535,7 @@ impl Session {
     }
 
     fn store_item(&mut self, vault_id: &str, item: Item) -> Result<()> {
+        item.validate()?;
         let data = self.encrypt_item(vault_id, &item)?;
         match self.profile.item_mut(&item.id) {
             Some(rec) => {
@@ -868,6 +869,19 @@ pub(crate) mod tests {
         assert!(s.item(&dup).is_none());
         // Never-synced items leave no tombstone behind.
         assert!(s.profile().item(&dup).is_none());
+    }
+
+    #[test]
+    fn oversized_items_are_refused() {
+        let (mut s, _) = new_session();
+        let v = s.default_vault_id().unwrap();
+        let mut item = Item::new(Category::Document, "Big");
+        for i in 0..2 {
+            let data = vec![i as u8; crate::item::MAX_ATTACHMENT_BYTES];
+            item.attachments.push(crate::item::Attachment::new("a.bin", "", &data).unwrap());
+        }
+        assert!(s.add_item(&v, item).is_err());
+        assert_eq!(s.item_count(), 0);
     }
 
     #[test]

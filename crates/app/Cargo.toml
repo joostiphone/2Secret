@@ -31,7 +31,7 @@ futures-channel = "0.3"
 chrono = "0.4"
 arboard = { version = "3", optional = true, default-features = false }
 tokio = { version = "1", features = ["time", "rt"], optional = true }
-web-sys = { version = "0.3", optional = true, features = ["Window", "Storage", "Navigator", "Document", "Element", "HtmlElement", "HtmlAnchorElement", "Location", "Clipboard", "Blob", "BlobPropertyBag", "Url"] }
+web-sys = { version = "0.3", optional = true, features = ["Window", "Storage", "Navigator", "Document", "Element", "HtmlElement", "HtmlAnchorElement", "Location", "Clipboard", "Blob", "BlobPropertyBag", "Url", "Event", "EventTarget", "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "DomException"] }
 js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }

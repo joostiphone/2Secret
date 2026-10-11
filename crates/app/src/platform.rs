@@ -134,6 +134,9 @@ mod imp {
         default_data_dir()
     }
 
+    /// Nothing to prepare on native platforms.
+    pub async fn prepare() {}
+
     pub async fn sleep_ms(ms: u64) {
         tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
     }
@@ -247,31 +250,164 @@ mod imp {
     use super::*;
     use twosecret_core::{Error, Result};
 
-    /// `window.localStorage` backed storage (keys prefixed with `2secret.`).
-    struct LocalStorage;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
 
-    fn ls() -> Result<web_sys::Storage> {
-        web_sys::window()
-            .and_then(|w| w.local_storage().ok().flatten())
-            .ok_or_else(|| Error::Storage("localStorage is not available".into()))
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::{JsCast, JsValue};
+
+    const DB_NAME: &str = "2secret";
+    const STORE: &str = "kv";
+    const LS_PREFIX: &str = "2secret.";
+
+    thread_local! {
+        /// Everything is read once at startup and served from memory.
+        static CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+        static DB: RefCell<Option<web_sys::IdbDatabase>> = const { RefCell::new(None) };
     }
 
-    impl Storage for LocalStorage {
+    fn ls() -> Option<web_sys::Storage> {
+        web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+    }
+
+    /// IndexedDB backed storage (falls back to `localStorage` when IndexedDB
+    /// is unavailable). Writes are queued as IndexedDB transactions, which the
+    /// browser applies in order.
+    struct WebStorage;
+
+    fn idb_write(key: &str, value: Option<&str>) -> bool {
+        DB.with(|db| {
+            let db = db.borrow();
+            let Some(db) = db.as_ref() else { return false };
+            let Ok(tx) = db.transaction_with_str_and_mode(STORE, web_sys::IdbTransactionMode::Readwrite) else {
+                return false;
+            };
+            let Ok(store) = tx.object_store(STORE) else { return false };
+            let key = JsValue::from_str(key);
+            match value {
+                Some(v) => store.put_with_key(&JsValue::from_str(v), &key).is_ok(),
+                None => store.delete(&key).is_ok(),
+            }
+        })
+    }
+
+    impl Storage for WebStorage {
         fn read(&self, key: &str) -> Result<Option<String>> {
-            ls()?.get_item(&format!("2secret.{key}")).map_err(|_| Error::Storage("read failed".into()))
+            Ok(CACHE.with(|c| c.borrow().get(key).cloned()))
         }
         fn write(&self, key: &str, value: &str) -> Result<()> {
-            ls()?
-                .set_item(&format!("2secret.{key}"), value)
-                .map_err(|_| Error::Storage("the browser refused to store the vault (quota exceeded?)".into()))
+            CACHE.with(|c| c.borrow_mut().insert(key.to_string(), value.to_string()));
+            if !idb_write(key, Some(value)) {
+                ls().ok_or_else(|| Error::Storage("no storage available".into()))?
+                    .set_item(&format!("{LS_PREFIX}{key}"), value)
+                    .map_err(|_| Error::Storage("the browser refused to store the vault (quota exceeded?)".into()))?;
+            }
+            Ok(())
         }
         fn delete(&self, key: &str) -> Result<()> {
-            ls()?.remove_item(&format!("2secret.{key}")).map_err(|_| Error::Storage("delete failed".into()))
+            CACHE.with(|c| c.borrow_mut().remove(key));
+            if !idb_write(key, None) {
+                if let Some(ls) = ls() {
+                    let _ = ls.remove_item(&format!("{LS_PREFIX}{key}"));
+                }
+            }
+            Ok(())
         }
     }
 
     pub(super) fn make_storage() -> Box<dyn Storage> {
-        Box::new(LocalStorage)
+        Box::new(WebStorage)
+    }
+
+    /// Await an IndexedDB request.
+    fn request(req: &web_sys::IdbRequest) -> impl std::future::Future<Output = std::result::Result<JsValue, JsValue>> {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        let tx = std::rc::Rc::new(RefCell::new(Some(tx)));
+        let (ok_req, err_req, tx_err) = (req.clone(), req.clone(), tx.clone());
+        let on_success = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            if let Some(t) = tx.borrow_mut().take() {
+                let _ = t.send(ok_req.result());
+            }
+        });
+        let on_error = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            if let Some(t) = tx_err.borrow_mut().take() {
+                let err = err_req.error().ok().flatten().map(JsValue::from).unwrap_or(JsValue::NULL);
+                let _ = t.send(Err(err));
+            }
+        });
+        req.set_onsuccess(Some(on_success.as_ref().unchecked_ref()));
+        req.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+        async move {
+            let result = rx.await.unwrap_or(Err(JsValue::NULL));
+            drop((on_success, on_error));
+            result
+        }
+    }
+
+    async fn open_db() -> std::result::Result<web_sys::IdbDatabase, JsValue> {
+        let factory = web_sys::window().ok_or(JsValue::NULL)?.indexed_db()?.ok_or(JsValue::NULL)?;
+        let open = factory.open_with_u32(DB_NAME, 1)?;
+        let on_upgrade = Closure::<dyn FnMut(web_sys::Event)>::new(move |e: web_sys::Event| {
+            let Some(target) = e.target() else { return };
+            let req: web_sys::IdbOpenDbRequest = target.unchecked_into();
+            if let Ok(db) = req.result() {
+                let db: web_sys::IdbDatabase = db.unchecked_into();
+                let _ = db.create_object_store(STORE);
+            }
+        });
+        open.set_onupgradeneeded(Some(on_upgrade.as_ref().unchecked_ref()));
+        let db = request(&open).await?;
+        drop(on_upgrade);
+        Ok(db.unchecked_into())
+    }
+
+    async fn load_all(db: &web_sys::IdbDatabase) -> std::result::Result<HashMap<String, String>, JsValue> {
+        let tx = db.transaction_with_str(STORE)?;
+        let store = tx.object_store(STORE)?;
+        // Issue both requests before awaiting so the transaction stays active.
+        let keys_future = request(&store.get_all_keys()?);
+        let values_future = request(&store.get_all()?);
+        let keys: js_sys::Array = keys_future.await?.unchecked_into();
+        let values: js_sys::Array = values_future.await?.unchecked_into();
+        Ok(keys.iter().zip(values.iter()).filter_map(|(k, v)| Some((k.as_string()?, v.as_string()?))).collect())
+    }
+
+    /// Load storage before the app starts (IndexedDB is asynchronous).
+    pub async fn prepare() {
+        let mut data = HashMap::new();
+        match open_db().await {
+            Ok(db) => {
+                data = load_all(&db).await.unwrap_or_default();
+                DB.with(|d| *d.borrow_mut() = Some(db));
+                // Migrate data written by older versions to localStorage.
+                if let Some(ls) = ls() {
+                    let len = ls.length().unwrap_or(0);
+                    let keys: Vec<String> = (0..len).filter_map(|i| ls.key(i).ok().flatten()).collect();
+                    for full in keys.into_iter().filter(|k| k.starts_with(LS_PREFIX)) {
+                        let key = full[LS_PREFIX.len()..].to_string();
+                        if let Ok(Some(value)) = ls.get_item(&full) {
+                            if !data.contains_key(&key) && idb_write(&key, Some(&value)) {
+                                data.insert(key, value);
+                            }
+                        }
+                        let _ = ls.remove_item(&full);
+                    }
+                }
+            }
+            Err(_) => {
+                if let Some(ls) = ls() {
+                    let len = ls.length().unwrap_or(0);
+                    for i in 0..len {
+                        if let Ok(Some(full)) = ls.key(i) {
+                            if let (Some(key), Ok(Some(value))) = (full.strip_prefix(LS_PREFIX), ls.get_item(&full)) {
+                                data.insert(key.to_string(), value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        CACHE.with(|c| *c.borrow_mut() = data);
     }
 
     pub async fn sleep_ms(ms: u64) {

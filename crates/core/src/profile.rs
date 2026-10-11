@@ -49,7 +49,7 @@ pub struct Profile {
 
 impl Profile {
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("profile serialization cannot fail")
+        serde_json::to_string(self).expect("profile serialization cannot fail")
     }
 
     pub fn from_json(json: &str) -> Result<Self> {

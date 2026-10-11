@@ -57,7 +57,7 @@ impl Default for Config {
             session_days: 30,
             web_dir: None,
             cors_origins: vec![],
-            max_item_bytes: 8 * 1024 * 1024,
+            max_item_bytes: 16 * 1024 * 1024,
             max_body_bytes: 64 * 1024 * 1024,
         }
     }
