@@ -36,13 +36,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 [profile.release]
 lto = "thin"
 codegen-units = 1
-strip = true
-
-[profile.wasm-release]
-inherits = "release"
-opt-level = "z"
-lto = true
-panic = "abort"
+# Only strip debug info: stripping symbols also removes the custom sections
+# wasm-bindgen needs for the web and extension builds. Native release
+# binaries are stripped in the release workflow (CARGO_PROFILE_RELEASE_STRIP).
+strip = "debuginfo"
 
 # Argon2 is painfully slow without optimisations; keep tests and dev builds usable.
 [profile.dev.package.argon2]

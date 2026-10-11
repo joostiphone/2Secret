@@ -5,7 +5,7 @@
 #
 # Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of it.
 
-FROM rust:1-bookworm AS build
+FROM rust:1-trixie AS build
 ARG DX_VERSION=0.7.10
 RUN rustup target add wasm32-unknown-unknown \
  && curl -sSfL "https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-x86_64-unknown-linux-gnu.tar.gz" \
@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release -p twosecret-server
 RUN cd crates/app && dx bundle --platform web --release
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home /data twosecret \

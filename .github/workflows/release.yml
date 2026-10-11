@@ -32,6 +32,8 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }} -p twosecret-cli -p twosecret-server
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: symbols
       - name: Package
         shell: bash
         run: |
