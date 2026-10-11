@@ -159,11 +159,14 @@ pub fn import(ctx: &Ctx, file: &Path, format: Option<String>, vault: Option<Stri
     let filename = file.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let format = match format {
         Some(f) => ImportFormat::parse(&f).ok_or_else(|| anyhow!("unknown format '{f}'"))?,
-        None => import::detect(filename, &data).ok_or_else(|| anyhow!("could not detect the file format; pass --format"))?,
+        None => {
+            import::detect(filename, &data).ok_or_else(|| anyhow!("could not detect the file format; pass --format"))?
+        }
     };
     let mut session = ctx.unlock()?;
     let text = String::from_utf8_lossy(&data[..data.len().min(4096)]).to_string();
-    let password = if format == ImportFormat::TwoSecret && twosecret_core::crypto::PasswordEnvelope::is_envelope(&text) {
+    let password = if format == ImportFormat::TwoSecret && twosecret_core::crypto::PasswordEnvelope::is_envelope(&text)
+    {
         Some(prompt_secret("Export password: ")?)
     } else {
         None
@@ -198,12 +201,7 @@ pub fn export(ctx: &Ctx, file: &Path, format: ExportFormat, vaults: &[String], i
     let ids: Option<Vec<String>> = if vaults.is_empty() {
         None
     } else {
-        Some(
-            vaults
-                .iter()
-                .map(|v| session.find_vault(v).map(|v| v.id))
-                .collect::<Result<_, _>>()?,
-        )
+        Some(vaults.iter().map(|v| session.find_vault(v).map(|v| v.id)).collect::<Result<_, _>>()?)
     };
     let data = session.export(ids.as_deref(), include_trash);
     let content = match format {
@@ -312,9 +310,7 @@ fn parse_env_file(path: &Path) -> Result<Vec<(String, String)>> {
             continue;
         }
         let line = line.strip_prefix("export ").unwrap_or(line);
-        let (k, v) = line
-            .split_once('=')
-            .ok_or_else(|| anyhow!("{}:{}: expected KEY=value", path.display(), n + 1))?;
+        let (k, v) = line.split_once('=').ok_or_else(|| anyhow!("{}:{}: expected KEY=value", path.display(), n + 1))?;
         let v = v.trim();
         let v = v
             .strip_prefix('"')
@@ -356,8 +352,6 @@ pub fn run_command(ctx: &Ctx, env_files: &[PathBuf], command: &[String]) -> Resu
         }
     }
     cmd.env_remove("TWOSECRET_PASSWORD");
-    let status = cmd
-        .status()
-        .map_err(|e| anyhow!("could not run '{}': {e}", command[0]))?;
+    let status = cmd.status().map_err(|e| anyhow!("could not run '{}': {e}", command[0]))?;
     std::process::exit(status.code().unwrap_or(1));
 }

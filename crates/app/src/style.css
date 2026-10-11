@@ -243,10 +243,13 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .mobile-only { display: none; }
 
+/* Browser extension popup */
+.root.ext { width: 380px; height: 600px; }
+
 /* Responsive: one pane at a time on narrow screens (phones, small windows). */
 @media (max-width: 1000px) { .shell { grid-template-columns: 210px 290px 1fr; } }
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: 1fr !important; }
   .shell > .pane-hidden { display: none !important; }
   .mobile-only { display: inline-flex; }
   .detail-scroll { padding: 16px 14px 40px; }
@@ -255,3 +258,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .field .actions { opacity: 1; }
   .root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* The extension popup is always narrow, whatever the window size. */
+.root.ext .shell { grid-template-columns: 1fr !important; }
+.root.ext .shell > .pane-hidden { display: none !important; }
+.root.ext .mobile-only { display: inline-flex; }
+.root.ext .detail-scroll { padding: 16px 14px 40px; }
+.root.ext .card { padding: 24px 20px; border-radius: 14px; }
+.root.ext .toolbar { padding: 8px 10px; }
+.root.ext .field .actions { opacity: 1; }
+.root.ext .onboarding { padding: 12px; }
+.root.ext .card { box-shadow: none; border: none; }

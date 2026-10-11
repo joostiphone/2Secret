@@ -7,7 +7,7 @@ use twosecret_core::profile::Role;
 
 use crate::components::widgets::*;
 use crate::i18n::{category_name, role_name, t};
-use crate::icons::{either, category_icon, Icon};
+use crate::icons::{category_icon, either, Icon};
 use crate::platform;
 use crate::state::*;
 
@@ -269,7 +269,9 @@ fn ShareModal(id: String) -> Element {
                     install_session(session);
                     email.set(String::new());
                     email_rev += 1;
-                    let fp = twosecret_core::crypto::PublicKey::from_b64(&user.public_key).map(|k| k.fingerprint()).unwrap_or_default();
+                    let fp = twosecret_core::crypto::PublicKey::from_b64(&user.public_key)
+                        .map(|k| k.fingerprint())
+                        .unwrap_or_default();
                     toast(&format!("{} {} ({fp})", t("share.shared_with"), user.name));
                     reload();
                 }
@@ -312,7 +314,8 @@ fn ShareModal(id: String) -> Element {
 
 #[component]
 fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, changed: EventHandler<()>) -> Element {
-    let fingerprint = twosecret_core::crypto::PublicKey::from_b64(&member.public_key).map(|k| k.fingerprint()).unwrap_or_default();
+    let fingerprint =
+        twosecret_core::crypto::PublicKey::from_b64(&member.public_key).map(|k| k.fingerprint()).unwrap_or_default();
     let editable = can_manage && member.role != Role::Owner && member.account_id != me;
     let vid = vault_id.clone();
     let aid = member.account_id.clone();
@@ -324,7 +327,10 @@ fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, 
             let res = twosecret_client::set_member_role(&mut session, &vid, &aid, r).await;
             unbusy();
             match res {
-                Ok(()) => { install_session(session); changed.call(()); }
+                Ok(()) => {
+                    install_session(session);
+                    changed.call(());
+                }
                 Err(e) => toast_err(&client_error(&e)),
             }
         });
@@ -338,7 +344,11 @@ fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, 
             let res = twosecret_client::remove_member(&mut session, &vid, &aid).await;
             unbusy();
             match res {
-                Ok(()) => { install_session(session); toast(t("share.removed")); changed.call(()); }
+                Ok(()) => {
+                    install_session(session);
+                    toast(t("share.removed"));
+                    changed.call(());
+                }
                 Err(e) => toast_err(&client_error(&e)),
             }
         });

@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  DX_VERSION: 0.7.10
+
+jobs:
+  binaries:
+    name: CLI & server (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: macos-latest, target: aarch64-apple-darwin, ext: "" }
+          - { os: macos-13, target: x86_64-apple-darwin, ext: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }} -p twosecret-cli -p twosecret-server
+      - name: Package
+        shell: bash
+        run: |
+          name=2secret-${GITHUB_REF_NAME}-${{ matrix.target }}
+          mkdir "$name"
+          cp target/${{ matrix.target }}/release/2secret${{ matrix.ext }} target/${{ matrix.target }}/release/2secret-server${{ matrix.ext }} "$name/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          if [ "${{ runner.os }}" = "Windows" ]; then 7z a "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: 2secret-*.*
+          draft: true
+
+  desktop:
+    name: Desktop bundles (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install GUI libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: Swatinem/rust-cache@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
+      - name: Bundle
+        working-directory: crates/app
+        run: dx bundle --platform desktop --release
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            crates/app/dist/**/*.dmg
+            crates/app/dist/**/*.msi
+            crates/app/dist/**/*.exe
+            crates/app/dist/**/*.deb
+            crates/app/dist/**/*.rpm
+            crates/app/dist/**/*.AppImage
+
+  web:
+    name: Web vault
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
+      - working-directory: crates/app
+        run: dx bundle --platform web --release
+      - run: tar czf 2secret-web-${GITHUB_REF_NAME}.tar.gz -C crates/app/dist/public .
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: 2secret-web-*.tar.gz
+
+  extension:
+    name: Browser extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
+      - run: ./extension/build.sh && cp extension/2secret-extension.zip 2secret-extension-${GITHUB_REF_NAME}.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: 2secret-extension-*.zip
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/2secret
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

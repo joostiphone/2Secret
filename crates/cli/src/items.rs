@@ -85,15 +85,12 @@ pub fn find<'a>(session: &'a Session, query: &str, vault: Option<&str>) -> Resul
         Ok(i) => Ok(i),
         Err(e) => {
             // Fall back to a unique search match.
-            let hits = session.list(&ItemFilter {
-                vault_id: vid,
-                query: query.to_string(),
-                ..Default::default()
-            });
+            let hits = session.list(&ItemFilter { vault_id: vid, query: query.to_string(), ..Default::default() });
             if hits.len() == 1 {
                 Ok(session.item(&hits[0].id).expect("listed"))
             } else if hits.len() > 1 {
-                let names: Vec<String> = hits.iter().take(10).map(|h| format!("{} ({})", h.title, &h.id[..8])).collect();
+                let names: Vec<String> =
+                    hits.iter().take(10).map(|h| format!("{} ({})", h.title, &h.id[..8])).collect();
                 Err(anyhow!("'{query}' matches several items: {}", names.join(", ")))
             } else {
                 Err(e.into())
@@ -148,11 +145,8 @@ pub fn get(ctx: &Ctx, args: GetArgs) -> Result<()> {
     ctx.refresh(&mut session)?;
     let item = find(&session, &args.item, args.vault.as_deref())?;
     if let Some(field) = &args.field {
-        let reference = twosecret_core::secret_ref::SecretRef {
-            vault: None,
-            item: item.id.clone(),
-            field: field.clone(),
-        };
+        let reference =
+            twosecret_core::secret_ref::SecretRef { vault: None, item: item.id.clone(), field: field.clone() };
         let value = reference.resolve(&session)?;
         println!("{}", *value);
         return Ok(());
@@ -183,11 +177,7 @@ pub fn get(ctx: &Ctx, args: GetArgs) -> Result<()> {
 }
 
 fn print_item(session: &Session, item: &Item, reveal: bool) {
-    let vault = session
-        .item_vault(&item.id)
-        .and_then(|v| session.vault(v))
-        .map(|v| v.name)
-        .unwrap_or_default();
+    let vault = session.item_vault(&item.id).and_then(|v| session.vault(v)).map(|v| v.name).unwrap_or_default();
     println!("{}{}", item.title, if item.favorite { "  ★" } else { "" });
     println!("{} · {} · {}", item.category.name(), vault, item.id);
     if item.is_trashed() {
@@ -275,9 +265,8 @@ fn apply_opts(item: &mut Item, opts: &ItemOpts) -> Result<()> {
     }
     for (list, concealed) in [(&opts.fields, false), (&opts.secret_fields, true)] {
         for spec in list {
-            let (label, value) = spec
-                .split_once('=')
-                .ok_or_else(|| anyhow!("fields are given as label=value, got '{spec}'"))?;
+            let (label, value) =
+                spec.split_once('=').ok_or_else(|| anyhow!("fields are given as label=value, got '{spec}'"))?;
             let (label, value) = (label.trim(), value.trim());
             if item.field(label).is_some() {
                 item.set_value(label, value);
@@ -385,11 +374,7 @@ pub fn delete(ctx: &Ctx, query: &str, permanent: bool) -> Result<()> {
 
 pub fn restore(ctx: &Ctx, query: &str) -> Result<()> {
     let mut session = ctx.unlock()?;
-    let hits = session.list(&ItemFilter {
-        trashed: true,
-        query: query.to_string(),
-        ..Default::default()
-    });
+    let hits = session.list(&ItemFilter { trashed: true, query: query.to_string(), ..Default::default() });
     let id = match session.item(query) {
         Some(i) => i.id.clone(),
         None if hits.len() == 1 => hits[0].id.clone(),
@@ -434,11 +419,8 @@ pub fn history(ctx: &Ctx, query: &str) -> Result<()> {
         print_json(&item.password_history);
         return Ok(());
     }
-    let rows: Vec<Vec<String>> = item
-        .password_history
-        .iter()
-        .map(|h| vec![format_timestamp(h.changed_at), h.value.clone()])
-        .collect();
+    let rows: Vec<Vec<String>> =
+        item.password_history.iter().map(|h| vec![format_timestamp(h.changed_at), h.value.clone()]).collect();
     table(&["replaced on", "password"], &rows);
     Ok(())
 }
@@ -446,9 +428,7 @@ pub fn history(ctx: &Ctx, query: &str) -> Result<()> {
 pub fn totp(ctx: &Ctx, query: &str) -> Result<()> {
     let session = ctx.unlock()?;
     let item = find(&session, query, None)?;
-    let secret = item
-        .totp_secret()
-        .ok_or_else(|| anyhow!("'{}' has no one-time password", item.title))?;
+    let secret = item.totp_secret().ok_or_else(|| anyhow!("'{}' has no one-time password", item.title))?;
     let t = Totp::parse(secret)?;
     let (code, left) = t.now();
     if ctx.json {
@@ -463,11 +443,8 @@ pub fn totp(ctx: &Ctx, query: &str) -> Result<()> {
 pub fn copy(ctx: &Ctx, query: &str, field: &str, clear_after: u64) -> Result<()> {
     let session = ctx.unlock()?;
     let item = find(&session, query, None)?;
-    let reference = twosecret_core::secret_ref::SecretRef {
-        vault: None,
-        item: item.id.clone(),
-        field: field.to_string(),
-    };
+    let reference =
+        twosecret_core::secret_ref::SecretRef { vault: None, item: item.id.clone(), field: field.to_string() };
     let value = reference.resolve(&session)?;
     crate::clipboard::copy(&value, clear_after)?;
     eprintln!("Copied {field} of '{}'. The clipboard is cleared in {clear_after} seconds.", item.title);
@@ -475,13 +452,7 @@ pub fn copy(ctx: &Ctx, query: &str, field: &str, clear_after: u64) -> Result<()>
 }
 
 fn mime_for(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase()
-        .as_str()
-    {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str() {
         "pdf" => "application/pdf",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -498,11 +469,7 @@ pub fn attach(ctx: &Ctx, query: &str, file: &Path) -> Result<()> {
     let mut session = ctx.unlock()?;
     let mut item = find(&session, query, None)?.clone();
     let bytes = std::fs::read(file)?;
-    let name = file
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("attachment")
-        .to_string();
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("attachment").to_string();
     item.attachments.push(Attachment::new(&name, mime_for(file), &bytes)?);
     session.update_item(item)?;
     ctx.after_write(&mut session)?;

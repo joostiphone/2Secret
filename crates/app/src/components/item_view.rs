@@ -23,18 +23,12 @@ pub fn ItemView(id: String) -> Element {
     let vault_name = vault.map(|v| v.name).unwrap_or_default();
     let reused = item
         .password()
-        .map(|pw| {
-            s.all_items()
-                .filter(|(_, o)| o.id != item.id && !o.is_trashed() && o.password() == Some(pw))
-                .count()
-        })
+        .map(|pw| s.all_items().filter(|(_, o)| o.id != item.id && !o.is_trashed() && o.password() == Some(pw)).count())
         .unwrap_or(0);
     drop(session);
 
-    let weak = item
-        .password()
-        .map(|pw| estimate(pw, &[item.title.as_str()]).level <= StrengthLevel::Weak)
-        .unwrap_or(false);
+    let weak =
+        item.password().map(|pw| estimate(pw, &[item.title.as_str()]).level <= StrengthLevel::Weak).unwrap_or(false);
     let breached = BREACHES.read().as_ref().and_then(|b| b.get(&item.id).copied());
     let trashed = item.is_trashed();
     let fav = item.favorite;
@@ -56,6 +50,13 @@ pub fn ItemView(id: String) -> Element {
         div { class: "toolbar",
             button { class: "icon-btn mobile-only", onclick: move |_| *PANE.write() = Pane::List, Icon { name: "chevron-left" } }
             span { class: "spacer" }
+            if crate::extension::ENABLED && !trashed && (item.password().is_some() || item.username().is_some()) {
+                button { class: "btn primary small",
+                    onclick: { let id = id.clone(); move |_| fill_item(&id) },
+                    Icon { name: "zap", size: 15 }
+                    {t("ext.fill")}
+                }
+            }
             if !trashed {
                 button { class: if fav { "icon-btn active" } else { "icon-btn" }, title: t("item.favorite"), disabled: !can_write,
                     onclick: move |_| { mutate(|s| s.set_favorite(&id_fav, !fav)); },
@@ -312,7 +313,11 @@ fn FieldRow(field: Field, item_title: String) -> Element {
         },
         _ => {
             let concealed = field.kind == FieldKind::Concealed;
-            let is_password = concealed && matches!(field.id.as_str(), "password" | "wireless_password" | "credential" | "base_station_password" | "passphrase");
+            let is_password = concealed
+                && matches!(
+                    field.id.as_str(),
+                    "password" | "wireless_password" | "credential" | "base_station_password" | "passphrase"
+                );
             rsx! {
                 div { class: "field",
                     div { class: "grow",

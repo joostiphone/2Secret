@@ -15,11 +15,7 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 impl ApiError {
     pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            code,
-            message: message.into(),
-        }
+        Self { status, code, message: message.into() }
     }
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, "bad_request", message)
@@ -44,11 +40,7 @@ impl ApiError {
         Self::new(StatusCode::CONFLICT, "conflict", message)
     }
     pub fn too_many_requests() -> Self {
-        Self::new(
-            StatusCode::TOO_MANY_REQUESTS,
-            "rate_limited",
-            "too many attempts, please wait a few minutes",
-        )
+        Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited", "too many attempts, please wait a few minutes")
     }
     pub fn internal(err: impl std::fmt::Display) -> Self {
         tracing::error!("internal error: {err}");
@@ -58,14 +50,7 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (
-            self.status,
-            Json(ErrorResponse {
-                error: self.code.to_string(),
-                message: self.message,
-            }),
-        )
-            .into_response()
+        (self.status, Json(ErrorResponse { error: self.code.to_string(), message: self.message })).into_response()
     }
 }
 

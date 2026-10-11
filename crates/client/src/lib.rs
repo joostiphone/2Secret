@@ -23,11 +23,7 @@ pub enum Error {
     #[error("could not reach the server: {0}")]
     Network(String),
     #[error("{message}")]
-    Api {
-        status: u16,
-        code: String,
-        message: String,
-    },
+    Api { status: u16, code: String, message: String },
     #[error("your session on the server has expired; sign in again")]
     Unauthorized,
     #[error("this account is not connected to a sync server")]
@@ -99,11 +95,7 @@ fn build_http() -> reqwest::Client {
 
 impl Client {
     pub fn new(base_url: &str) -> Self {
-        Self {
-            base: normalize_server_url(base_url),
-            http: build_http(),
-            token: None,
-        }
+        Self { base: normalize_server_url(base_url), http: build_http(), token: None }
     }
 
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
@@ -127,7 +119,12 @@ impl Client {
         format!("{}/api/v1{}", self.base, path)
     }
 
-    async fn send<B: Serialize + ?Sized>(&self, method: Method, path: &str, body: Option<&B>) -> Result<reqwest::Response> {
+    async fn send<B: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<reqwest::Response> {
         let mut req = self.http.request(method, self.url(path));
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
@@ -144,30 +141,26 @@ impl Client {
             // Distinguish "bad credentials" (login) from "session expired".
             let body: Option<ErrorResponse> = resp.json().await.ok();
             return Err(match body {
-                Some(e) if e.error == "invalid_credentials" => Error::Api {
-                    status: 401,
-                    code: e.error,
-                    message: e.message,
-                },
+                Some(e) if e.error == "invalid_credentials" => {
+                    Error::Api { status: 401, code: e.error, message: e.message }
+                }
                 _ => Error::Unauthorized,
             });
         }
         let text = resp.text().await.unwrap_or_default();
         let (code, message) = match serde_json::from_str::<ErrorResponse>(&text) {
             Ok(e) => (e.error, e.message),
-            Err(_) => (
-                "http_error".to_string(),
-                format!("server returned HTTP {}", status.as_u16()),
-            ),
+            Err(_) => ("http_error".to_string(), format!("server returned HTTP {}", status.as_u16())),
         };
-        Err(Error::Api {
-            status: status.as_u16(),
-            code,
-            message,
-        })
+        Err(Error::Api { status: status.as_u16(), code, message })
     }
 
-    async fn json<T: DeserializeOwned, B: Serialize + ?Sized>(&self, method: Method, path: &str, body: Option<&B>) -> Result<T> {
+    async fn json<T: DeserializeOwned, B: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T> {
         let resp = self.send(method, path, body).await?;
         resp.json::<T>().await.map_err(|e| Error::Protocol(e.to_string()))
     }
@@ -181,14 +174,7 @@ impl Client {
     }
 
     pub async fn prelogin(&self, email: &str) -> Result<PreloginResponse> {
-        self.json(
-            Method::POST,
-            "/prelogin",
-            Some(&PreloginRequest {
-                email: email.to_string(),
-            }),
-        )
-        .await
+        self.json(Method::POST, "/prelogin", Some(&PreloginRequest { email: email.to_string() })).await
     }
 
     pub async fn register(&self, req: &RegisterRequest) -> Result<SessionResponse> {
@@ -208,12 +194,7 @@ impl Client {
     }
 
     pub async fn update_account(&self, name: &str) -> Result<()> {
-        self.empty(
-            Method::PUT,
-            "/account",
-            Some(&UpdateAccountRequest { name: name.to_string() }),
-        )
-        .await
+        self.empty(Method::PUT, "/account", Some(&UpdateAccountRequest { name: name.to_string() })).await
     }
 
     pub async fn change_password(&self, req: &ChangePasswordRequest) -> Result<()> {
@@ -221,14 +202,7 @@ impl Client {
     }
 
     pub async fn delete_account(&self, auth_key: &str) -> Result<()> {
-        self.empty(
-            Method::DELETE,
-            "/account",
-            Some(&DeleteAccountRequest {
-                auth_key: auth_key.to_string(),
-            }),
-        )
-        .await
+        self.empty(Method::DELETE, "/account", Some(&DeleteAccountRequest { auth_key: auth_key.to_string() })).await
     }
 
     pub async fn devices(&self) -> Result<Vec<DeviceInfo>> {
@@ -279,21 +253,11 @@ impl Client {
     }
 
     pub async fn update_member(&self, vault_id: &str, account_id: &str, req: &UpdateMemberRequest) -> Result<()> {
-        self.empty(
-            Method::PUT,
-            &format!("/vaults/{vault_id}/members/{account_id}"),
-            Some(req),
-        )
-        .await
+        self.empty(Method::PUT, &format!("/vaults/{vault_id}/members/{account_id}"), Some(req)).await
     }
 
     pub async fn remove_member(&self, vault_id: &str, account_id: &str) -> Result<()> {
-        self.empty(
-            Method::DELETE,
-            &format!("/vaults/{vault_id}/members/{account_id}"),
-            None::<&()>,
-        )
-        .await
+        self.empty(Method::DELETE, &format!("/vaults/{vault_id}/members/{account_id}"), None::<&()>).await
     }
 
     pub async fn sync(&self, req: &SyncRequest) -> Result<SyncResponse> {

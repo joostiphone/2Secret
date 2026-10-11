@@ -5,9 +5,9 @@ use clap::Subcommand;
 use serde_json::json;
 use twosecret_core::crypto::SecretKey;
 use twosecret_core::session::{Session, MIN_PASSWORD_LEN};
+use twosecret_core::storage::Storage;
 use twosecret_core::strength::{estimate, StrengthLevel};
 use twosecret_core::util::format_timestamp;
-use twosecret_core::storage::Storage;
 use twosecret_core::{emergency_kit, profile::DEVICE_KEY, profile::PROFILE_KEY};
 
 use crate::context::{confirm, device_name, prompt, prompt_secret, value_or_prompt, Ctx};
@@ -113,12 +113,7 @@ fn print_secret_key_notice(session: &Session, sk: &SecretKey) {
 
 pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
     match cmd {
-        AccountCmd::Create {
-            name,
-            email,
-            server,
-            invite,
-        } => {
+        AccountCmd::Create { name, email, server, invite } => {
             if ctx.has_profile() {
                 bail!("there already is an account on this device (data directory {})", ctx.home.display());
             }
@@ -147,11 +142,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
             }
             Ok(())
         }
-        AccountCmd::Signin {
-            server,
-            email,
-            secret_key,
-        } => {
+        AccountCmd::Signin { server, email, secret_key } => {
             if ctx.has_profile() {
                 bail!("there already is an account on this device; run `2secret account forget` first");
             }
@@ -177,7 +168,10 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
         AccountCmd::Connect { server, invite } => {
             let (mut session, password, sk) = ctx.unlock_with_password()?;
             if session.server().is_some() {
-                bail!("this account is already connected to {}", session.server().map(|s| s.url.as_str()).unwrap_or(""));
+                bail!(
+                    "this account is already connected to {}",
+                    session.server().map(|s| s.url.as_str()).unwrap_or("")
+                );
             }
             let server = value_or_prompt(server, "Server address")?;
             let report = ctx.block_on(twosecret_client::connect(
@@ -212,10 +206,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
                 println!("Account ID:   {}", acc.id);
                 println!("Created:      {}", format_timestamp(acc.created_at));
                 println!("Secret Key:   {}", sk.masked());
-                println!(
-                    "Server:       {}",
-                    session.server().map(|s| s.url.as_str()).unwrap_or("local only")
-                );
+                println!("Server:       {}", session.server().map(|s| s.url.as_str()).unwrap_or("local only"));
                 println!("Fingerprint:  {}", session.public_key().fingerprint());
                 println!(
                     "KDF:          Argon2id, {} MiB, {} iterations, {} lanes",
@@ -366,18 +357,11 @@ pub fn status(ctx: &Ctx) -> Result<()> {
                 s.url,
                 if s.token.is_some() { "" } else { " (signed out – run `2secret account reauth`)" }
             );
-            println!(
-                "Last sync: {}",
-                s.last_sync_at.map(format_timestamp).unwrap_or_else(|| "never".into())
-            );
+            println!("Last sync: {}", s.last_sync_at.map(format_timestamp).unwrap_or_else(|| "never".into()));
         }
         None => println!("Server:    none (local-only account)"),
     }
-    print!(
-        "Vaults:    {}   Items: {}",
-        p.vaults.len(),
-        p.items.iter().filter(|i| i.data.is_some()).count()
-    );
+    print!("Vaults:    {}   Items: {}", p.vaults.len(), p.items.iter().filter(|i| i.data.is_some()).count());
     if p.server.is_some() {
         print!("   Unsynced changes: {pending}");
     }

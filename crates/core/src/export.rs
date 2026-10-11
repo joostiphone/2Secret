@@ -89,11 +89,7 @@ impl Session {
                     .map(|(_, i)| i.clone())
                     .collect();
                 items.sort_by_key(|i| i.title.to_lowercase());
-                ExportVault {
-                    name: v.name,
-                    description: v.description,
-                    items,
-                }
+                ExportVault { name: v.name, description: v.description, items }
             })
             .collect();
         ExportData {

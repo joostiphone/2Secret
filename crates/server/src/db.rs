@@ -107,11 +107,13 @@ fn role_from_str(s: &str) -> Role {
 }
 
 fn json_col<T: serde::de::DeserializeOwned>(s: String) -> rusqlite::Result<T> {
-    serde_json::from_str(&s).map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
+    serde_json::from_str(&s)
+        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
 }
 
 fn enc(s: &str) -> rusqlite::Result<EncString> {
-    EncString::parse(s).map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
+    EncString::parse(s)
+        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
 }
 
 impl Db {
@@ -130,13 +132,8 @@ impl Db {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
-        conn.execute(
-            "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')",
-            [],
-        )?;
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-        })
+        conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')", [])?;
+        Ok(Self { conn: Arc::new(Mutex::new(conn)) })
     }
 
     /// Run a closure with the connection on the blocking thread pool.
@@ -159,8 +156,7 @@ impl Db {
 // ---------------------------------------------------------------------------
 
 pub fn get_meta(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
-        .optional()
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional()
 }
 
 pub fn set_meta(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
@@ -188,21 +184,11 @@ fn map_account(r: &rusqlite::Row<'_>) -> rusqlite::Result<AccountRow> {
 const ACCOUNT_COLS: &str = "id, email, name, salt, kdf, auth_hash, keyset, public_key, created_at";
 
 pub fn account_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Option<AccountRow>> {
-    conn.query_row(
-        &format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE email = ?1"),
-        [email],
-        map_account,
-    )
-    .optional()
+    conn.query_row(&format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE email = ?1"), [email], map_account).optional()
 }
 
 pub fn account_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<AccountRow>> {
-    conn.query_row(
-        &format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"),
-        [id],
-        map_account,
-    )
-    .optional()
+    conn.query_row(&format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"), [id], map_account).optional()
 }
 
 pub fn insert_account(conn: &Connection, a: &AccountRow, now: i64) -> rusqlite::Result<()> {
@@ -329,10 +315,7 @@ pub fn membership(conn: &Connection, vault_id: &str, account_id: &str) -> rusqli
         params![vault_id, account_id],
         |r| {
             let role: String = r.get(0)?;
-            Ok(Membership {
-                role: role_from_str(&role),
-                owner_id: r.get(1)?,
-            })
+            Ok(Membership { role: role_from_str(&role), owner_id: r.get(1)? })
         },
     )
     .optional()

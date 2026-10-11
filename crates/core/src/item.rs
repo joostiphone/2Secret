@@ -114,12 +114,7 @@ impl Category {
 
     /// Lenient parser accepting ids, display names and common aliases.
     pub fn parse(s: &str) -> Option<Category> {
-        let norm: String = s
-            .trim()
-            .to_lowercase()
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect();
+        let norm: String = s.trim().to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
         Some(match norm.as_str() {
             "login" | "logins" | "website" | "webform" => Category::Login,
             "password" | "passwords" => Category::Password,
@@ -272,10 +267,7 @@ impl Category {
 
     /// Does this category show website URLs by default?
     pub fn has_urls(&self) -> bool {
-        matches!(
-            self,
-            Category::Login | Category::Password | Category::Server | Category::ApiCredential
-        )
+        matches!(self, Category::Login | Category::Password | Category::Server | Category::ApiCredential)
     }
 }
 
@@ -367,13 +359,7 @@ pub struct Field {
 
 impl Field {
     pub fn new(id: &str, label: &str, kind: FieldKind, value: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            label: label.to_string(),
-            kind,
-            value: value.to_string(),
-            section: String::new(),
-        }
+        Self { id: id.to_string(), label: label.to_string(), kind, value: value.to_string(), section: String::new() }
     }
 
     /// A custom field with a random id.
@@ -417,11 +403,7 @@ impl Attachment {
         Ok(Self {
             id: new_id(),
             name: name.to_string(),
-            mime: if mime.is_empty() {
-                "application/octet-stream".into()
-            } else {
-                mime.into()
-            },
+            mime: if mime.is_empty() { "application/octet-stream".into() } else { mime.into() },
             size: bytes.len() as u64,
             data: crate::util::b64(bytes),
             created_at: now(),
@@ -525,10 +507,7 @@ impl Item {
             f.value = value.to_string();
             return;
         }
-        let template = Category::ALL
-            .iter()
-            .flat_map(|c| c.template())
-            .find(|f| f.id == key);
+        let template = Category::ALL.iter().flat_map(|c| c.template()).find(|f| f.id == key);
         let field = match template {
             Some(mut f) => {
                 f.value = value.to_string();
@@ -540,32 +519,21 @@ impl Item {
     }
 
     pub fn username(&self) -> Option<&str> {
-        self.value("username")
-            .or_else(|| self.value("email"))
-            .or_else(|| self.value("member_id"))
+        self.value("username").or_else(|| self.value("email")).or_else(|| self.value("member_id"))
     }
 
     /// The item's primary secret.
     pub fn password(&self) -> Option<&str> {
-        self.value("password")
-            .or_else(|| self.value("wireless_password"))
-            .or_else(|| self.value("credential"))
+        self.value("password").or_else(|| self.value("wireless_password")).or_else(|| self.value("credential"))
     }
 
     /// The first configured one-time password secret.
     pub fn totp_secret(&self) -> Option<&str> {
-        self.fields
-            .iter()
-            .find(|f| f.kind == FieldKind::Totp && !f.value.trim().is_empty())
-            .map(|f| f.value.as_str())
+        self.fields.iter().find(|f| f.kind == FieldKind::Totp && !f.value.trim().is_empty()).map(|f| f.value.as_str())
     }
 
     pub fn primary_url(&self) -> Option<&str> {
-        self.urls
-            .iter()
-            .map(|u| u.as_str())
-            .find(|u| !u.trim().is_empty())
-            .or_else(|| self.value("url"))
+        self.urls.iter().map(|u| u.as_str()).find(|u| !u.trim().is_empty()).or_else(|| self.value("url"))
     }
 
     pub fn host(&self) -> Option<String> {
@@ -578,9 +546,7 @@ impl Item {
 
     /// Secondary line shown under the title in lists.
     pub fn subtitle(&self) -> String {
-        let pick = |keys: &[&str]| -> Option<String> {
-            keys.iter().find_map(|k| self.value(k)).map(|s| s.to_string())
-        };
+        let pick = |keys: &[&str]| -> Option<String> { keys.iter().find_map(|k| self.value(k)).map(|s| s.to_string()) };
         let s = match self.category {
             Category::Login | Category::Server | Category::Database | Category::EmailAccount => {
                 pick(&["username", "email"]).or_else(|| self.host())
@@ -608,11 +574,9 @@ impl Item {
                 }
             }
             Category::BankAccount => pick(&["bank_name", "iban"]),
-            Category::SecureNote => self
-                .notes
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .map(|l| l.chars().take(60).collect()),
+            Category::SecureNote => {
+                self.notes.lines().find(|l| !l.trim().is_empty()).map(|l| l.chars().take(60).collect())
+            }
             Category::SshKey => pick(&["key_type", "fingerprint"]),
             Category::WirelessRouter => pick(&["network_name", "base_station_name"]),
             Category::Passport | Category::DriverLicense => pick(&["full_name", "number"]),
@@ -642,10 +606,7 @@ impl Item {
             || self.tags.iter().any(|t| hay(t))
             || hay(&self.notes)
             || hay(self.category.name())
-            || self
-                .fields
-                .iter()
-                .any(|f| !f.kind.is_secret() && (hay(&f.value) || hay(&f.label)))
+            || self.fields.iter().any(|f| !f.kind.is_secret() && (hay(&f.value) || hay(&f.label)))
     }
 
     /// Record a password change compared to `previous`, keeping history.
@@ -660,13 +621,7 @@ impl Item {
         }
         let ts = now();
         if !old.is_empty() && !self.password_history.iter().any(|h| h.value == old) {
-            self.password_history.insert(
-                0,
-                PasswordHistoryEntry {
-                    value: old,
-                    changed_at: ts,
-                },
-            );
+            self.password_history.insert(0, PasswordHistoryEntry { value: old, changed_at: ts });
             self.password_history.truncate(MAX_PASSWORD_HISTORY);
         }
         self.password_changed_at = Some(ts);
@@ -677,23 +632,11 @@ impl Item {
     pub fn normalize(&mut self) {
         self.title = self.title.trim().to_string();
         if self.title.is_empty() {
-            self.title = self
-                .host()
-                .unwrap_or_else(|| self.category.name().to_string());
+            self.title = self.host().unwrap_or_else(|| self.category.name().to_string());
         }
-        let urls: Vec<String> = self
-            .urls
-            .iter()
-            .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty())
-            .collect();
+        let urls: Vec<String> = self.urls.iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).collect();
         self.urls = urls;
-        let mut tags: Vec<String> = self
-            .tags
-            .iter()
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .collect();
+        let mut tags: Vec<String> = self.tags.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         tags.sort_by_key(|t| t.to_lowercase());
         tags.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         self.tags = tags;

@@ -161,7 +161,10 @@ pub fn item_expiry(item: &Item) -> Option<i64> {
     const KEYS: [&str; 4] = ["expiry", "expiry_date", "expires", "valid_until"];
     item.fields
         .iter()
-        .filter(|f| KEYS.contains(&f.id.as_str()) || (f.kind == FieldKind::MonthYear && f.label.to_lowercase().contains("expir")))
+        .filter(|f| {
+            KEYS.contains(&f.id.as_str())
+                || (f.kind == FieldKind::MonthYear && f.label.to_lowercase().contains("expir"))
+        })
         .find_map(|f| parse_expiry(&f.value))
 }
 
@@ -174,11 +177,8 @@ pub fn analyze<'a>(
 ) -> Report {
     let at = at.unwrap_or_else(now);
     let items: Vec<(&str, &Item)> = items.into_iter().filter(|(_, i)| !i.is_trashed()).collect();
-    let mut report = Report {
-        items_checked: items.len(),
-        breach_check_done: !breached.is_empty(),
-        ..Default::default()
-    };
+    let mut report =
+        Report { items_checked: items.len(), breach_check_done: !breached.is_empty(), ..Default::default() };
 
     let mut by_password: HashMap<&str, Vec<(&str, &Item)>> = HashMap::new();
     let mut penalty = 0.0;
@@ -216,7 +216,11 @@ pub fn analyze<'a>(
         if item.password().is_some() {
             if let Some(url) = item.urls.iter().find(|u| u.trim().to_lowercase().starts_with("http://")) {
                 let host = crate::util::url_host(url).unwrap_or_default();
-                if host != "localhost" && !host.starts_with("127.") && !host.starts_with("192.168.") && !host.starts_with("10.") {
+                if host != "localhost"
+                    && !host.starts_with("127.")
+                    && !host.starts_with("192.168.")
+                    && !host.starts_with("10.")
+                {
                     push(IssueKind::InsecureWebsite, url.clone());
                     item_penalty = item_penalty.max(IssueKind::InsecureWebsite.weight());
                 }
@@ -249,11 +253,8 @@ pub fn analyze<'a>(
 
     for group in by_password.values().filter(|g| g.len() > 1) {
         for (vault_id, item) in group {
-            let others: Vec<&str> = group
-                .iter()
-                .filter(|(_, o)| o.id != item.id)
-                .map(|(_, o)| o.title.as_str())
-                .collect();
+            let others: Vec<&str> =
+                group.iter().filter(|(_, o)| o.id != item.id).map(|(_, o)| o.title.as_str()).collect();
             report.issues.push(Issue {
                 kind: IssueKind::Reused,
                 item_id: item.id.clone(),

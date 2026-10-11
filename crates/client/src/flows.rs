@@ -124,15 +124,8 @@ pub async fn signin_with_keys(server_url: &str, email: &str, keys: &DerivedKeys,
         keyset: info.keyset,
         created_at: info.created_at,
     };
-    let mut session = Session::from_server_account(
-        account,
-        keys,
-        ServerLink {
-            url: url.clone(),
-            token: None,
-            last_sync_at: None,
-        },
-    )?;
+    let mut session =
+        Session::from_server_account(account, keys, ServerLink { url: url.clone(), token: None, last_sync_at: None })?;
     session.set_server(&url, &resp.token);
     sync(&mut session).await?;
     Ok(session)
@@ -140,7 +133,12 @@ pub async fn signin_with_keys(server_url: &str, email: &str, keys: &DerivedKeys,
 
 /// Obtain a fresh token for a linked session (after it expired or was
 /// revoked) using the master password.
-pub async fn reauthenticate(session: &mut Session, password: &str, secret_key: &SecretKey, device_name: &str) -> Result<()> {
+pub async fn reauthenticate(
+    session: &mut Session,
+    password: &str,
+    secret_key: &SecretKey,
+    device_name: &str,
+) -> Result<()> {
     let keys = session.verify_password(password, secret_key)?;
     reauthenticate_with_keys(session, &keys, device_name).await
 }
@@ -234,9 +232,11 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
         let resp = client.sync(&req).await?;
         let (report, dirty) = access.with_session(|s| -> Result<(SyncReport, bool)> {
             let report = s.apply_sync_response_for(Some(&req), resp)?;
-            let dirty = s.profile().items.iter().any(|i| {
-                i.dirty && s.profile().vault(&i.vault_id).is_some_and(|v| v.role.can_write())
-            });
+            let dirty = s
+                .profile()
+                .items
+                .iter()
+                .any(|i| i.dirty && s.profile().vault(&i.vault_id).is_some_and(|v| v.role.can_write()));
             Ok((report, dirty))
         })??;
         total.merge(&report);
@@ -250,9 +250,7 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
 
 /// Share a vault with another account on the same server.
 pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, role: Role) -> Result<PublicKeyResponse> {
-    let vault = session
-        .vault(vault_id)
-        .ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
+    let vault = session.vault(vault_id).ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
     if !vault.role.can_manage() {
         return Err(twosecret_core::Error::PermissionDenied("you cannot share this vault".into()).into());
     }
@@ -267,14 +265,7 @@ pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, rol
     let pk = twosecret_core::crypto::PublicKey::from_b64(&user.public_key)?;
     let wrapped = session.wrap_vault_key_for(vault_id, &pk)?;
     client
-        .add_member(
-            vault_id,
-            &AddMemberRequest {
-                account_id: user.account_id.clone(),
-                role,
-                wrapped_key: wrapped,
-            },
-        )
+        .add_member(vault_id, &AddMemberRequest { account_id: user.account_id.clone(), role, wrapped_key: wrapped })
         .await?;
     sync(session).await?;
     Ok(user)
@@ -285,9 +276,7 @@ pub async fn vault_members(session: &Session, vault_id: &str) -> Result<Vec<Memb
 }
 
 pub async fn set_member_role(session: &mut Session, vault_id: &str, account_id: &str, role: Role) -> Result<()> {
-    client_for(session)?
-        .update_member(vault_id, account_id, &UpdateMemberRequest { role })
-        .await?;
+    client_for(session)?.update_member(vault_id, account_id, &UpdateMemberRequest { role }).await?;
     sync(session).await.map(|_| ())
 }
 
@@ -338,9 +327,7 @@ pub async fn delete_server_account(session: &mut Session, password: &str, secret
 }
 
 pub async fn delete_server_account_with_keys(session: &mut Session, keys: &DerivedKeys) -> Result<()> {
-    client_for(session)?
-        .delete_account(&b64(keys.auth_key.as_bytes()))
-        .await?;
+    client_for(session)?.delete_account(&b64(keys.auth_key.as_bytes())).await?;
     session.unlink_server();
     Ok(())
 }

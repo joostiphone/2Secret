@@ -303,11 +303,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Favorite { item, off } => items::favorite(&ctx, &item, !off),
         Command::History { item } => items::history(&ctx, &item),
         Command::Totp { item } => items::totp(&ctx, &item),
-        Command::Copy {
-            item,
-            field,
-            clear_after,
-        } => items::copy(&ctx, &item, &field, clear_after),
+        Command::Copy { item, field, clear_after } => items::copy(&ctx, &item, &field, clear_after),
         Command::Attach { item, file } => items::attach(&ctx, &item, &file),
         Command::Attachment { item, name, output } => items::save_attachment(&ctx, &item, &name, output),
         Command::Vault(cmd) => vaults::run(&ctx, cmd),
@@ -318,12 +314,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Strength { password } => tools::strength(&ctx, password),
         Command::Watchtower { breach_check } => tools::watchtower(&ctx, breach_check),
         Command::Import { file, format, vault } => tools::import(&ctx, &file, format, vault),
-        Command::Export {
-            file,
-            format,
-            vault,
-            include_trash,
-        } => tools::export(&ctx, &file, format, &vault, include_trash),
+        Command::Export { file, format, vault, include_trash } => {
+            tools::export(&ctx, &file, format, &vault, include_trash)
+        }
         Command::Sync => tools::sync(&ctx),
         Command::ClipboardDaemon { .. } => Ok(()),
     }

@@ -15,12 +15,7 @@ use crate::AppState;
 /// client authentication key. This is defence in depth: even a leaked
 /// database cannot be used to log in.
 fn server_kdf() -> KdfParams {
-    KdfParams {
-        algorithm: "argon2id".into(),
-        memory_kib: 19 * 1024,
-        iterations: 2,
-        parallelism: 1,
-    }
+    KdfParams { algorithm: "argon2id".into(), memory_kib: 19 * 1024, iterations: 2, parallelism: 1 }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,12 +40,7 @@ pub fn hash_auth_key(key: &[u8]) -> ApiResult<String> {
     let salt: [u8; 16] = random_bytes();
     let kdf = server_kdf();
     let hash = kdf.hash(key, &salt).map_err(ApiError::internal)?;
-    Ok(serde_json::to_string(&StoredHash {
-        v: 1,
-        salt: b64(&salt),
-        hash: b64(hash.as_bytes()),
-        kdf,
-    })?)
+    Ok(serde_json::to_string(&StoredHash { v: 1, salt: b64(&salt), hash: b64(hash.as_bytes()), kdf })?)
 }
 
 /// Verify an auth key against a stored hash in constant time.
@@ -128,10 +118,7 @@ impl FromRequestParts<AppState> for Auth {
                         rusqlite::params![ts, ts + session_days * 86_400, session.id],
                     )?;
                 }
-                Ok(Auth {
-                    account_id: session.account_id,
-                    session_id: session.id,
-                })
+                Ok(Auth { account_id: session.account_id, session_id: session.id })
             })
             .await
     }

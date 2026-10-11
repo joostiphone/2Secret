@@ -73,7 +73,7 @@ pub fn CreateAccount() -> Element {
             return;
         }
         error.set(None);
-        let srv = use_server().then(|| server());
+        let srv = if use_server() { Some(server()) } else { None };
         let inv = invite();
         spawn(async move {
             busy(t("busy.creating"));
@@ -280,13 +280,11 @@ pub fn NewAccount(secret_key: String) -> Element {
     let sk_for_copy = secret_key.clone();
     let sk_for_kit = secret_key.clone();
     let download = move |_| {
-        let Some((name, email, server)) = SESSION.peek().as_ref().map(|s| {
-            (
-                s.account().name.clone(),
-                s.account().email.clone(),
-                s.server().map(|l| l.url.clone()),
-            )
-        }) else {
+        let Some((name, email, server)) = SESSION
+            .peek()
+            .as_ref()
+            .map(|s| (s.account().name.clone(), s.account().email.clone(), s.server().map(|l| l.url.clone())))
+        else {
             return;
         };
         let Ok(sk) = SecretKey::parse(&sk_for_kit) else { return };
@@ -341,10 +339,7 @@ pub fn LockScreen() -> Element {
     let mut password = use_signal(String::new);
     let mut reset = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
-    let (name, email) = profile
-        .as_ref()
-        .map(|p| (p.account.name.clone(), p.account.email.clone()))
-        .unwrap_or_default();
+    let (name, email) = profile.as_ref().map(|p| (p.account.name.clone(), p.account.email.clone())).unwrap_or_default();
     let initial: String = name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "?".into());
 
     let mut unlock = move || {
@@ -367,6 +362,7 @@ pub fn LockScreen() -> Element {
                     *SESSION.write() = Some(session);
                     *PHASE.write() = Phase::Unlocked;
                     touch();
+                    remember_unlock();
                     request_sync();
                 }
                 Err(e) => {

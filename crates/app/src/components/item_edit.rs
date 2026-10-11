@@ -26,13 +26,7 @@ fn is_password_field(f: &Field) -> bool {
 #[component]
 pub fn ItemEditor() -> Element {
     let mut new_kind = use_signal(|| FieldKind::Text);
-    let mut tags_text = use_signal(|| {
-        EDITING
-            .peek()
-            .as_ref()
-            .map(|d| d.item.tags.join(", "))
-            .unwrap_or_default()
-    });
+    let mut tags_text = use_signal(|| EDITING.peek().as_ref().map(|d| d.item.tags.join(", ")).unwrap_or_default());
     let mut error = use_signal(|| None::<String>);
     // Bumped on structural URL changes so uncontrolled inputs are re-created.
     let mut url_rev = use_signal(|| 0u32);
@@ -241,7 +235,13 @@ fn EditField(idx: usize, field: Field, title: String) -> Element {
     let label = field_label(&field);
     let custom = field.is_custom();
     let value = field.value.clone();
-    let set = move |v: String| draft_mut(|d| { if let Some(f) = d.item.fields.get_mut(idx) { f.value = v; } });
+    let set = move |v: String| {
+        draft_mut(|d| {
+            if let Some(f) = d.item.fields.get_mut(idx) {
+                f.value = v;
+            }
+        })
+    };
     let input_type = match field.kind {
         FieldKind::Email => "email",
         FieldKind::Url => "url",

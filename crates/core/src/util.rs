@@ -6,18 +6,12 @@ use rand::RngCore;
 
 /// Current UNIX time in seconds. Works on native targets and in the browser.
 pub fn now() -> i64 {
-    web_time::SystemTime::now()
-        .duration_since(web_time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
 /// Current UNIX time in milliseconds.
 pub fn now_millis() -> i64 {
-    web_time::SystemTime::now()
-        .duration_since(web_time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 /// A new random (version 4) UUID, rendered lowercase with hyphens.
@@ -39,9 +33,7 @@ pub fn b64(data: &[u8]) -> String {
 }
 
 pub fn unb64(data: &str) -> crate::Result<Vec<u8>> {
-    STANDARD
-        .decode(data.trim())
-        .map_err(|e| crate::Error::invalid(format!("invalid base64: {e}")))
+    STANDARD.decode(data.trim()).map_err(|e| crate::Error::invalid(format!("invalid base64: {e}")))
 }
 
 pub fn b64url(data: &[u8]) -> String {
@@ -49,9 +41,7 @@ pub fn b64url(data: &[u8]) -> String {
 }
 
 pub fn unb64url(data: &str) -> crate::Result<Vec<u8>> {
-    URL_SAFE_NO_PAD
-        .decode(data.trim())
-        .map_err(|e| crate::Error::invalid(format!("invalid base64: {e}")))
+    URL_SAFE_NO_PAD.decode(data.trim()).map_err(|e| crate::Error::invalid(format!("invalid base64: {e}")))
 }
 
 /// Lowercase hexadecimal encoding.
@@ -97,14 +87,7 @@ pub fn civil_from_unix(ts: i64) -> (i64, u32, u32, u32, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     let y = if m <= 2 { y + 1 } else { y };
-    (
-        y,
-        m,
-        d,
-        (secs / 3600) as u32,
-        ((secs % 3600) / 60) as u32,
-        (secs % 60) as u32,
-    )
+    (y, m, d, (secs / 3600) as u32, ((secs % 3600) / 60) as u32, (secs % 60) as u32)
 }
 
 /// Convert a civil date (UTC midnight) to a UNIX timestamp.
@@ -161,11 +144,7 @@ pub fn url_host(raw: &str) -> Option<String> {
     if raw.is_empty() {
         return None;
     }
-    let with_scheme = if raw.contains("://") {
-        raw.to_string()
-    } else {
-        format!("https://{raw}")
-    };
+    let with_scheme = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
     let parsed = url::Url::parse(&with_scheme).ok()?;
     let host = parsed.host_str()?.to_lowercase();
     Some(host.strip_prefix("www.").unwrap_or(&host).to_string())

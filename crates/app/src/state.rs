@@ -11,6 +11,7 @@ use twosecret_core::session::Session;
 use twosecret_core::util::now;
 use twosecret_core::watchtower::IssueKind;
 
+use crate::extension;
 use crate::i18n::{t, Lang, LANG};
 use crate::platform;
 
@@ -23,7 +24,9 @@ pub enum Phase {
     Create,
     SignIn,
     /// Account just created: show the Secret Key / Emergency Kit.
-    NewAccount { secret_key: String },
+    NewAccount {
+        secret_key: String,
+    },
     Locked,
     Unlocked,
 }
@@ -150,6 +153,8 @@ pub static ACTIVITY: GlobalSignal<i64> = Signal::global(now);
 pub static MODAL: GlobalSignal<Option<Modal>> = Signal::global(|| None);
 pub static BUSY: GlobalSignal<Option<String>> = Signal::global(|| None);
 pub static PANE: GlobalSignal<Pane> = Signal::global(|| Pane::List);
+/// URL of the active browser tab (extension only).
+pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
 /// Breach counts from the last Have I Been Pwned check (item id → count).
 pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
 
@@ -163,11 +168,52 @@ pub fn init() {
         .unwrap_or_default();
     *LANG.write() = prefs.lang.unwrap_or_else(|| Lang::from_code(&platform::system_language()));
     *PREFS.write() = prefs;
-    *PHASE.write() = if load_profile().is_some() && device_secrets().is_some() {
-        Phase::Locked
-    } else {
-        Phase::Welcome
+    let has_account = load_profile().is_some() && device_secrets().is_some();
+    if !has_account {
+        *PHASE.write() = Phase::Welcome;
+        return;
+    }
+    if !extension::ENABLED {
+        *PHASE.write() = Phase::Locked;
+        return;
+    }
+    // Extension popups are short-lived: reuse an unlock from the last minutes.
+    spawn(async move {
+        let profile = load_profile();
+        let cached = match &profile {
+            Some(p) => extension::cached_unlock(&p.account.id).await,
+            None => None,
+        };
+        match (profile, cached) {
+            (Some(p), Some(key)) => match Session::open_with_account_key(p, key) {
+                Ok(session) => {
+                    *SESSION.write() = Some(session);
+                    *PHASE.write() = Phase::Unlocked;
+                    touch();
+                    request_sync();
+                }
+                Err(_) => *PHASE.write() = Phase::Locked,
+            },
+            _ => *PHASE.write() = Phase::Locked,
+        }
+    });
+}
+
+/// Extension: keep the vault unlocked across popup openings until auto-lock.
+pub fn remember_unlock() {
+    if !extension::ENABLED {
+        return;
+    }
+    let Some((id, key)) = SESSION.peek().as_ref().map(|s| (s.account().id.clone(), s.account_key().clone())) else {
+        return;
     };
+    let minutes = PREFS.peek().auto_lock_minutes as i64;
+    let ttl = if minutes == 0 { 12 * 3600 } else { minutes * 60 };
+    dioxus::core::spawn_forever(async move { extension::remember_unlock(&id, &key, ttl).await });
+}
+
+thread_local! {
+    static LAST_REMEMBER: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
 }
 
 pub fn save_prefs() {
@@ -201,13 +247,12 @@ pub fn adopt_session(session: Session, sk: &SecretKey) -> Result<(), String> {
     platform::storage()
         .write(DEVICE_KEY, &DeviceSecrets::new(&acc.id, &acc.email, sk).to_json())
         .map_err(|e| e.to_string())?;
-    platform::storage()
-        .write(PROFILE_KEY, &session.profile().to_json())
-        .map_err(|e| e.to_string())?;
+    platform::storage().write(PROFILE_KEY, &session.profile().to_json()).map_err(|e| e.to_string())?;
     *SESSION.write() = Some(session);
     *NAV.write() = Nav::All;
     *SELECTED.write() = None;
     touch();
+    remember_unlock();
     Ok(())
 }
 
@@ -233,6 +278,10 @@ pub fn touch() {
     if *ACTIVITY.peek() != ts {
         *ACTIVITY.write() = ts;
     }
+    if extension::ENABLED && SESSION.peek().is_some() && ts - LAST_REMEMBER.with(|c| c.get()) > 30 {
+        LAST_REMEMBER.with(|c| c.set(ts));
+        remember_unlock();
+    }
 }
 
 pub fn toast(text: &str) {
@@ -245,11 +294,7 @@ pub fn toast_err(text: &str) {
 
 fn show_toast(text: &str, error: bool) {
     let id = TOAST.peek().as_ref().map(|t| t.id + 1).unwrap_or(1);
-    *TOAST.write() = Some(Toast {
-        id,
-        text: text.to_string(),
-        error,
-    });
+    *TOAST.write() = Some(Toast { id, text: text.to_string(), error });
     // `spawn_forever`: the timer must survive the component that showed it.
     dioxus::core::spawn_forever(async move {
         platform::sleep_ms(if error { 6000 } else { 2600 }).await;
@@ -314,6 +359,10 @@ pub fn mutate<T>(f: impl FnOnce(&mut Session) -> twosecret_core::Result<T>) -> O
 
 /// Lock: forget all decrypted data.
 pub fn lock() {
+    if extension::ENABLED {
+        LAST_REMEMBER.with(|c| c.set(0));
+        dioxus::core::spawn_forever(extension::forget_unlock());
+    }
     *SESSION.write() = None;
     *EDITING.write() = None;
     *SELECTED.write() = None;
@@ -411,12 +460,7 @@ pub async fn run_sync(show_result: bool) {
                 *SELECTED.write() = None;
             }
             if show_result {
-                toast(&format!(
-                    "{} ↑{} ↓{}",
-                    t("toast.synced"),
-                    report.uploaded,
-                    report.downloaded + report.deleted
-                ));
+                toast(&format!("{} ↑{} ↓{}", t("toast.synced"), report.uploaded, report.downloaded + report.deleted));
             }
         }
         Err(twosecret_client::Error::Protocol(m)) if m == "locked" => {}
@@ -436,6 +480,32 @@ pub async fn run_sync(show_result: bool) {
 /// operations, then install the result. The UI is blocked meanwhile.
 pub fn session_copy() -> Option<Session> {
     SESSION.peek().as_ref().and_then(|s| s.try_clone().ok())
+}
+
+/// Extension: fill the active tab with an item's username, password and
+/// current one-time code, then close the popup.
+pub fn fill_item(id: &str) {
+    let Some((user, pw, code)) = SESSION.peek().as_ref().and_then(|s| s.item(id)).map(|i| {
+        let code = i
+            .totp_secret()
+            .and_then(|t| twosecret_core::totp::Totp::parse(t).ok())
+            .map(|t| t.now().0)
+            .unwrap_or_default();
+        (i.username().unwrap_or("").to_string(), i.password().unwrap_or("").to_string(), code)
+    }) else {
+        return;
+    };
+    dioxus::core::spawn_forever(async move {
+        if extension::fill(&user, &pw, &code).await {
+            if !code.is_empty() && !pw.is_empty() {
+                // The code is usually asked on the next page: keep it ready.
+                platform::copy_text(&code).await;
+            }
+            extension::close();
+        } else {
+            toast_err(t("ext.nothing_to_fill"));
+        }
+    });
 }
 
 pub fn install_session(session: Session) {

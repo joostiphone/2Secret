@@ -38,11 +38,7 @@ pub enum VaultCmd {
     /// Show who has access to a vault.
     Members { vault: String },
     /// Change the role of a member.
-    SetRole {
-        vault: String,
-        email: String,
-        role: String,
-    },
+    SetRole { vault: String, email: String, role: String },
     /// Remove someone's access to a vault.
     Unshare { vault: String, email: String },
 }
@@ -72,11 +68,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                         v.name.clone(),
                         v.item_count.to_string(),
                         v.role.id().to_string(),
-                        if v.is_shared() {
-                            format!("{} members", v.member_count)
-                        } else {
-                            "private".into()
-                        },
+                        if v.is_shared() { format!("{} members", v.member_count) } else { "private".into() },
                     ]
                 })
                 .collect();

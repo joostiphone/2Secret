@@ -75,34 +75,20 @@ impl Default for GeneratorOptions {
 
 impl GeneratorOptions {
     pub fn random(length: usize) -> Self {
-        Self {
-            kind: GeneratorKind::Random,
-            length,
-            ..Default::default()
-        }
+        Self { kind: GeneratorKind::Random, length, ..Default::default() }
     }
 
     pub fn memorable(words: usize) -> Self {
-        Self {
-            kind: GeneratorKind::Memorable,
-            words,
-            ..Default::default()
-        }
+        Self { kind: GeneratorKind::Memorable, words, ..Default::default() }
     }
 
     pub fn pin(length: usize) -> Self {
-        Self {
-            kind: GeneratorKind::Pin,
-            pin_length: length,
-            ..Default::default()
-        }
+        Self { kind: GeneratorKind::Pin, pin_length: length, ..Default::default() }
     }
 
     fn character_sets(&self) -> Vec<Vec<char>> {
         let filter = |set: &str| -> Vec<char> {
-            set.chars()
-                .filter(|c| !self.avoid_ambiguous || !AMBIGUOUS.contains(*c))
-                .collect()
+            set.chars().filter(|c| !self.avoid_ambiguous || !AMBIGUOUS.contains(*c)).collect()
         };
         let mut sets = Vec::new();
         if self.lowercase {
@@ -200,9 +186,7 @@ pub fn generate_passphrase(opts: &GeneratorOptions) -> String {
 pub fn generate_pin(length: usize) -> String {
     let length = length.clamp(MIN_LENGTH, 32);
     let mut rng = OsRng;
-    (0..length)
-        .map(|_| char::from(b'0' + rng.gen_range(0..10u8)))
-        .collect()
+    (0..length).map(|_| char::from(b'0' + rng.gen_range(0..10u8))).collect()
 }
 
 /// Shuffle helper used by tests and import tooling.

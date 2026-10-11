@@ -55,7 +55,10 @@ fn AccountSection() -> Element {
     let download_kit = move |_| {
         let (Some(sk), Some((name, email, server))) = (
             secret_key(),
-            SESSION.peek().as_ref().map(|s| (s.account().name.clone(), s.account().email.clone(), s.server().map(|l| l.url.clone()))),
+            SESSION
+                .peek()
+                .as_ref()
+                .map(|s| (s.account().name.clone(), s.account().email.clone(), s.server().map(|l| l.url.clone()))),
         ) else {
             return;
         };
@@ -356,7 +359,14 @@ fn ConnectForm(done: EventHandler<()>) -> Element {
                 }
             };
             let inv = (!inv.trim().is_empty()).then(|| inv.trim().to_string());
-            let result = twosecret_client::connect_with_keys(&mut session, &url, &keys, inv.as_deref(), &platform::device_name()).await;
+            let result = twosecret_client::connect_with_keys(
+                &mut session,
+                &url,
+                &keys,
+                inv.as_deref(),
+                &platform::device_name(),
+            )
+            .await;
             unbusy();
             match result {
                 Ok(_) => {
@@ -513,9 +523,9 @@ fn ImportSection() -> Element {
     let mut password = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
     let vaults = SESSION.read().as_ref().map(|s| s.vaults()).unwrap_or_default();
-    let needs_password = file()
-        .as_ref()
-        .is_some_and(|(_, d)| twosecret_core::crypto::PasswordEnvelope::is_envelope(&String::from_utf8_lossy(&d[..d.len().min(4096)])));
+    let needs_password = file().as_ref().is_some_and(|(_, d)| {
+        twosecret_core::crypto::PasswordEnvelope::is_envelope(&String::from_utf8_lossy(&d[..d.len().min(4096)]))
+    });
 
     let run_import = move |_| {
         let Some((name, data)) = file() else { return };
@@ -529,7 +539,10 @@ fn ImportSection() -> Element {
         error.set(None);
         spawn(async move {
             busy(t("busy.importing"));
-            let parsed = platform::run_heavy(move || import::import(&data, fmt, if pw.is_empty() { None } else { Some(pw.as_str()) })).await;
+            let parsed = platform::run_heavy(move || {
+                import::import(&data, fmt, if pw.is_empty() { None } else { Some(pw.as_str()) })
+            })
+            .await;
             unbusy();
             match parsed {
                 Ok(result) => {
@@ -729,7 +742,9 @@ fn DangerSection() -> Element {
             })
             .await;
             let result = match keys {
-                Ok(k) => twosecret_client::delete_server_account_with_keys(&mut session, &k).await.map_err(|e| client_error(&e)),
+                Ok(k) => twosecret_client::delete_server_account_with_keys(&mut session, &k)
+                    .await
+                    .map_err(|e| client_error(&e)),
                 Err(e) => Err(core_error(&e)),
             };
             unbusy();

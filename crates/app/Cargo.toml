@@ -16,6 +16,8 @@ path = "src/main.rs"
 default = ["desktop"]
 desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio"]
 web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
+# Browser extension popup (Chrome, Edge, Firefox): the web app plus autofill.
+extension = ["web"]
 mobile = ["dioxus/mobile", "dep:tokio"]
 
 [dependencies]

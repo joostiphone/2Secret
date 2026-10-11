@@ -53,16 +53,8 @@ impl SecretRef {
             return Err(Error::invalid("empty segment in secret reference"));
         }
         match parts.len() {
-            2 => Ok(SecretRef {
-                vault: None,
-                item: parts[0].clone(),
-                field: parts[1].clone(),
-            }),
-            3 => Ok(SecretRef {
-                vault: Some(parts[0].clone()),
-                item: parts[1].clone(),
-                field: parts[2].clone(),
-            }),
+            2 => Ok(SecretRef { vault: None, item: parts[0].clone(), field: parts[1].clone() }),
+            3 => Ok(SecretRef { vault: Some(parts[0].clone()), item: parts[1].clone(), field: parts[2].clone() }),
             _ => Err(Error::invalid("expected 2s://vault/item/field")),
         }
     }

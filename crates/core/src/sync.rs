@@ -47,12 +47,7 @@ impl SyncReport {
 impl Session {
     /// Vaults created locally that must be created on the server first.
     pub fn vaults_pending(&self, state: SyncState) -> Vec<VaultRecord> {
-        self.profile()
-            .vaults
-            .iter()
-            .filter(|v| v.sync_state == state)
-            .cloned()
-            .collect()
+        self.profile().vaults.iter().filter(|v| v.sync_state == state).cloned().collect()
     }
 
     /// Mark a vault as known to the server (after create/update succeeded).
@@ -86,11 +81,7 @@ impl Session {
                     .items
                     .iter()
                     .filter(|i| i.vault_id == v.id && i.dirty && v.role.can_write())
-                    .map(|i| ItemChange {
-                        id: i.id.clone(),
-                        base_revision: i.revision,
-                        data: i.data.clone(),
-                    })
+                    .map(|i| ItemChange { id: i.id.clone(), base_revision: i.revision, data: i.data.clone() })
                     .collect(),
             })
             .collect();
@@ -105,14 +96,13 @@ impl Session {
     /// Merge a server response, knowing which request produced it. Local
     /// edits made while the request was in flight stay marked as changed
     /// (they are uploaded in the next round instead of being lost).
-    pub fn apply_sync_response_for(&mut self, request: Option<&SyncRequest>, response: SyncResponse) -> Result<SyncReport> {
+    pub fn apply_sync_response_for(
+        &mut self,
+        request: Option<&SyncRequest>,
+        response: SyncResponse,
+    ) -> Result<SyncReport> {
         let sent: std::collections::HashMap<&str, &Option<crate::crypto::EncString>> = request
-            .map(|r| {
-                r.vaults
-                    .iter()
-                    .flat_map(|v| v.changes.iter().map(|c| (c.id.as_str(), &c.data)))
-                    .collect()
-            })
+            .map(|r| r.vaults.iter().flat_map(|v| v.changes.iter().map(|c| (c.id.as_str(), &c.data))).collect())
             .unwrap_or_default();
         let mut report = SyncReport::default();
         self.apply_vault_list(&response.vaults, &mut report)?;
@@ -286,14 +276,8 @@ impl Session {
             }
         };
         let vault_id = local_rec.vault_id.clone();
-        let local_item = local_rec
-            .data
-            .as_ref()
-            .and_then(|d| self.decrypt_item(&vault_id, &local_rec.id, d).ok());
-        let remote_item = remote
-            .data
-            .as_ref()
-            .and_then(|d| self.decrypt_item(&vault_id, &remote.id, d).ok());
+        let local_item = local_rec.data.as_ref().and_then(|d| self.decrypt_item(&vault_id, &local_rec.id, d).ok());
+        let remote_item = remote.data.as_ref().and_then(|d| self.decrypt_item(&vault_id, &remote.id, d).ok());
 
         let winner: Option<(Item, bool)> = match (local_item, remote_item) {
             // Both deleted: nothing left to do.
@@ -322,11 +306,7 @@ impl Session {
                 self.profile_mut().items.retain(|i| i.id != remote.id);
             }
             Some((item, ours)) => {
-                let data = if ours {
-                    self.encrypt_item(&vault_id, &item).ok()
-                } else {
-                    remote.data.clone()
-                };
+                let data = if ours { self.encrypt_item(&vault_id, &item).ok() } else { remote.data.clone() };
                 if let Some(rec) = self.profile_mut().item_mut(&remote.id) {
                     rec.data = data;
                     rec.revision = remote.revision;
@@ -342,10 +322,7 @@ fn merge_password_history(item: &mut Item, other: &Item) {
     let current = item.password().unwrap_or("").to_string();
     let mut candidates: Vec<PasswordHistoryEntry> = Vec::new();
     if let Some(pw) = other.password() {
-        candidates.push(PasswordHistoryEntry {
-            value: pw.to_string(),
-            changed_at: other.updated_at,
-        });
+        candidates.push(PasswordHistoryEntry { value: pw.to_string(), changed_at: other.updated_at });
     }
     candidates.extend(other.password_history.iter().cloned());
     for entry in candidates {
@@ -412,10 +389,7 @@ mod tests {
                     };
                     self.items.retain(|i| i.id != ch.id);
                     self.items.push(dto);
-                    accepted.push(Accepted {
-                        id: ch.id,
-                        revision: vault.revision,
-                    });
+                    accepted.push(Accepted { id: ch.id, revision: vault.revision });
                 }
                 let changes = self
                     .items
@@ -433,10 +407,7 @@ mod tests {
                     rejected: vec![],
                 });
             }
-            SyncResponse {
-                vaults: self.vaults.clone(),
-                results,
-            }
+            SyncResponse { vaults: self.vaults.clone(), results }
         }
 
         fn full_sync(&mut self, s: &mut Session) -> SyncReport {

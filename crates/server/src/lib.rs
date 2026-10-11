@@ -113,9 +113,7 @@ pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
     let api = routes::api_router().with_state(state);
 
-    let mut app = Router::new()
-        .nest("/api/v1", api)
-        .layer(DefaultBodyLimit::max(config.max_body_bytes));
+    let mut app = Router::new().nest("/api/v1", api).layer(DefaultBodyLimit::max(config.max_body_bytes));
 
     if let Some(dir) = &config.web_dir {
         let index = dir.join("index.html");
@@ -139,27 +137,15 @@ pub fn app(state: AppState) -> Router {
         ),
     ];
     for (name, value) in security_headers {
-        app = app.layer(SetResponseHeaderLayer::if_not_present(
-            name,
-            HeaderValue::from_static(value),
-        ));
+        app = app.layer(SetResponseHeaderLayer::if_not_present(name, HeaderValue::from_static(value)));
     }
-    app = app.layer(SetResponseHeaderLayer::overriding(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    ));
+    app = app.layer(SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, HeaderValue::from_static("no-store")));
 
     if !config.cors_origins.is_empty() {
-        let origins: Vec<HeaderValue> = config
-            .cors_origins
-            .iter()
-            .filter_map(|o| HeaderValue::from_str(o).ok())
-            .collect();
-        let allow = if config.cors_origins.iter().any(|o| o == "*") {
-            AllowOrigin::any()
-        } else {
-            AllowOrigin::list(origins)
-        };
+        let origins: Vec<HeaderValue> =
+            config.cors_origins.iter().filter_map(|o| HeaderValue::from_str(o).ok()).collect();
+        let allow =
+            if config.cors_origins.iter().any(|o| o == "*") { AllowOrigin::any() } else { AllowOrigin::list(origins) };
         app = app.layer(
             CorsLayer::new()
                 .allow_origin(allow)
@@ -173,9 +159,7 @@ pub fn app(state: AppState) -> Router {
 
 /// Serve the application on an already bound listener until shutdown.
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow::Result<()> {
-    axum::serve(listener, app(state))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(listener, app(state)).with_graceful_shutdown(shutdown_signal()).await?;
     Ok(())
 }
 

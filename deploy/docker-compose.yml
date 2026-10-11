@@ -1,0 +1,34 @@
+# Self-host 2Secret with automatic HTTPS (Caddy + Let's Encrypt).
+#
+# 1. Point a DNS record (e.g. vault.example.com) at this machine.
+# 2. Edit Caddyfile and the invite code below.
+# 3. docker compose up -d
+services:
+  2secret:
+    image: ghcr.io/joostiphone/2secret:latest
+    build: ..
+    restart: unless-stopped
+    environment:
+      # open | invite | closed
+      TWOSECRET_SIGNUPS: invite
+      TWOSECRET_INVITE_CODES: change-me-to-something-secret
+    volumes:
+      - 2secret-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - 2secret
+
+volumes:
+  2secret-data:
+  caddy-data:
+  caddy-config:

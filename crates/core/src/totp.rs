@@ -56,11 +56,8 @@ impl std::fmt::Debug for Totp {
 }
 
 fn decode_base32(s: &str) -> Result<Vec<u8>> {
-    let cleaned: String = s
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != '-' && *c != '=')
-        .flat_map(|c| c.to_uppercase())
-        .collect();
+    let cleaned: String =
+        s.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '=').flat_map(|c| c.to_uppercase()).collect();
     if cleaned.is_empty() {
         return Err(Error::invalid("empty TOTP secret"));
     }
@@ -68,8 +65,7 @@ fn decode_base32(s: &str) -> Result<Vec<u8>> {
     spec.symbols.push_str("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567");
     spec.check_trailing_bits = false;
     let enc = spec.encoding().expect("valid base32 specification");
-    enc.decode(cleaned.as_bytes())
-        .map_err(|_| Error::invalid("the TOTP secret is not valid base32"))
+    enc.decode(cleaned.as_bytes()).map_err(|_| Error::invalid("the TOTP secret is not valid base32"))
 }
 
 fn encode_base32(bytes: &[u8]) -> String {
@@ -143,9 +139,7 @@ impl Totp {
         }
         if lower.starts_with("otpauth://") {
             let after = &input["otpauth://".len()..];
-            let (kind, rest) = after
-                .split_once('/')
-                .ok_or_else(|| Error::invalid("malformed otpauth URI"))?;
+            let (kind, rest) = after.split_once('/').ok_or_else(|| Error::invalid("malformed otpauth URI"))?;
             if !kind.eq_ignore_ascii_case("totp") {
                 return Err(Error::Unsupported(format!("OTP type '{kind}' (only TOTP is supported)")));
             }

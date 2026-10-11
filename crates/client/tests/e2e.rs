@@ -33,13 +33,10 @@ async fn signup_signin_sync_between_devices() {
     let health = Client::new(&url).health().await.unwrap();
     assert_eq!(health.status, "ok");
 
-    let (mut laptop, sk) = client::signup(&url, "Alice", "alice@example.com", PW, None, "laptop", "Personal", kdf())
-        .await
-        .unwrap();
+    let (mut laptop, sk) =
+        client::signup(&url, "Alice", "alice@example.com", PW, None, "laptop", "Personal", kdf()).await.unwrap();
     let vault = laptop.default_vault_id().unwrap();
-    let id = laptop
-        .add_item(&vault, Item::login("GitHub", "alice", "pw-1", Some("https://github.com")))
-        .unwrap();
+    let id = laptop.add_item(&vault, Item::login("GitHub", "alice", "pw-1", Some("https://github.com"))).unwrap();
     let report = client::sync(&mut laptop).await.unwrap();
     assert_eq!(report.uploaded, 1);
 
@@ -92,9 +89,7 @@ async fn signup_signin_sync_between_devices() {
 #[tokio::test]
 async fn concurrent_edits_resolve() {
     let url = start_server(Config::default()).await;
-    let (mut a, sk) = client::signup(&url, "Bob", "bob@example.com", PW, None, "a", "Personal", kdf())
-        .await
-        .unwrap();
+    let (mut a, sk) = client::signup(&url, "Bob", "bob@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();
     let v = a.default_vault_id().unwrap();
     let id = a.add_item(&v, Item::login("Bank", "bob", "start", None)).unwrap();
     client::sync(&mut a).await.unwrap();
@@ -116,9 +111,8 @@ async fn concurrent_edits_resolve() {
     let fa = a.item(&id).unwrap();
     let fb = b.item(&id).unwrap();
     assert_eq!(fa.password(), fb.password());
-    let all: Vec<&str> = std::iter::once(fa.password().unwrap())
-        .chain(fa.password_history.iter().map(|h| h.value.as_str()))
-        .collect();
+    let all: Vec<&str> =
+        std::iter::once(fa.password().unwrap()).chain(fa.password_history.iter().map(|h| h.value.as_str())).collect();
     assert!(all.contains(&"from-a") && all.contains(&"from-b"), "{all:?}");
     assert!(!a.profile().has_pending_changes());
     assert!(!b.profile().has_pending_changes());
@@ -127,19 +121,12 @@ async fn concurrent_edits_resolve() {
 #[tokio::test]
 async fn vault_sharing_and_permissions() {
     let url = start_server(Config::default()).await;
-    let (mut alice, _) = client::signup(&url, "Alice", "alice@example.com", PW, None, "a", "Personal", kdf())
-        .await
-        .unwrap();
-    let (mut bob, _) = client::signup(&url, "Bob", "bob@example.com", PW, None, "b", "Personal", kdf())
-        .await
-        .unwrap();
+    let (mut alice, _) =
+        client::signup(&url, "Alice", "alice@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();
+    let (mut bob, _) = client::signup(&url, "Bob", "bob@example.com", PW, None, "b", "Personal", kdf()).await.unwrap();
     let family = alice.create_vault("Family", "").unwrap();
-    let netflix = alice
-        .add_item(&family, Item::login("Netflix", "family", "popcorn", None))
-        .unwrap();
-    let bob_info = client::share_vault(&mut alice, &family, "bob@example.com", Role::Viewer)
-        .await
-        .unwrap();
+    let netflix = alice.add_item(&family, Item::login("Netflix", "family", "popcorn", None)).unwrap();
+    let bob_info = client::share_vault(&mut alice, &family, "bob@example.com", Role::Viewer).await.unwrap();
     assert_eq!(bob_info.name, "Bob");
 
     let r = client::sync(&mut bob).await.unwrap();
@@ -155,9 +142,7 @@ async fn vault_sharing_and_permissions() {
     assert!(bob.update_item(edit).is_err());
 
     // Promote Bob to editor; his edits reach Alice.
-    client::set_member_role(&mut alice, &family, &bob.account().id, Role::Editor)
-        .await
-        .unwrap();
+    client::set_member_role(&mut alice, &family, &bob.account().id, Role::Editor).await.unwrap();
     client::sync(&mut bob).await.unwrap();
     let mut edit = bob.item(&netflix).unwrap().clone();
     edit.notes = "shared note".into();
@@ -193,9 +178,7 @@ async fn local_account_connects_later_and_password_change() {
     client::change_password(&mut s, PW, "an even better password", &sk).await.unwrap();
     // The old password no longer works anywhere.
     assert!(client::signin(&url, "carol@example.com", PW, &sk, "x").await.is_err());
-    let other = client::signin(&url, "carol@example.com", "an even better password", &sk, "x")
-        .await
-        .unwrap();
+    let other = client::signin(&url, "carol@example.com", "an even better password", &sk, "x").await.unwrap();
     assert_eq!(other.item_count(), 1);
     // Our own session survived the change; other sessions were revoked.
     client::sync(&mut s).await.unwrap();
@@ -223,19 +206,11 @@ async fn signup_modes() {
     .await;
     let err = client::signup(&url, "D", "d@example.com", PW, None, "x", "P", kdf()).await.unwrap_err();
     assert_eq!(err.status(), Some(403));
-    client::signup(&url, "D", "d@example.com", PW, Some("family-2026"), "x", "P", kdf())
-        .await
-        .unwrap();
-    let dup = client::signup(&url, "D", "d@example.com", PW, Some("family-2026"), "x", "P", kdf())
-        .await
-        .unwrap_err();
+    client::signup(&url, "D", "d@example.com", PW, Some("family-2026"), "x", "P", kdf()).await.unwrap();
+    let dup = client::signup(&url, "D", "d@example.com", PW, Some("family-2026"), "x", "P", kdf()).await.unwrap_err();
     assert_eq!(dup.status(), Some(409));
 
-    let closed = start_server(Config {
-        signups: SignupMode::Closed,
-        ..Config::default()
-    })
-    .await;
+    let closed = start_server(Config { signups: SignupMode::Closed, ..Config::default() }).await;
     assert!(!Client::new(&closed).health().await.unwrap().signups_open);
     let err = client::signup(&closed, "E", "e@example.com", PW, None, "x", "P", kdf()).await.unwrap_err();
     assert_eq!(err.status(), Some(403));
@@ -257,12 +232,8 @@ async fn login_rate_limiting() {
 async fn server_enforces_read_only_access() {
     use twosecret_core::api::{ItemChange, SyncRequest, VaultSyncRequest};
     let url = start_server(Config::default()).await;
-    let (mut alice, _) = client::signup(&url, "A", "a@example.com", PW, None, "a", "Personal", kdf())
-        .await
-        .unwrap();
-    let (mut bob, _) = client::signup(&url, "B", "b@example.com", PW, None, "b", "Personal", kdf())
-        .await
-        .unwrap();
+    let (mut alice, _) = client::signup(&url, "A", "a@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();
+    let (mut bob, _) = client::signup(&url, "B", "b@example.com", PW, None, "b", "Personal", kdf()).await.unwrap();
     let shared = alice.create_vault("Shared", "").unwrap();
     let id = alice.add_item(&shared, Item::login("X", "x", "secret", None)).unwrap();
     client::share_vault(&mut alice, &shared, "b@example.com", Role::Viewer).await.unwrap();
@@ -290,9 +261,10 @@ async fn server_enforces_read_only_access() {
 
     // Bob cannot rename, delete or share the vault either.
     assert_eq!(
-        api.update_vault(&shared, &twosecret_core::api::UpdateVaultRequest {
-            meta: bob.profile().vault(&shared).unwrap().meta.clone()
-        })
+        api.update_vault(
+            &shared,
+            &twosecret_core::api::UpdateVaultRequest { meta: bob.profile().vault(&shared).unwrap().meta.clone() }
+        )
         .await
         .unwrap_err()
         .status(),
@@ -306,15 +278,11 @@ async fn server_enforces_read_only_access() {
     assert_eq!(alice.vault(&shared).unwrap().member_count, 1);
 
     // An outsider sees nothing.
-    let (carol, _) = client::signup(&url, "C", "c@example.com", PW, None, "c", "Personal", kdf())
-        .await
-        .unwrap();
+    let (carol, _) = client::signup(&url, "C", "c@example.com", PW, None, "c", "Personal", kdf()).await.unwrap();
     let carol_api = client::client_for(&carol).unwrap();
     assert_eq!(carol_api.members(&shared).await.unwrap_err().status(), Some(404));
     let resp = carol_api
-        .sync(&SyncRequest {
-            vaults: vec![VaultSyncRequest { vault_id: shared.clone(), since: 0, changes: vec![] }],
-        })
+        .sync(&SyncRequest { vaults: vec![VaultSyncRequest { vault_id: shared.clone(), since: 0, changes: vec![] }] })
         .await
         .unwrap();
     assert!(resp.results.iter().all(|r| r.vault_id != shared));

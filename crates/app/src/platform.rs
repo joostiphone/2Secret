@@ -75,10 +75,7 @@ async fn js_download(name: &str, mime: &str, content: &[u8]) -> bool {
         return true;
         "#,
     );
-    if eval
-        .send((name.to_string(), mime.to_string(), twosecret_core::util::b64(content)))
-        .is_err()
-    {
+    if eval.send((name.to_string(), mime.to_string(), twosecret_core::util::b64(content))).is_err() {
         return false;
     }
     eval.join::<bool>().await.unwrap_or(false)
@@ -182,13 +179,7 @@ mod imp {
         let dir = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
-            .map(|h| {
-                if cfg!(target_os = "ios") {
-                    h.join("Documents")
-                } else {
-                    h.join("Downloads")
-                }
-            })
+            .map(|h| if cfg!(target_os = "ios") { h.join("Documents") } else { h.join("Downloads") })
             .filter(|d| d.is_dir())
             .unwrap_or_else(data_dir);
         let mut path = dir.join(name);
@@ -207,9 +198,7 @@ mod imp {
             opts.mode(0o600);
         }
         use std::io::Write;
-        opts.open(&path)
-            .and_then(|mut f| f.write_all(content))
-            .map_err(|e| e.to_string())?;
+        opts.open(&path).and_then(|mut f| f.write_all(content)).map_err(|e| e.to_string())?;
         Ok(path.display().to_string())
     }
 
@@ -269,9 +258,7 @@ mod imp {
 
     impl Storage for LocalStorage {
         fn read(&self, key: &str) -> Result<Option<String>> {
-            ls()?
-                .get_item(&format!("2secret.{key}"))
-                .map_err(|_| Error::Storage("read failed".into()))
+            ls()?.get_item(&format!("2secret.{key}")).map_err(|_| Error::Storage("read failed".into()))
         }
         fn write(&self, key: &str, value: &str) -> Result<()> {
             ls()?
@@ -279,9 +266,7 @@ mod imp {
                 .map_err(|_| Error::Storage("the browser refused to store the vault (quota exceeded?)".into()))
         }
         fn delete(&self, key: &str) -> Result<()> {
-            ls()?
-                .remove_item(&format!("2secret.{key}"))
-                .map_err(|_| Error::Storage("delete failed".into()))
+            ls()?.remove_item(&format!("2secret.{key}")).map_err(|_| Error::Storage("delete failed".into()))
         }
     }
 
@@ -330,11 +315,8 @@ mod imp {
         opts.set_type(mime);
         let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts).map_err(fail)?;
         let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(fail)?;
-        let a: web_sys::HtmlAnchorElement = document
-            .create_element("a")
-            .map_err(fail)?
-            .dyn_into()
-            .map_err(|_| "download failed".to_string())?;
+        let a: web_sys::HtmlAnchorElement =
+            document.create_element("a").map_err(fail)?.dyn_into().map_err(|_| "download failed".to_string())?;
         a.set_href(&url);
         a.set_download(name);
         let body = document.body().ok_or("no body")?;
@@ -354,9 +336,7 @@ mod imp {
     }
 
     pub fn device_name() -> String {
-        let ua = web_sys::window()
-            .and_then(|w| w.navigator().user_agent().ok())
-            .unwrap_or_default();
+        let ua = web_sys::window().and_then(|w| w.navigator().user_agent().ok()).unwrap_or_default();
         let browser = if ua.contains("Firefox") {
             "Firefox"
         } else if ua.contains("Edg/") {

@@ -509,6 +509,11 @@ static TABLE: &[Entry] = &[
     // About
     ("about.text", "2Secret is free and open-source. Your data is encrypted on your device with XChaCha20-Poly1305; keys are derived from your master password (Argon2id) combined with your Secret Key. The sync server only ever sees encrypted data.", "2Secret is gratis en open source. Je gegevens worden op je apparaat versleuteld met XChaCha20-Poly1305; sleutels worden afgeleid van je hoofdwachtwoord (Argon2id) gecombineerd met je geheime sleutel. De synchronisatieserver ziet alleen versleutelde gegevens."),
 
+    // Browser extension
+    ("ext.fill", "Fill", "Invullen"),
+    ("ext.suggestions", "Suggestions for", "Suggesties voor"),
+    ("ext.nothing_to_fill", "No login form found on this page.", "Geen inlogformulier gevonden op deze pagina."),
+
     // Toasts
     ("toast.copied", "copied", "gekopieerd"),
     ("toast.saved", "Saved", "Opgeslagen"),

@@ -35,15 +35,10 @@ pub struct Ctx {
 impl Ctx {
     pub fn new(home: Option<PathBuf>, json: bool, offline: bool) -> Result<Self> {
         let home = home.unwrap_or_else(default_data_dir);
-        let storage = FileStorage::new(&home).with_context(|| format!("cannot use data directory {}", home.display()))?;
+        let storage =
+            FileStorage::new(&home).with_context(|| format!("cannot use data directory {}", home.display()))?;
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-        Ok(Self {
-            home,
-            storage,
-            json,
-            offline,
-            rt,
-        })
+        Ok(Self { home, storage, json, offline, rt })
     }
 
     pub fn block_on<F: std::future::Future>(&self, f: F) -> F::Output {
@@ -55,10 +50,9 @@ impl Ctx {
     }
 
     pub fn load_profile(&self) -> Result<Profile> {
-        let json = self
-            .storage
-            .read(PROFILE_KEY)?
-            .ok_or_else(|| anyhow!("no 2Secret account on this device yet – run `2secret account create` or `2secret account signin`"))?;
+        let json = self.storage.read(PROFILE_KEY)?.ok_or_else(|| {
+            anyhow!("no 2Secret account on this device yet – run `2secret account create` or `2secret account signin`")
+        })?;
         Ok(Profile::from_json(&json)?)
     }
 
@@ -81,8 +75,7 @@ impl Ctx {
 
     pub fn save_new(&self, session: &Session, secret_key: &SecretKey) -> Result<()> {
         let acc = session.account();
-        self.storage
-            .write(DEVICE_KEY, &DeviceSecrets::new(&acc.id, &acc.email, secret_key).to_json())?;
+        self.storage.write(DEVICE_KEY, &DeviceSecrets::new(&acc.id, &acc.email, secret_key).to_json())?;
         self.save(session)
     }
 

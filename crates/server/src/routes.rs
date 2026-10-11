@@ -33,10 +33,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/vaults", get(list_vaults).post(create_vault))
         .route("/vaults/{id}", put(update_vault).delete(delete_vault))
         .route("/vaults/{id}/members", get(list_members).post(add_member))
-        .route(
-            "/vaults/{id}/members/{account_id}",
-            put(update_member).delete(remove_member),
-        )
+        .route("/vaults/{id}/members/{account_id}", put(update_member).delete(remove_member))
         .route("/sync", post(sync))
 }
 
@@ -45,9 +42,7 @@ pub fn api_router() -> Router<AppState> {
 // ---------------------------------------------------------------------------
 
 fn valid_id(id: &str) -> ApiResult<()> {
-    let ok = !id.is_empty()
-        && id.len() <= 64
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     if ok {
         Ok(())
     } else {
@@ -114,26 +109,19 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     })
 }
 
-async fn prelogin(State(state): State<AppState>, Json(req): Json<PreloginRequest>) -> ApiResult<Json<PreloginResponse>> {
+async fn prelogin(
+    State(state): State<AppState>,
+    Json(req): Json<PreloginRequest>,
+) -> ApiResult<Json<PreloginResponse>> {
     let email = valid_email(&req.email)?;
     let lookup = email.clone();
     let account = state.db.run(move |c| Ok(db::account_by_email(c, &lookup)?)).await?;
     Ok(Json(match account {
-        Some(a) => PreloginResponse {
-            salt: a.salt,
-            kdf: a.kdf,
-        },
+        Some(a) => PreloginResponse { salt: a.salt, kdf: a.kdf },
         None => {
             // Stable fake answer so unknown addresses look like real ones.
-            let fake = hkdf32(
-                state.server_secret.as_bytes(),
-                Some(email.as_bytes()),
-                b"2secret-server/fake-prelogin",
-            );
-            PreloginResponse {
-                salt: b64(&fake.as_bytes()[..16]),
-                kdf: KdfParams::default(),
-            }
+            let fake = hkdf32(state.server_secret.as_bytes(), Some(email.as_bytes()), b"2secret-server/fake-prelogin");
+            PreloginResponse { salt: b64(&fake.as_bytes()[..16]), kdf: KdfParams::default() }
         }
     }))
 }
@@ -248,10 +236,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
             Ok(())
         })
         .await?;
-    Ok(Json(SessionResponse {
-        token,
-        account: account_info(&account),
-    }))
+    Ok(Json(SessionResponse { token, account: account_info(&account) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -270,10 +255,8 @@ async fn logout(State(state): State<AppState>, auth: Auth) -> ApiResult<StatusCo
 }
 
 async fn get_account(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<AccountInfo>> {
-    let account = state
-        .db
-        .run(move |c| db::account_by_id(c, &auth.account_id)?.ok_or_else(ApiError::unauthorized))
-        .await?;
+    let account =
+        state.db.run(move |c| db::account_by_id(c, &auth.account_id)?.ok_or_else(ApiError::unauthorized)).await?;
     Ok(Json(account_info(&account)))
 }
 
@@ -299,10 +282,7 @@ async fn update_account(
 async fn verify_current(state: &AppState, account_id: &str, auth_key_b64: &str) -> ApiResult<AccountRow> {
     let key = decode_auth_key(auth_key_b64)?;
     let id = account_id.to_string();
-    let account = state
-        .db
-        .run(move |c| db::account_by_id(c, &id)?.ok_or_else(ApiError::unauthorized))
-        .await?;
+    let account = state.db.run(move |c| db::account_by_id(c, &id)?.ok_or_else(ApiError::unauthorized)).await?;
     let limiter_key = format!("verify:{}", account.id);
     if !state.login_limiter.allowed(&limiter_key, now()) {
         return Err(ApiError::too_many_requests());
@@ -332,11 +312,8 @@ async fn change_password(
         .db
         .run(move |c| {
             let tx = c.transaction()?;
-            let current_pk: String = tx.query_row(
-                "SELECT public_key FROM accounts WHERE id = ?1",
-                [&auth.account_id],
-                |r| r.get(0),
-            )?;
+            let current_pk: String =
+                tx.query_row("SELECT public_key FROM accounts WHERE id = ?1", [&auth.account_id], |r| r.get(0))?;
             let new_ks: twosecret_core::crypto::EncryptedKeyset = serde_json::from_str(&keyset)?;
             if new_ks.public_key != current_pk {
                 return Err(ApiError::bad_request("the keyset's public key cannot change"));
@@ -380,10 +357,7 @@ async fn delete_account(
 
 async fn list_devices(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<Vec<DeviceInfo>>> {
     let current = auth.session_id.clone();
-    let sessions = state
-        .db
-        .run(move |c| Ok(db::sessions_for_account(c, &auth.account_id)?))
-        .await?;
+    let sessions = state.db.run(move |c| Ok(db::sessions_for_account(c, &auth.account_id)?)).await?;
     Ok(Json(
         sessions
             .into_iter()
@@ -402,10 +376,7 @@ async fn revoke_device(State(state): State<AppState>, auth: Auth, Path(id): Path
     let n = state
         .db
         .run(move |c| {
-            Ok(c.execute(
-                "DELETE FROM sessions WHERE id = ?1 AND account_id = ?2",
-                params![id, auth.account_id],
-            )?)
+            Ok(c.execute("DELETE FROM sessions WHERE id = ?1 AND account_id = ?2", params![id, auth.account_id])?)
         })
         .await?;
     if n == 0 {
@@ -427,7 +398,10 @@ async fn lookup_user(
     let email = valid_email(&q.email)?;
     let account = state
         .db
-        .run(move |c| db::account_by_email(c, &email)?.ok_or_else(|| ApiError::not_found("no 2Secret account with this e-mail address on this server")))
+        .run(move |c| {
+            db::account_by_email(c, &email)?
+                .ok_or_else(|| ApiError::not_found("no 2Secret account with this e-mail address on this server"))
+        })
         .await?;
     Ok(Json(PublicKeyResponse {
         account_id: account.id,
@@ -442,12 +416,7 @@ async fn lookup_user(
 // ---------------------------------------------------------------------------
 
 async fn list_vaults(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<Vec<VaultDto>>> {
-    Ok(Json(
-        state
-            .db
-            .run(move |c| Ok(db::vaults_for_account(c, &auth.account_id)?))
-            .await?,
-    ))
+    Ok(Json(state.db.run(move |c| Ok(db::vaults_for_account(c, &auth.account_id)?)).await?))
 }
 
 async fn create_vault(
@@ -648,10 +617,7 @@ async fn remove_member(
             if target.role == Role::Owner {
                 return Err(ApiError::bad_request("the owner cannot be removed; delete the vault instead"));
             }
-            c.execute(
-                "DELETE FROM vault_members WHERE vault_id = ?1 AND account_id = ?2",
-                params![id, account_id],
-            )?;
+            c.execute("DELETE FROM vault_members WHERE vault_id = ?1 AND account_id = ?2", params![id, account_id])?;
             Ok(())
         })
         .await?;
@@ -662,7 +628,11 @@ async fn remove_member(
 // Sync
 // ---------------------------------------------------------------------------
 
-async fn sync(State(state): State<AppState>, auth: Auth, Json(req): Json<SyncRequest>) -> ApiResult<Json<SyncResponse>> {
+async fn sync(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<SyncRequest>,
+) -> ApiResult<Json<SyncResponse>> {
     let max_item = state.config.max_item_bytes;
     let response = state
         .db
@@ -700,10 +670,7 @@ async fn sync(State(state): State<AppState>, auth: Auth, Json(req): Json<SyncReq
                         }
                         if current.is_none() && change.data.is_none() {
                             // Deleting something the server never had.
-                            accepted.push(Accepted {
-                                id: change.id.clone(),
-                                revision,
-                            });
+                            accepted.push(Accepted { id: change.id.clone(), revision });
                             continue;
                         }
                         revision += 1;
@@ -719,10 +686,7 @@ async fn sync(State(state): State<AppState>, auth: Auth, Json(req): Json<SyncReq
                                 now()
                             ],
                         )?;
-                        accepted.push(Accepted {
-                            id: change.id.clone(),
-                            revision,
-                        });
+                        accepted.push(Accepted { id: change.id.clone(), revision });
                     }
                     if revision != vault.revision {
                         tx.execute(

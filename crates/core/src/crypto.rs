@@ -50,9 +50,7 @@ impl SymmetricKey {
     }
 
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
-        let arr: [u8; KEY_LEN] = bytes
-            .try_into()
-            .map_err(|_| Error::invalid("key has the wrong length"))?;
+        let arr: [u8; KEY_LEN] = bytes.try_into().map_err(|_| Error::invalid("key has the wrong length"))?;
         Ok(Self(arr))
     }
 
@@ -86,8 +84,7 @@ impl fmt::Debug for SymmetricKey {
 pub fn hkdf32(ikm: &[u8], salt: Option<&[u8]>, info: &[u8]) -> SymmetricKey {
     let hk = Hkdf::<Sha256>::new(salt, ikm);
     let mut okm = [0u8; KEY_LEN];
-    hk.expand(info, &mut okm)
-        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    hk.expand(info, &mut okm).expect("32 bytes is a valid HKDF-SHA256 output length");
     let key = SymmetricKey(okm);
     okm.zeroize();
     key
@@ -158,10 +155,7 @@ pub fn encrypt(key: &SymmetricKey, plaintext: &[u8], aad: &[u8]) -> EncString {
 
 /// Decrypt and authenticate a blob produced by [`encrypt`].
 pub fn decrypt(key: &SymmetricKey, enc: &EncString, aad: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
-    let body = enc
-        .0
-        .strip_prefix(ENC_PREFIX)
-        .ok_or_else(|| Error::Unsupported("unknown ciphertext version".into()))?;
+    let body = enc.0.strip_prefix(ENC_PREFIX).ok_or_else(|| Error::Unsupported("unknown ciphertext version".into()))?;
     let raw = unb64url(body).map_err(|_| Error::Decryption)?;
     if raw.len() < NONCE_LEN + 16 {
         return Err(Error::Decryption);
@@ -203,24 +197,14 @@ impl Default for KdfParams {
     /// 64 MiB, 3 passes, 4 lanes – comfortably above the OWASP recommendation
     /// while still unlocking in well under a second on phones and in browsers.
     fn default() -> Self {
-        Self {
-            algorithm: "argon2id".into(),
-            memory_kib: 64 * 1024,
-            iterations: 3,
-            parallelism: 4,
-        }
+        Self { algorithm: "argon2id".into(), memory_kib: 64 * 1024, iterations: 3, parallelism: 4 }
     }
 }
 
 impl KdfParams {
     /// Deliberately weak parameters for unit tests only.
     pub fn insecure_for_tests() -> Self {
-        Self {
-            algorithm: "argon2id".into(),
-            memory_kib: 64,
-            iterations: 1,
-            parallelism: 1,
-        }
+        Self { algorithm: "argon2id".into(), memory_kib: 64, iterations: 1, parallelism: 1 }
     }
 
     /// Reject parameters that are unsupported or absurd (protects clients
@@ -244,18 +228,11 @@ impl KdfParams {
     /// Run Argon2id with these parameters.
     pub fn hash(&self, password: &[u8], salt: &[u8]) -> Result<SymmetricKey> {
         self.validate()?;
-        let params = argon2::Params::new(
-            self.memory_kib,
-            self.iterations,
-            self.parallelism,
-            Some(KEY_LEN),
-        )
-        .map_err(|e| Error::Kdf(e.to_string()))?;
+        let params = argon2::Params::new(self.memory_kib, self.iterations, self.parallelism, Some(KEY_LEN))
+            .map_err(|e| Error::Kdf(e.to_string()))?;
         let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
         let mut out = [0u8; KEY_LEN];
-        argon
-            .hash_password_into(password, salt, &mut out)
-            .map_err(|e| Error::Kdf(e.to_string()))?;
+        argon.hash_password_into(password, salt, &mut out).map_err(|e| Error::Kdf(e.to_string()))?;
         let key = SymmetricKey(out);
         out.zeroize();
         Ok(key)
@@ -285,10 +262,7 @@ impl SecretKey {
     pub fn generate() -> Self {
         // Rejection-free: 256 is a multiple of 32.
         let bytes: [u8; SK_RANDOM_CHARS] = random_bytes();
-        let mut chars: String = bytes
-            .iter()
-            .map(|b| SK_ALPHABET[(*b as usize) % 32] as char)
-            .collect();
+        let mut chars: String = bytes.iter().map(|b| SK_ALPHABET[(*b as usize) % 32] as char).collect();
         chars.push(Self::check_char(&chars));
         Self { chars }
     }
@@ -301,11 +275,8 @@ impl SecretKey {
     /// Parse a Secret Key as typed by a user. Case, spaces and dashes are
     /// ignored; the check character catches most typos.
     pub fn parse(input: &str) -> Result<Self> {
-        let mut cleaned: String = input
-            .chars()
-            .filter(|c| !c.is_whitespace() && *c != '-')
-            .flat_map(|c| c.to_uppercase())
-            .collect();
+        let mut cleaned: String =
+            input.chars().filter(|c| !c.is_whitespace() && *c != '-').flat_map(|c| c.to_uppercase()).collect();
         if cleaned.len() == SK_RANDOM_CHARS + 1 + SK_PREFIX.len() && cleaned.starts_with(SK_PREFIX) {
             cleaned.drain(..SK_PREFIX.len());
         }
@@ -329,14 +300,7 @@ impl SecretKey {
     /// `2S-ABCDEF-GHJKL-MNPQR-STUVW-XYZ23`
     pub fn formatted(&self) -> String {
         let c = &self.chars;
-        format!(
-            "{SK_PREFIX}-{}-{}-{}-{}-{}",
-            &c[0..6],
-            &c[6..11],
-            &c[11..16],
-            &c[16..21],
-            &c[21..26]
-        )
+        format!("{SK_PREFIX}-{}-{}-{}-{}-{}", &c[0..6], &c[6..11], &c[11..16], &c[16..21], &c[21..26])
     }
 
     /// Only the first group is shown, e.g. `2S-ABCDEF-•••••-…`.
@@ -433,10 +397,8 @@ impl PublicKey {
 
     pub fn from_b64(s: &str) -> Result<Self> {
         let bytes = unb64(s)?;
-        let arr: [u8; 32] = bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::invalid("public key has the wrong length"))?;
+        let arr: [u8; 32] =
+            bytes.as_slice().try_into().map_err(|_| Error::invalid("public key has the wrong length"))?;
         Ok(Self(arr))
     }
 
@@ -447,11 +409,7 @@ impl PublicKey {
     /// Short human-verifiable fingerprint, e.g. `3F9A-77C1-0B2E-91D4`.
     pub fn fingerprint(&self) -> String {
         let digest = sha256(&self.0);
-        digest[..8]
-            .chunks(2)
-            .map(|c| format!("{:02X}{:02X}", c[0], c[1]))
-            .collect::<Vec<_>>()
-            .join("-")
+        digest[..8].chunks(2).map(|c| format!("{:02X}{:02X}", c[0], c[1])).collect::<Vec<_>>().join("-")
     }
 }
 
@@ -510,18 +468,13 @@ pub fn seal(recipient: &PublicKey, plaintext: &[u8], aad: &[u8]) -> SealedBox {
     let epk = eph.public_key();
     let shared = eph.0.diffie_hellman(&x25519_dalek::PublicKey::from(recipient.0));
     let key = sealed_box_key(shared.as_bytes(), &epk, recipient);
-    SealedBox {
-        epk: epk.to_b64(),
-        ct: encrypt(&key, plaintext, aad),
-    }
+    SealedBox { epk: epk.to_b64(), ct: encrypt(&key, plaintext, aad) }
 }
 
 /// Open a [`SealedBox`] with the recipient's private key.
 pub fn open(private_key: &PrivateKey, sealed: &SealedBox, aad: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     let epk = PublicKey::from_b64(&sealed.epk).map_err(|_| Error::Decryption)?;
-    let shared = private_key
-        .0
-        .diffie_hellman(&x25519_dalek::PublicKey::from(epk.0));
+    let shared = private_key.0.diffie_hellman(&x25519_dalek::PublicKey::from(epk.0));
     if !shared.was_contributory() {
         return Err(Error::Decryption);
     }
@@ -563,10 +516,7 @@ impl fmt::Debug for Keyset {
 
 impl Keyset {
     pub fn generate() -> Self {
-        Self {
-            account_key: SymmetricKey::generate(),
-            private_key: PrivateKey::generate(),
-        }
+        Self { account_key: SymmetricKey::generate(), private_key: PrivateKey::generate() }
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -587,18 +537,12 @@ impl Keyset {
     /// short-lived CLI sessions that cache the account key).
     pub fn from_account_key(enc: &EncryptedKeyset, account_key: SymmetricKey) -> Result<Self> {
         let pk = decrypt(&account_key, &enc.private_key, AAD_PRIVATE_KEY).map_err(|_| Error::WrongPassword)?;
-        let arr: [u8; 32] = pk
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::invalid("private key has the wrong length"))?;
+        let arr: [u8; 32] = pk.as_slice().try_into().map_err(|_| Error::invalid("private key has the wrong length"))?;
         let private_key = PrivateKey::from_bytes(arr);
         if private_key.public_key().to_b64() != enc.public_key {
             return Err(Error::invalid("keyset public key does not match its private key"));
         }
-        Ok(Self {
-            account_key,
-            private_key,
-        })
+        Ok(Self { account_key, private_key })
     }
 
     /// Decrypt a keyset. A wrong password or Secret Key yields
@@ -610,18 +554,12 @@ impl Keyset {
         let ak = decrypt(master_key, &enc.account_key, AAD_ACCOUNT_KEY).map_err(|_| Error::WrongPassword)?;
         let account_key = SymmetricKey::from_slice(&ak)?;
         let pk = decrypt(&account_key, &enc.private_key, AAD_PRIVATE_KEY)?;
-        let arr: [u8; 32] = pk
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::invalid("private key has the wrong length"))?;
+        let arr: [u8; 32] = pk.as_slice().try_into().map_err(|_| Error::invalid("private key has the wrong length"))?;
         let private_key = PrivateKey::from_bytes(arr);
         if private_key.public_key().to_b64() != enc.public_key {
             return Err(Error::invalid("keyset public key does not match its private key"));
         }
-        Ok(Self {
-            account_key,
-            private_key,
-        })
+        Ok(Self { account_key, private_key })
     }
 }
 
@@ -641,30 +579,20 @@ pub enum WrappedKey {
 
 impl WrappedKey {
     pub fn wrap_symmetric(wrapping_key: &SymmetricKey, key: &SymmetricKey, aad: &[u8]) -> Self {
-        WrappedKey::Symmetric {
-            ct: encrypt(wrapping_key, key.as_bytes(), aad),
-        }
+        WrappedKey::Symmetric { ct: encrypt(wrapping_key, key.as_bytes(), aad) }
     }
 
     pub fn wrap_sealed(recipient: &PublicKey, key: &SymmetricKey, aad: &[u8]) -> Self {
         let sealed = seal(recipient, key.as_bytes(), aad);
-        WrappedKey::Sealed {
-            epk: sealed.epk,
-            ct: sealed.ct,
-        }
+        WrappedKey::Sealed { epk: sealed.epk, ct: sealed.ct }
     }
 
     pub fn unwrap(&self, keyset: &Keyset, aad: &[u8]) -> Result<SymmetricKey> {
         let raw = match self {
             WrappedKey::Symmetric { ct } => decrypt(&keyset.account_key, ct, aad)?,
-            WrappedKey::Sealed { epk, ct } => open(
-                &keyset.private_key,
-                &SealedBox {
-                    epk: epk.clone(),
-                    ct: ct.clone(),
-                },
-                aad,
-            )?,
+            WrappedKey::Sealed { epk, ct } => {
+                open(&keyset.private_key, &SealedBox { epk: epk.clone(), ct: ct.clone() }, aad)?
+            }
         };
         SymmetricKey::from_slice(&raw)
     }
@@ -800,10 +728,7 @@ mod tests {
         let back = Keyset::decrypt(&enc, &mk).unwrap();
         assert_eq!(back.account_key, ks.account_key);
         assert_eq!(back.public_key(), ks.public_key());
-        assert!(matches!(
-            Keyset::decrypt(&enc, &SymmetricKey::generate()),
-            Err(Error::WrongPassword)
-        ));
+        assert!(matches!(Keyset::decrypt(&enc, &SymmetricKey::generate()), Err(Error::WrongPassword)));
     }
 
     #[test]
@@ -835,15 +760,9 @@ mod tests {
     #[test]
     fn kdf_validation() {
         assert!(KdfParams::default().validate().is_ok());
-        let bad = KdfParams {
-            memory_kib: u32::MAX,
-            ..Default::default()
-        };
+        let bad = KdfParams { memory_kib: u32::MAX, ..Default::default() };
         assert!(bad.validate().is_err());
-        let bad = KdfParams {
-            algorithm: "pbkdf2".into(),
-            ..Default::default()
-        };
+        let bad = KdfParams { algorithm: "pbkdf2".into(), ..Default::default() };
         assert!(bad.validate().is_err());
     }
 

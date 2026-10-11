@@ -1,6 +1,7 @@
 //! 2Secret – one Rust UI for macOS, Windows, Linux, the BSDs, iOS and the web.
 
 mod components;
+mod extension;
 mod i18n;
 mod icons;
 mod platform;
@@ -57,7 +58,7 @@ fn App() -> Element {
             style { dangerous_inner_html: STYLE }
         }
         div {
-            class: "root",
+            class: if extension::ENABLED { "root ext" } else { "root" },
             "data-theme": theme,
             onclick: move |_| touch(),
             onkeydown: move |_| touch(),

@@ -5,3 +5,6 @@
 *.tmp
 /crates/app/dist
 /crates/app/target
+
+/extension/dist
+/extension/*.zip

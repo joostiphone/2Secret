@@ -63,18 +63,15 @@ impl ImportFormat {
 
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim().to_lowercase();
-        ImportFormat::ALL
-            .into_iter()
-            .find(|f| f.id() == s)
-            .or(match s.as_str() {
-                "1password" | "onepassword" => Some(ImportFormat::OnePasswordPux),
-                "keepass2" | "kdbx-xml" | "xml" => Some(ImportFormat::KeePassXml),
-                "json" => Some(ImportFormat::TwoSecret),
-                "lastpass" | "chrome" | "firefox" | "safari" | "dashlane" | "keepassxc" | "edge" | "brave" => {
-                    Some(ImportFormat::Csv)
-                }
-                _ => None,
-            })
+        ImportFormat::ALL.into_iter().find(|f| f.id() == s).or(match s.as_str() {
+            "1password" | "onepassword" => Some(ImportFormat::OnePasswordPux),
+            "keepass2" | "kdbx-xml" | "xml" => Some(ImportFormat::KeePassXml),
+            "json" => Some(ImportFormat::TwoSecret),
+            "lastpass" | "chrome" | "firefox" | "safari" | "dashlane" | "keepassxc" | "edge" | "brave" => {
+                Some(ImportFormat::Csv)
+            }
+            _ => None,
+        })
     }
 }
 
@@ -173,14 +170,7 @@ fn import_2secret(data: &[u8], password: Option<&str>) -> Result<ImportResult> {
     }
     Ok(ImportResult {
         source: "2Secret".into(),
-        vaults: export
-            .vaults
-            .into_iter()
-            .map(|v| ImportedVault {
-                name: v.name,
-                items: v.items,
-            })
-            .collect(),
+        vaults: export.vaults.into_iter().map(|v| ImportedVault { name: v.name, items: v.items }).collect(),
         warnings: vec![],
     })
 }
@@ -190,32 +180,18 @@ fn import_2secret(data: &[u8], password: Option<&str>) -> Result<ImportResult> {
 // ---------------------------------------------------------------------------
 
 fn norm_header(h: &str) -> String {
-    h.trim()
-        .trim_start_matches('\u{feff}')
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect()
+    h.trim().trim_start_matches('\u{feff}').to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
 fn find_col(headers: &[String], names: &[&str]) -> Option<usize> {
-    names
-        .iter()
-        .find_map(|n| headers.iter().position(|h| h == n))
+    names.iter().find_map(|n| headers.iter().position(|h| h == n))
 }
 
 fn import_csv(data: &[u8]) -> Result<ImportResult> {
     let s = text(data)?;
-    let mut reader = csv::ReaderBuilder::new()
-        .flexible(true)
-        .has_headers(true)
-        .from_reader(s.as_bytes());
-    let headers: Vec<String> = reader
-        .headers()
-        .map_err(|e| Error::Import(e.to_string()))?
-        .iter()
-        .map(norm_header)
-        .collect();
+    let mut reader = csv::ReaderBuilder::new().flexible(true).has_headers(true).from_reader(s.as_bytes());
+    let headers: Vec<String> =
+        reader.headers().map_err(|e| Error::Import(e.to_string()))?.iter().map(norm_header).collect();
 
     let col = |names: &[&str]| find_col(&headers, names);
     let c_title = col(&["title", "name", "itemname", "account", "entry", "accountname"]);
@@ -235,9 +211,7 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
     let c_pw_changed = col(&["timepasswordchanged", "passwordmodified", "lastmodified", "modified"]);
 
     if c_pass.is_none() && c_notes.is_none() && c_url.is_none() {
-        return Err(Error::Import(
-            "unrecognised CSV: no password, url or notes column found".into(),
-        ));
+        return Err(Error::Import("unrecognised CSV: no password, url or notes column found".into()));
     }
 
     let source = if headers.contains(&"loginuri".to_string()) {
@@ -252,10 +226,7 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
         "CSV"
     };
 
-    let mut vaults: Vec<ImportedVault> = vec![ImportedVault {
-        name: "Imported".into(),
-        items: vec![],
-    }];
+    let mut vaults: Vec<ImportedVault> = vec![ImportedVault { name: "Imported".into(), items: vec![] }];
     let mut warnings = Vec::new();
     for (line, record) in reader.records().enumerate() {
         let record = match record {
@@ -266,19 +237,10 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
             }
         };
         let get = |c: Option<usize>| -> String {
-            c.and_then(|i| record.get(i))
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default()
+            c.and_then(|i| record.get(i)).map(|s| s.trim().to_string()).unwrap_or_default()
         };
-        let (title, url, user, email, pass, notes, totp) = (
-            get(c_title),
-            get(c_url),
-            get(c_user),
-            get(c_email),
-            get(c_pass),
-            get(c_notes),
-            get(c_totp),
-        );
+        let (title, url, user, email, pass, notes, totp) =
+            (get(c_title), get(c_url), get(c_user), get(c_email), get(c_pass), get(c_notes), get(c_totp));
         if [&title, &url, &user, &pass, &notes, &totp].iter().all(|s| s.is_empty()) {
             continue;
         }
@@ -296,11 +258,7 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
         } else {
             Category::Login
         };
-        let title = if !title.is_empty() {
-            title
-        } else {
-            url_host(&url).unwrap_or_else(|| "Untitled".into())
-        };
+        let title = if !title.is_empty() { title } else { url_host(&url).unwrap_or_else(|| "Untitled".into()) };
         let mut item = Item::new(category, &title);
         if category == Category::Login {
             item.set_value("username", if user.is_empty() { &email } else { &user });
@@ -325,11 +283,8 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
         item.notes = notes;
         let fav = get(c_fav).to_lowercase();
         item.favorite = matches!(fav.as_str(), "1" | "true" | "yes" | "y");
-        let mut tags: Vec<String> = get(c_tags)
-            .split([',', ';'])
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .collect();
+        let mut tags: Vec<String> =
+            get(c_tags).split([',', ';']).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         let folder = get(c_folder);
         if !folder.is_empty() {
             tags.push(folder.replace('\\', "/"));
@@ -354,11 +309,7 @@ fn import_csv(data: &[u8]) -> Result<ImportResult> {
         }
         vaults[0].items.push(item);
     }
-    Ok(ImportResult {
-        source: source.into(),
-        vaults,
-        warnings,
-    })
+    Ok(ImportResult { source: source.into(), vaults, warnings })
 }
 
 // ---------------------------------------------------------------------------
@@ -498,10 +449,7 @@ fn import_bitwarden(data: &[u8]) -> Result<ImportResult> {
     }
     Ok(ImportResult {
         source: "Bitwarden".into(),
-        vaults: vec![ImportedVault {
-            name: "Bitwarden".into(),
-            items,
-        }],
+        vaults: vec![ImportedVault { name: "Bitwarden".into(), items }],
         warnings,
     })
 }
@@ -626,10 +574,7 @@ fn onepux_value(value: &Value) -> Option<(FieldKind, String)> {
         "totp" => (FieldKind::Totp, str_of(v)),
         "url" => (FieldKind::Url, str_of(v)),
         "phone" => (FieldKind::Phone, str_of(v)),
-        "email" => (
-            FieldKind::Email,
-            v.get("email_address").map(str_of).unwrap_or_else(|| str_of(v)),
-        ),
+        "email" => (FieldKind::Email, v.get("email_address").map(str_of).unwrap_or_else(|| str_of(v))),
         "date" => {
             let ts = v.as_i64()?;
             (FieldKind::Date, crate::util::format_date(ts))
@@ -685,11 +630,7 @@ fn import_1pux(data: &[u8]) -> Result<ImportResult> {
             vaults.push(out);
         }
     }
-    Ok(ImportResult {
-        source: "1Password".into(),
-        vaults,
-        warnings,
-    })
+    Ok(ImportResult { source: "1Password".into(), vaults, warnings })
 }
 
 fn convert_1pux_item(op: &Value) -> Option<Item> {
@@ -851,7 +792,13 @@ fn import_keepass_xml(data: &[u8]) -> Result<ImportResult> {
                         if let Some(fields) = entry.take() {
                             if recycle_bin_depth.is_none() {
                                 // Skip the root group name in the tag path.
-                                let tag = groups.iter().skip(1).filter(|g| !g.is_empty()).cloned().collect::<Vec<_>>().join("/");
+                                let tag = groups
+                                    .iter()
+                                    .skip(1)
+                                    .filter(|g| !g.is_empty())
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                                    .join("/");
                                 items.push(keepass_entry_to_item(fields, &tag));
                             }
                         }
@@ -874,22 +821,13 @@ fn import_keepass_xml(data: &[u8]) -> Result<ImportResult> {
     }
     Ok(ImportResult {
         source: "KeePass".into(),
-        vaults: vec![ImportedVault {
-            name: "KeePass".into(),
-            items,
-        }],
+        vaults: vec![ImportedVault { name: "KeePass".into(), items }],
         warnings: vec![],
     })
 }
 
 fn keepass_entry_to_item(fields: Vec<(String, String)>, tag: &str) -> Item {
-    let get = |k: &str| {
-        fields
-            .iter()
-            .find(|(key, _)| key == k)
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default()
-    };
+    let get = |k: &str| fields.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone()).unwrap_or_default();
     let title = get("Title");
     let (user, pass, url, notes) = (get("UserName"), get("Password"), get("URL"), get("Notes"));
     let category = if user.is_empty() && pass.is_empty() && url.is_empty() && !notes.is_empty() {
@@ -964,11 +902,8 @@ impl Session {
                     }
                 },
             };
-            let mut existing: std::collections::HashSet<String> = self
-                .all_items()
-                .filter(|(v, _)| *v == vault_id)
-                .map(|(_, i)| fingerprint(i))
-                .collect();
+            let mut existing: std::collections::HashSet<String> =
+                self.all_items().filter(|(v, _)| *v == vault_id).map(|(_, i)| fingerprint(i)).collect();
             for mut item in source.items {
                 let fp = fingerprint(&item);
                 if existing.contains(&fp) {
@@ -997,10 +932,8 @@ impl Session {
     }
 
     fn restore_timestamps(&mut self, item: Item) -> Result<()> {
-        let vault = self
-            .item_vault(&item.id)
-            .map(|s| s.to_string())
-            .ok_or_else(|| Error::not_found(item.id.clone()))?;
+        let vault =
+            self.item_vault(&item.id).map(|s| s.to_string()).ok_or_else(|| Error::not_found(item.id.clone()))?;
         let data = self.encrypt_item(&vault, &item)?;
         if let Some(rec) = self.profile_mut().item_mut(&item.id) {
             rec.data = Some(data);

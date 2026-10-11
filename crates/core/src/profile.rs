@@ -225,11 +225,7 @@ pub struct DeviceSecrets {
 
 impl DeviceSecrets {
     pub fn new(account_id: &str, email: &str, secret_key: &SecretKey) -> Self {
-        Self {
-            account_id: account_id.to_string(),
-            email: email.to_string(),
-            secret_key: secret_key.formatted(),
-        }
+        Self { account_id: account_id.to_string(), email: email.to_string(), secret_key: secret_key.formatted() }
     }
 
     pub fn secret_key(&self) -> Result<SecretKey> {

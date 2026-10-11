@@ -124,9 +124,7 @@ impl Session {
             return Err(Error::invalid("an e-mail address is required"));
         }
         if password.chars().count() < MIN_PASSWORD_LEN {
-            return Err(Error::invalid(format!(
-                "the master password must be at least {MIN_PASSWORD_LEN} characters"
-            )));
+            return Err(Error::invalid(format!("the master password must be at least {MIN_PASSWORD_LEN} characters")));
         }
         kdf.validate()?;
         let secret_key = SecretKey::generate();
@@ -151,11 +149,7 @@ impl Session {
             items: Vec::new(),
         };
         let mut session = Session::from_parts(profile, keyset)?;
-        let name = if default_vault_name.trim().is_empty() {
-            "Personal"
-        } else {
-            default_vault_name
-        };
+        let name = if default_vault_name.trim().is_empty() { "Personal" } else { default_vault_name };
         session.create_vault(name, "")?;
         Ok((session, secret_key, keys))
     }
@@ -205,13 +199,8 @@ impl Session {
     }
 
     fn from_parts(profile: Profile, keyset: Keyset) -> Result<Session> {
-        let mut session = Session {
-            profile,
-            keyset,
-            vaults: BTreeMap::new(),
-            items: HashMap::new(),
-            undecryptable: Vec::new(),
-        };
+        let mut session =
+            Session { profile, keyset, vaults: BTreeMap::new(), items: HashMap::new(), undecryptable: Vec::new() };
         session.reload()?;
         Ok(session)
     }
@@ -252,10 +241,7 @@ impl Session {
     }
 
     pub(crate) fn decrypt_item(&self, vault_id: &str, item_id: &str, data: &EncString) -> Result<Item> {
-        let vault = self
-            .vaults
-            .get(vault_id)
-            .ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        let vault = self.vaults.get(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
         let item: Item = decrypt_json(&vault.key, data, &aad::item(vault_id, item_id))?;
         if item.id != item_id {
             return Err(Error::Decryption);
@@ -264,10 +250,7 @@ impl Session {
     }
 
     pub(crate) fn encrypt_item(&self, vault_id: &str, item: &Item) -> Result<EncString> {
-        let vault = self
-            .vaults
-            .get(vault_id)
-            .ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        let vault = self.vaults.get(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
         encrypt_json(&vault.key, item, &aad::item(vault_id, &item.id))
     }
 
@@ -327,11 +310,7 @@ impl Session {
             owner_id: rec.owner_id.clone(),
             is_owner: rec.owner_id == self.profile.account.id,
             member_count: rec.member_count,
-            item_count: self
-                .items
-                .values()
-                .filter(|(v, i)| v == &rec.id && !i.is_trashed())
-                .count(),
+            item_count: self.items.values().filter(|(v, i)| v == &rec.id && !i.is_trashed()).count(),
             sync_state: rec.sync_state,
             created_at: rec.created_at,
         })
@@ -357,10 +336,7 @@ impl Session {
     }
 
     pub fn vault(&self, id: &str) -> Option<VaultInfo> {
-        self.profile
-            .vault(id)
-            .filter(|v| v.sync_state != SyncState::PendingDelete)
-            .and_then(|v| self.vault_info(v))
+        self.profile.vault(id).filter(|v| v.sync_state != SyncState::PendingDelete).and_then(|v| self.vault_info(v))
     }
 
     /// Find a vault by id or (case-insensitive) name.
@@ -374,18 +350,13 @@ impl Session {
         match matches.len() {
             0 => Err(Error::not_found(format!("vault '{name_or_id}'"))),
             1 => Ok(matches[0].clone()),
-            _ => Err(Error::invalid(format!(
-                "more than one vault is called '{name_or_id}', use its id"
-            ))),
+            _ => Err(Error::invalid(format!("more than one vault is called '{name_or_id}', use its id"))),
         }
     }
 
     /// The vault new items go to by default: the oldest vault we own.
     pub fn default_vault_id(&self) -> Option<String> {
-        self.vaults()
-            .into_iter()
-            .find(|v| v.role.can_write())
-            .map(|v| v.id)
+        self.vaults().into_iter().find(|v| v.role.can_write()).map(|v| v.id)
     }
 
     pub fn vault_key(&self, vault_id: &str) -> Option<&SymmetricKey> {
@@ -399,11 +370,8 @@ impl Session {
         }
         let id = new_id();
         let key = SymmetricKey::generate();
-        let meta = VaultMeta {
-            name: name.to_string(),
-            description: description.trim().to_string(),
-            icon: String::new(),
-        };
+        let meta =
+            VaultMeta { name: name.to_string(), description: description.trim().to_string(), icon: String::new() };
         let record = VaultRecord {
             id: id.clone(),
             owner_id: self.profile.account.id.clone(),
@@ -421,10 +389,7 @@ impl Session {
     }
 
     pub fn update_vault(&mut self, id: &str, name: &str, description: &str, icon: Option<&str>) -> Result<()> {
-        let rec = self
-            .profile
-            .vault(id)
-            .ok_or_else(|| Error::not_found(format!("vault {id}")))?;
+        let rec = self.profile.vault(id).ok_or_else(|| Error::not_found(format!("vault {id}")))?;
         if !rec.role.can_manage() {
             return Err(Error::PermissionDenied("you cannot rename this vault".into()));
         }
@@ -448,10 +413,7 @@ impl Session {
     /// Delete a vault we own, or leave a vault shared with us. All of its
     /// items disappear from this device.
     pub fn delete_vault(&mut self, id: &str) -> Result<()> {
-        let rec = self
-            .profile
-            .vault(id)
-            .ok_or_else(|| Error::not_found(format!("vault {id}")))?;
+        let rec = self.profile.vault(id).ok_or_else(|| Error::not_found(format!("vault {id}")))?;
         let never_synced = rec.sync_state == SyncState::PendingCreate || self.profile.server.is_none();
         if never_synced {
             self.profile.vaults.retain(|v| v.id != id);
@@ -466,9 +428,7 @@ impl Session {
 
     /// Wrap a vault key for another account (vault sharing).
     pub fn wrap_vault_key_for(&self, vault_id: &str, recipient: &PublicKey) -> Result<WrappedKey> {
-        let key = self
-            .vault_key(vault_id)
-            .ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        let key = self.vault_key(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
         Ok(WrappedKey::wrap_sealed(recipient, key, &aad::vault_key(vault_id)))
     }
 
@@ -501,21 +461,12 @@ impl Session {
             .filter(|(_, i)| i.is_trashed() == filter.trashed)
             .filter(|(_, i)| filter.category.is_none_or(|c| c == i.category))
             .filter(|(_, i)| !filter.favorites_only || i.favorite)
-            .filter(|(_, i)| {
-                filter
-                    .tag
-                    .as_deref()
-                    .is_none_or(|t| i.tags.iter().any(|x| x.eq_ignore_ascii_case(t)))
-            })
+            .filter(|(_, i)| filter.tag.as_deref().is_none_or(|t| i.tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
             .filter(|(_, i)| i.matches(&filter.query))
             .map(|(v, i)| i.summary(v))
             .collect();
         out.sort_by(|a, b| {
-            a.title
-                .to_lowercase()
-                .cmp(&b.title.to_lowercase())
-                .then(a.subtitle.cmp(&b.subtitle))
-                .then(a.id.cmp(&b.id))
+            a.title.to_lowercase().cmp(&b.title.to_lowercase()).then(a.subtitle.cmp(&b.subtitle)).then(a.id.cmp(&b.id))
         });
         out
     }
@@ -539,9 +490,7 @@ impl Session {
         match candidates.len() {
             0 => Err(Error::not_found(format!("item '{query}'"))),
             1 => Ok(candidates[0]),
-            n => Err(Error::invalid(format!(
-                "{n} items match '{query}', use the item id instead"
-            ))),
+            n => Err(Error::invalid(format!("{n} items match '{query}', use the item id instead"))),
         }
     }
 
@@ -640,10 +589,7 @@ impl Session {
     }
 
     fn modify_item(&mut self, id: &str, f: impl FnOnce(&mut Item)) -> Result<()> {
-        let mut item = self
-            .item(id)
-            .cloned()
-            .ok_or_else(|| Error::not_found(format!("item {id}")))?;
+        let mut item = self.item(id).cloned().ok_or_else(|| Error::not_found(format!("item {id}")))?;
         f(&mut item);
         self.update_item(item)
     }
@@ -663,10 +609,8 @@ impl Session {
 
     /// Permanently delete an item.
     pub fn delete_item(&mut self, id: &str) -> Result<()> {
-        let vault_id = self
-            .item_vault(id)
-            .map(|s| s.to_string())
-            .ok_or_else(|| Error::not_found(format!("item {id}")))?;
+        let vault_id =
+            self.item_vault(id).map(|s| s.to_string()).ok_or_else(|| Error::not_found(format!("item {id}")))?;
         self.writable_vault(&vault_id)?;
         self.items.remove(id);
         let rec = self.profile.item_mut(id).expect("record exists for every item");
@@ -697,10 +641,8 @@ impl Session {
     /// Move an item to another vault (it is re-encrypted with the target
     /// vault key and gets a new id). Returns the new id.
     pub fn move_item(&mut self, id: &str, target_vault: &str) -> Result<String> {
-        let source = self
-            .item_vault(id)
-            .map(|s| s.to_string())
-            .ok_or_else(|| Error::not_found(format!("item {id}")))?;
+        let source =
+            self.item_vault(id).map(|s| s.to_string()).ok_or_else(|| Error::not_found(format!("item {id}")))?;
         if source == target_vault {
             return Ok(id.to_string());
         }
@@ -719,10 +661,7 @@ impl Session {
 
     /// Create a copy of an item in the same vault.
     pub fn duplicate_item(&mut self, id: &str) -> Result<String> {
-        let vault = self
-            .item_vault(id)
-            .map(|s| s.to_string())
-            .ok_or_else(|| Error::not_found(format!("item {id}")))?;
+        let vault = self.item_vault(id).map(|s| s.to_string()).ok_or_else(|| Error::not_found(format!("item {id}")))?;
         let mut copy = self.item(id).cloned().expect("checked above");
         copy.id = new_id();
         copy.title = format!("{} (copy)", copy.title);
@@ -748,9 +687,7 @@ impl Session {
         secret_key: &SecretKey,
     ) -> Result<PasswordChange> {
         if new_password.chars().count() < MIN_PASSWORD_LEN {
-            return Err(Error::invalid(format!(
-                "the master password must be at least {MIN_PASSWORD_LEN} characters"
-            )));
+            return Err(Error::invalid(format!("the master password must be at least {MIN_PASSWORD_LEN} characters")));
         }
         let current = self.verify_password(current_password, secret_key)?;
         let salt: [u8; 16] = random_bytes();
@@ -781,11 +718,7 @@ impl Session {
 
     /// Link this account to a sync server and store the (encrypted) token.
     pub fn set_server(&mut self, url: &str, token: &str) {
-        let enc = encrypt(
-            &self.keyset.account_key,
-            token.as_bytes(),
-            &aad::server_token(&self.profile.account.id),
-        );
+        let enc = encrypt(&self.keyset.account_key, token.as_bytes(), &aad::server_token(&self.profile.account.id));
         match &mut self.profile.server {
             Some(link) if link.url == url => link.token = Some(enc),
             _ => {
@@ -800,12 +733,8 @@ impl Session {
 
     pub fn server_token(&self) -> Option<String> {
         let enc = self.profile.server.as_ref()?.token.as_ref()?;
-        let raw = crate::crypto::decrypt(
-            &self.keyset.account_key,
-            enc,
-            &aad::server_token(&self.profile.account.id),
-        )
-        .ok()?;
+        let raw =
+            crate::crypto::decrypt(&self.keyset.account_key, enc, &aad::server_token(&self.profile.account.id)).ok()?;
         String::from_utf8(raw.to_vec()).ok()
     }
 
@@ -879,9 +808,7 @@ pub(crate) mod tests {
     fn create_lock_unlock() {
         let (mut s, sk) = new_session();
         let vault = s.default_vault_id().unwrap();
-        let id = s
-            .add_item(&vault, Item::login("GitHub", "octo", "pw1", Some("github.com")))
-            .unwrap();
+        let id = s.add_item(&vault, Item::login("GitHub", "octo", "pw1", Some("github.com"))).unwrap();
         let json = s.profile().to_json();
         assert!(!json.contains("octo"), "profile must not contain plaintext");
         assert!(!json.contains("GitHub"));
@@ -891,10 +818,7 @@ pub(crate) mod tests {
         let s2 = Session::unlock(profile.clone(), "correct horse battery staple", &sk).unwrap();
         assert_eq!(s2.item(&id).unwrap().username(), Some("octo"));
         assert_eq!(s2.vaults()[0].name, "Personal");
-        assert!(matches!(
-            Session::unlock(profile.clone(), "wrong password!", &sk),
-            Err(Error::WrongPassword)
-        ));
+        assert!(matches!(Session::unlock(profile.clone(), "wrong password!", &sk), Err(Error::WrongPassword)));
         assert!(matches!(
             Session::unlock(profile, "correct horse battery staple", &SecretKey::generate()),
             Err(Error::WrongPassword)
@@ -956,14 +880,7 @@ pub(crate) mod tests {
         s.add_item(&v, a).unwrap();
         s.add_item(&v, Item::new(Category::SecureNote, "Beta")).unwrap();
         assert_eq!(s.list(&ItemFilter { favorites_only: true, ..Default::default() }).len(), 1);
-        assert_eq!(
-            s.list(&ItemFilter {
-                category: Some(Category::SecureNote),
-                ..Default::default()
-            })[0]
-                .title,
-            "Beta"
-        );
+        assert_eq!(s.list(&ItemFilter { category: Some(Category::SecureNote), ..Default::default() })[0].title, "Beta");
         assert_eq!(s.list(&ItemFilter { tag: Some("WORK".into()), ..Default::default() }).len(), 1);
         assert_eq!(s.find_item("alpha", None).unwrap().title, "Alpha");
         assert!(s.find_item("gamma", None).is_err());
@@ -987,9 +904,7 @@ pub(crate) mod tests {
     #[test]
     fn password_change() {
         let (mut s, sk) = new_session();
-        let change = s
-            .prepare_password_change("correct horse battery staple", "a brand new password", &sk)
-            .unwrap();
+        let change = s.prepare_password_change("correct horse battery staple", "a brand new password", &sk).unwrap();
         assert!(s.prepare_password_change("nope nope nope", "a brand new password", &sk).is_err());
         s.commit_password_change(&change);
         let p = s.profile().clone();

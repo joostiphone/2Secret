@@ -1,0 +1,4 @@
+vault.example.com {
+	encode zstd gzip
+	reverse_proxy 2secret:8743
+}

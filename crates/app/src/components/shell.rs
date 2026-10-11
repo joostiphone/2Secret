@@ -5,9 +5,12 @@ use twosecret_core::item::Category;
 use twosecret_core::session::ItemFilter;
 use twosecret_core::util::now;
 
-use crate::components::{generator::GeneratorPage, item_edit::ItemEditor, item_view::ItemView, settings::SettingsPage, watchtower::WatchtowerPage};
+use crate::components::{
+    generator::GeneratorPage, item_edit::ItemEditor, item_view::ItemView, settings::SettingsPage,
+    watchtower::WatchtowerPage,
+};
 use crate::i18n::{category_name, t};
-use crate::icons::{either, category_icon, Icon, ItemAvatar};
+use crate::icons::{category_icon, either, Icon, ItemAvatar};
 use crate::platform;
 use crate::state::*;
 
@@ -38,6 +41,13 @@ fn use_background_tasks() {
 #[component]
 pub fn Shell() -> Element {
     use_background_tasks();
+    use_hook(|| {
+        if crate::extension::ENABLED {
+            spawn(async move {
+                *TAB_URL.write() = crate::extension::tab_url().await;
+            });
+        }
+    });
     let nav = NAV.read().clone();
     let pane = PANE();
     let page = nav.is_page();
@@ -70,7 +80,13 @@ fn go(nav: Nav) {
 }
 
 #[component]
-fn NavButton(target: Nav, icon: &'static str, label: String, #[props(default)] count: Option<usize>, #[props(default)] badge: Option<usize>) -> Element {
+fn NavButton(
+    target: Nav,
+    icon: &'static str,
+    label: String,
+    #[props(default)] count: Option<usize>,
+    #[props(default)] badge: Option<usize>,
+) -> Element {
     let active = *NAV.read() == target || matches!((&*NAV.read(), &target), (Nav::Watchtower(_), Nav::Watchtower(_)));
     rsx! {
         button { class: if active { "nav-item active" } else { "nav-item" },
@@ -134,10 +150,13 @@ fn Sidebar() -> Element {
     } else if sync.error.is_some() {
         ("err", t("sync.error").to_string())
     } else {
-        ("", match last_sync {
-            Some(ts) => format!("{} {}", t("sync.synced"), relative_time(ts)),
-            None => t("sync.never").to_string(),
-        })
+        (
+            "",
+            match last_sync {
+                Some(ts) => format!("{} {}", t("sync.synced"), relative_time(ts)),
+                None => t("sync.never").to_string(),
+            },
+        )
     };
 
     rsx! {
@@ -219,12 +238,7 @@ pub fn nav_title(nav: &Nav) -> String {
         Nav::All => t("nav.all").into(),
         Nav::Favorites => t("nav.favorites").into(),
         Nav::Category(c) => category_name(*c),
-        Nav::Vault(id) => SESSION
-            .peek()
-            .as_ref()
-            .and_then(|s| s.vault(id))
-            .map(|v| v.name)
-            .unwrap_or_default(),
+        Nav::Vault(id) => SESSION.peek().as_ref().and_then(|s| s.vault(id)).map(|v| v.name).unwrap_or_default(),
         Nav::Tag(tag) => format!("#{tag}"),
         Nav::Trash => t("nav.trash").into(),
         Nav::Watchtower(_) => t("nav.watchtower").into(),
@@ -234,10 +248,7 @@ pub fn nav_title(nav: &Nav) -> String {
 }
 
 fn filter_for(nav: &Nav, search: &str) -> ItemFilter {
-    let mut f = ItemFilter {
-        query: search.to_string(),
-        ..Default::default()
-    };
+    let mut f = ItemFilter { query: search.to_string(), ..Default::default() };
     match nav {
         Nav::Favorites => f.favorites_only = true,
         Nav::Category(c) => f.category = Some(*c),
@@ -257,6 +268,12 @@ fn ItemList() -> Element {
     let session = SESSION.read();
     let Some(s) = session.as_ref() else { return rsx! {} };
     let items = s.list(&filter_for(&nav, &search));
+    let tab_url = TAB_URL.read().clone();
+    let suggestions = match (&tab_url, &nav) {
+        (Some(url), Nav::All) if search.is_empty() => s.items_for_url(url),
+        _ => Vec::new(),
+    };
+    let suggest_host = tab_url.as_deref().and_then(twosecret_core::util::url_host).unwrap_or_default();
     let vault = match &nav {
         Nav::Vault(id) => s.vault(id),
         _ => None,
@@ -325,6 +342,34 @@ fn ItemList() -> Element {
             }
         }
         div { class: "items",
+            if !suggestions.is_empty() {
+                div { class: "nav-section", style: "color:var(--muted);padding:10px 12px 4px", "{t(\"ext.suggestions\")} {suggest_host}" }
+                for item in suggestions {
+                    {
+                        let id = item.id.clone();
+                        let fill_id = item.id.clone();
+                        rsx! {
+                            div { key: "s-{item.id}", class: "item-row",
+                                onclick: move |_| {
+                                    *SELECTED.write() = Some(id.clone());
+                                    *EDITING.write() = None;
+                                    *PANE.write() = Pane::Detail;
+                                },
+                                ItemAvatar { category: item.category, title: item.title.clone() }
+                                div { class: "grow",
+                                    div { class: "t", "{item.title}" }
+                                    div { class: "s", "{item.subtitle}" }
+                                }
+                                button { class: "btn primary small",
+                                    onclick: move |e| { e.stop_propagation(); fill_item(&fill_id); },
+                                    {t("ext.fill")}
+                                }
+                            }
+                        }
+                    }
+                }
+                div { class: "nav-section", style: "color:var(--muted);padding:10px 12px 4px", {t("nav.all")} }
+            }
             if items.is_empty() {
                 div { class: "empty",
                     Icon { name: either(is_trash, "trash", "key"), size: 40 }

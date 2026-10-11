@@ -17,11 +17,7 @@ struct Entry {
 
 impl RateLimiter {
     pub fn new(max_failures: u32, window_secs: i64) -> Self {
-        Self {
-            entries: Mutex::new(HashMap::new()),
-            max_failures,
-            window_secs,
-        }
+        Self { entries: Mutex::new(HashMap::new()), max_failures, window_secs }
     }
 
     /// May another attempt be made for this key?
@@ -39,15 +35,9 @@ impl RateLimiter {
 
     pub fn record_failure(&self, key: &str, now: i64) {
         let mut map = self.entries.lock().expect("rate limiter lock");
-        let e = map.entry(key.to_string()).or_insert(Entry {
-            failures: 0,
-            window_start: now,
-        });
+        let e = map.entry(key.to_string()).or_insert(Entry { failures: 0, window_start: now });
         if now - e.window_start >= self.window_secs {
-            *e = Entry {
-                failures: 0,
-                window_start: now,
-            };
+            *e = Entry { failures: 0, window_start: now };
         }
         e.failures += 1;
     }

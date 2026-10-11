@@ -1,0 +1,198 @@
+//! Browser extension integration: current tab, autofill and keeping the
+//! vault unlocked between popup openings (in `chrome.storage.session`, which
+//! lives in browser memory only and is cleared when the browser closes).
+//!
+//! All functions are no-ops outside the extension build.
+
+#[cfg(all(feature = "extension", target_arch = "wasm32"))]
+mod imp {
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen(inline_js = r#"
+const api = globalThis.browser ?? globalThis.chrome;
+
+export async function activeTabUrl() {
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
+  return tab && tab.url ? tab.url : "";
+}
+
+// Runs inside the web page (serialised by the browser, not eval'd here).
+function twosecretFill(username, password, code) {
+  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+    && getComputedStyle(el).visibility !== "hidden" && !el.disabled && !el.readOnly;
+  const setValue = (el, value) => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+    el.focus();
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const hint = (el) => `${el.name} ${el.id} ${el.placeholder || ""} ${el.getAttribute("aria-label") || ""}`.toLowerCase();
+  const inputs = Array.from(document.querySelectorAll("input")).filter(visible);
+  const passwords = inputs.filter((i) => i.type === "password");
+  const texty = (i) => ["text", "email", "tel", ""].includes(i.type);
+  let filled = false;
+  if (password && passwords.length) {
+    setValue(passwords[0], password);
+    filled = true;
+  }
+  if (username) {
+    let user = inputs.find((i) => texty(i) && (i.autocomplete || "").includes("username"))
+      || inputs.find((i) => texty(i) && /user|e-?mail|login|account|identifier/.test(hint(i)));
+    if (!user && passwords.length) {
+      const idx = inputs.indexOf(passwords[0]);
+      user = inputs.slice(0, idx).reverse().find(texty);
+    }
+    if (!user && !passwords.length) {
+      user = inputs.find(texty);
+    }
+    if (user) {
+      setValue(user, username);
+      filled = true;
+    }
+  }
+  if (code && !passwords.length) {
+    const otp = inputs.find((i) => (i.autocomplete || "") === "one-time-code")
+      || inputs.find((i) => texty(i) && /otp|totp|2fa|mfa|code|token|verification/.test(hint(i)));
+    if (otp) {
+      setValue(otp, code);
+      filled = true;
+    }
+  }
+  return filled;
+}
+
+export async function fillActiveTab(username, password, code) {
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
+  if (!tab || tab.id === undefined) return false;
+  const results = await api.scripting.executeScript({
+    target: { tabId: tab.id, allFrames: true },
+    func: twosecretFill,
+    args: [username, password, code],
+  });
+  return results.some((r) => r && r.result === true);
+}
+
+export async function sessionGet(key) {
+  const r = await api.storage.session.get(key);
+  return r[key] ?? null;
+}
+export async function sessionSet(key, value) {
+  await api.storage.session.set({ [key]: value });
+}
+export async function sessionRemove(key) {
+  await api.storage.session.remove(key);
+}
+export function closePopup() {
+  window.close();
+}
+"#)]
+    extern "C" {
+        #[wasm_bindgen(catch, js_name = activeTabUrl)]
+        async fn active_tab_url() -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = fillActiveTab)]
+        async fn fill_active_tab(username: String, password: String, code: String) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = sessionGet)]
+        async fn session_get(key: &str) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = sessionSet)]
+        async fn session_set(key: &str, value: String) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = sessionRemove)]
+        async fn session_remove(key: &str) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(js_name = closePopup)]
+        fn close_popup();
+    }
+
+    pub async fn tab_url() -> Option<String> {
+        active_tab_url().await.ok().and_then(|v| v.as_string()).filter(|s| s.starts_with("http"))
+    }
+
+    pub async fn fill(username: &str, password: &str, code: &str) -> bool {
+        fill_active_tab(username.into(), password.into(), code.into())
+            .await
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    pub async fn store(key: &str, value: String) {
+        let _ = session_set(key, value).await;
+    }
+
+    pub async fn load(key: &str) -> Option<String> {
+        session_get(key).await.ok().and_then(|v| v.as_string())
+    }
+
+    pub async fn remove(key: &str) {
+        let _ = session_remove(key).await;
+    }
+
+    pub fn close() {
+        close_popup();
+    }
+}
+
+#[cfg(not(all(feature = "extension", target_arch = "wasm32")))]
+mod imp {
+    pub async fn tab_url() -> Option<String> {
+        None
+    }
+    pub async fn fill(_username: &str, _password: &str, _code: &str) -> bool {
+        false
+    }
+    pub async fn store(_key: &str, _value: String) {}
+    pub async fn load(_key: &str) -> Option<String> {
+        None
+    }
+    pub async fn remove(_key: &str) {}
+    pub fn close() {}
+}
+
+use serde::{Deserialize, Serialize};
+use twosecret_core::crypto::SymmetricKey;
+use twosecret_core::util::now;
+
+pub use imp::{close, fill, tab_url};
+
+/// Is this the browser extension build?
+pub const ENABLED: bool = cfg!(feature = "extension");
+
+const UNLOCK_KEY: &str = "2secret-unlock";
+
+#[derive(Serialize, Deserialize)]
+struct Cached {
+    account_id: String,
+    key: String,
+    expires_at: i64,
+}
+
+/// Keep the vault unlocked for `ttl_secs` (extension only).
+pub async fn remember_unlock(account_id: &str, key: &SymmetricKey, ttl_secs: i64) {
+    if !ENABLED {
+        return;
+    }
+    let cached = Cached { account_id: account_id.to_string(), key: key.to_b64(), expires_at: now() + ttl_secs };
+    if let Ok(json) = serde_json::to_string(&cached) {
+        imp::store(UNLOCK_KEY, json).await;
+    }
+}
+
+/// The cached account key, if still valid.
+pub async fn cached_unlock(account_id: &str) -> Option<SymmetricKey> {
+    if !ENABLED {
+        return None;
+    }
+    let json = imp::load(UNLOCK_KEY).await?;
+    let cached: Cached = serde_json::from_str(&json).ok()?;
+    if cached.account_id != account_id || cached.expires_at < now() {
+        imp::remove(UNLOCK_KEY).await;
+        return None;
+    }
+    SymmetricKey::from_b64(&cached.key).ok()
+}
+
+pub async fn forget_unlock() {
+    if ENABLED {
+        imp::remove(UNLOCK_KEY).await;
+    }
+}

@@ -88,20 +88,14 @@ pub fn estimate(password: &str, user_inputs: &[&str]) -> Strength {
         score = 3;
     }
     let (warning, suggestions) = match entropy.feedback() {
-        Some(fb) => (
-            fb.warning().map(|w| w.to_string()),
-            fb.suggestions().iter().map(|s| s.to_string()).collect(),
-        ),
+        Some(fb) => (fb.warning().map(|w| w.to_string()), fb.suggestions().iter().map(|s| s.to_string()).collect()),
         None => (None, vec![]),
     };
     Strength {
         level: StrengthLevel::from_score(score),
         guesses_log10,
         bits,
-        crack_time: entropy
-            .crack_times()
-            .offline_slow_hashing_1e4_per_second()
-            .to_string(),
+        crack_time: entropy.crack_times().offline_slow_hashing_1e4_per_second().to_string(),
         warning,
         suggestions,
     }
