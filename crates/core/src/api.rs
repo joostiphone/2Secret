@@ -12,13 +12,13 @@ use crate::profile::Role;
 
 pub const API_VERSION: &str = "v1";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
     pub message: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
@@ -26,18 +26,18 @@ pub struct HealthResponse {
     pub invite_required: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PreloginRequest {
     pub email: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PreloginResponse {
     pub salt: String,
     pub kdf: KdfParams,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub account_id: String,
     pub email: String,
@@ -53,7 +53,7 @@ pub struct RegisterRequest {
     pub device_name: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub auth_key: String,
@@ -61,7 +61,7 @@ pub struct LoginRequest {
     pub device_name: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AccountInfo {
     pub account_id: String,
     pub email: String,
@@ -72,13 +72,13 @@ pub struct AccountInfo {
     pub created_at: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub token: String,
     pub account: AccountInfo,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChangePasswordRequest {
     pub current_auth_key: String,
     pub new_auth_key: String,
@@ -87,17 +87,17 @@ pub struct ChangePasswordRequest {
     pub keyset: EncryptedKeyset,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateAccountRequest {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DeleteAccountRequest {
     pub auth_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub id: String,
     pub name: String,
@@ -106,7 +106,7 @@ pub struct DeviceInfo {
     pub current: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PublicKeyResponse {
     pub account_id: String,
     pub email: String,
@@ -114,19 +114,19 @@ pub struct PublicKeyResponse {
     pub public_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CreateVaultRequest {
     pub id: String,
     pub meta: EncString,
     pub wrapped_key: WrappedKey,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateVaultRequest {
     pub meta: EncString,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VaultDto {
     pub id: String,
     pub owner_id: String,
@@ -138,7 +138,7 @@ pub struct VaultDto {
     pub created_at: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MemberDto {
     pub account_id: String,
     pub email: String,
@@ -147,14 +147,14 @@ pub struct MemberDto {
     pub public_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AddMemberRequest {
     pub account_id: String,
     pub role: Role,
     pub wrapped_key: WrappedKey,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateMemberRequest {
     pub role: Role,
 }
@@ -170,7 +170,7 @@ pub struct ItemDto {
 }
 
 /// A local change to upload.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ItemChange {
     pub id: String,
     /// Server revision the change is based on (0 = new item).
@@ -179,7 +179,7 @@ pub struct ItemChange {
     pub data: Option<EncString>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VaultSyncRequest {
     pub vault_id: String,
     /// Return changes with a revision greater than this.
@@ -188,18 +188,18 @@ pub struct VaultSyncRequest {
     pub changes: Vec<ItemChange>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SyncRequest {
     pub vaults: Vec<VaultSyncRequest>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Accepted {
     pub id: String,
     pub revision: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VaultSyncResult {
     pub vault_id: String,
     /// Vault revision after applying this request.
@@ -214,7 +214,7 @@ pub struct VaultSyncResult {
     pub rejected: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SyncResponse {
     /// Every vault the account can access.
     pub vaults: Vec<VaultDto>,

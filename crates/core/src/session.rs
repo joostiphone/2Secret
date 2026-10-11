@@ -107,6 +107,18 @@ impl Session {
         kdf: KdfParams,
         default_vault_name: &str,
     ) -> Result<(Session, SecretKey)> {
+        Self::create_account_with_keys(name, email, password, kdf, default_vault_name).map(|(s, sk, _)| (s, sk))
+    }
+
+    /// Like [`Session::create_account`], also returning the derived keys
+    /// (so a server registration does not need to run Argon2id again).
+    pub fn create_account_with_keys(
+        name: &str,
+        email: &str,
+        password: &str,
+        kdf: KdfParams,
+        default_vault_name: &str,
+    ) -> Result<(Session, SecretKey, DerivedKeys)> {
         let email = normalize_email(email);
         if email.is_empty() {
             return Err(Error::invalid("an e-mail address is required"));
@@ -145,7 +157,7 @@ impl Session {
             default_vault_name
         };
         session.create_vault(name, "")?;
-        Ok((session, secret_key))
+        Ok((session, secret_key, keys))
     }
 
     /// Build a profile for an account that already exists on a server (used
@@ -185,6 +197,11 @@ impl Session {
     pub fn open_with_account_key(profile: Profile, account_key: SymmetricKey) -> Result<Session> {
         let keyset = Keyset::from_account_key(&profile.account.keyset, account_key)?;
         Session::from_parts(profile, keyset)
+    }
+
+    /// An independent copy of this unlocked session (re-decrypts the profile).
+    pub fn try_clone(&self) -> Result<Session> {
+        Session::from_parts(self.profile.clone(), self.keyset.clone())
     }
 
     fn from_parts(profile: Profile, keyset: Keyset) -> Result<Session> {

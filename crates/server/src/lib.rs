@@ -132,7 +132,7 @@ pub fn app(state: AppState) -> Router {
         ),
         (
             header::CONTENT_SECURITY_POLICY,
-            "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; \
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
              style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; \
              connect-src 'self' https://api.pwnedpasswords.com; frame-ancestors 'none'; \
              base-uri 'none'; form-action 'self'; object-src 'none'",

@@ -1,0 +1,24 @@
+[application]
+name = "2Secret"
+default_platform = "desktop"
+out_dir = "dist"
+asset_dir = "assets"
+
+[web.app]
+title = "2Secret"
+
+[web.resource]
+style = []
+script = []
+
+[web.resource.dev]
+script = []
+
+[bundle]
+identifier = "io.github.joostiphone.twosecret"
+publisher = "2Secret"
+icon = ["assets/icon-32.png", "assets/icon-128.png", "assets/icon-256.png", "assets/icon-512.png", "assets/icon.ico"]
+copyright = "2Secret contributors – MIT OR Apache-2.0"
+category = "Utility"
+short_description = "Free, open-source password manager"
+long_description = "2Secret keeps passwords, cards, notes and other secrets end-to-end encrypted on all your devices."

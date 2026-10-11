@@ -1,0 +1,444 @@
+//! Global application state and the actions that change it.
+
+use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
+use twosecret_client::SessionAccess;
+use twosecret_core::crypto::SecretKey;
+use twosecret_core::generator::GeneratorOptions;
+use twosecret_core::item::{Category, Item};
+use twosecret_core::profile::{DeviceSecrets, Profile, DEVICE_KEY, PROFILE_KEY};
+use twosecret_core::session::Session;
+use twosecret_core::util::now;
+use twosecret_core::watchtower::IssueKind;
+
+use crate::i18n::{t, Lang, LANG};
+use crate::platform;
+
+const PREFS_KEY: &str = "prefs";
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Phase {
+    Loading,
+    Welcome,
+    Create,
+    SignIn,
+    /// Account just created: show the Secret Key / Emergency Kit.
+    NewAccount { secret_key: String },
+    Locked,
+    Unlocked,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Nav {
+    All,
+    Favorites,
+    Category(Category),
+    Vault(String),
+    Tag(String),
+    Trash,
+    Watchtower(Option<IssueKind>),
+    Generator,
+    Settings,
+}
+
+impl Nav {
+    pub fn is_page(&self) -> bool {
+        matches!(self, Nav::Watchtower(_) | Nav::Generator | Nav::Settings)
+    }
+}
+
+/// Which pane is visible on narrow (phone) screens.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Pane {
+    Nav,
+    List,
+    Detail,
+}
+
+/// An item being created or edited.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Draft {
+    pub item: Item,
+    pub vault_id: String,
+    pub is_new: bool,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Toast {
+    pub id: u64,
+    pub text: String,
+    pub error: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct SyncStatus {
+    pub running: bool,
+    pub requested: bool,
+    pub error: Option<String>,
+    pub needs_reauth: bool,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Modal {
+    NewItem,
+    NewVault,
+    EditVault(String),
+    ShareVault(String),
+    DeleteVault(String),
+    MoveItem(String),
+    DeleteItem(String),
+    Reauth,
+    ForgetDevice,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Theme {
+    pub fn id(&self) -> &'static str {
+        match self {
+            Theme::System => "system",
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+        }
+    }
+}
+
+/// Non-secret user preferences (stored unencrypted).
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    pub lang: Option<Lang>,
+    pub theme: Theme,
+    /// Minutes of inactivity before locking; 0 = never.
+    pub auto_lock_minutes: u32,
+    /// Seconds before copied secrets are cleared; 0 = never.
+    pub clipboard_clear_secs: u32,
+    pub generator: GeneratorOptions,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Self {
+            lang: None,
+            theme: Theme::System,
+            auto_lock_minutes: 10,
+            clipboard_clear_secs: 90,
+            generator: GeneratorOptions::default(),
+        }
+    }
+}
+
+pub static PHASE: GlobalSignal<Phase> = Signal::global(|| Phase::Loading);
+pub static SESSION: GlobalSignal<Option<Session>> = Signal::global(|| None);
+pub static PREFS: GlobalSignal<Prefs> = Signal::global(Prefs::default);
+pub static NAV: GlobalSignal<Nav> = Signal::global(|| Nav::All);
+pub static SELECTED: GlobalSignal<Option<String>> = Signal::global(|| None);
+pub static EDITING: GlobalSignal<Option<Draft>> = Signal::global(|| None);
+pub static SEARCH: GlobalSignal<String> = Signal::global(String::new);
+/// Bumped when the search text is changed programmatically.
+pub static SEARCH_RESET: GlobalSignal<u32> = Signal::global(|| 0);
+pub static TOAST: GlobalSignal<Option<Toast>> = Signal::global(|| None);
+pub static SYNC: GlobalSignal<SyncStatus> = Signal::global(SyncStatus::default);
+pub static ACTIVITY: GlobalSignal<i64> = Signal::global(now);
+pub static MODAL: GlobalSignal<Option<Modal>> = Signal::global(|| None);
+pub static BUSY: GlobalSignal<Option<String>> = Signal::global(|| None);
+pub static PANE: GlobalSignal<Pane> = Signal::global(|| Pane::List);
+/// Breach counts from the last Have I Been Pwned check (item id → count).
+pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
+
+/// Load preferences and decide the first screen.
+pub fn init() {
+    let prefs: Prefs = platform::storage()
+        .read(PREFS_KEY)
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    *LANG.write() = prefs.lang.unwrap_or_else(|| Lang::from_code(&platform::system_language()));
+    *PREFS.write() = prefs;
+    *PHASE.write() = if load_profile().is_some() && device_secrets().is_some() {
+        Phase::Locked
+    } else {
+        Phase::Welcome
+    };
+}
+
+pub fn save_prefs() {
+    let json = serde_json::to_string(&*PREFS.read()).unwrap_or_default();
+    let _ = platform::storage().write(PREFS_KEY, &json);
+}
+
+pub fn set_lang(lang: Lang) {
+    *LANG.write() = lang;
+    PREFS.write().lang = Some(lang);
+    save_prefs();
+}
+
+pub fn load_profile() -> Option<Profile> {
+    let json = platform::storage().read(PROFILE_KEY).ok().flatten()?;
+    Profile::from_json(&json).ok()
+}
+
+pub fn device_secrets() -> Option<DeviceSecrets> {
+    let json = platform::storage().read(DEVICE_KEY).ok().flatten()?;
+    DeviceSecrets::from_json(&json).ok()
+}
+
+pub fn secret_key() -> Option<SecretKey> {
+    device_secrets().and_then(|d| d.secret_key().ok())
+}
+
+/// Store a brand new account on this device and open it.
+pub fn adopt_session(session: Session, sk: &SecretKey) -> Result<(), String> {
+    let acc = session.account();
+    platform::storage()
+        .write(DEVICE_KEY, &DeviceSecrets::new(&acc.id, &acc.email, sk).to_json())
+        .map_err(|e| e.to_string())?;
+    platform::storage()
+        .write(PROFILE_KEY, &session.profile().to_json())
+        .map_err(|e| e.to_string())?;
+    *SESSION.write() = Some(session);
+    *NAV.write() = Nav::All;
+    *SELECTED.write() = None;
+    touch();
+    Ok(())
+}
+
+/// Write the (encrypted) profile to storage.
+pub fn persist() {
+    let json = SESSION.read().as_ref().map(|s| s.profile().to_json());
+    if let Some(json) = json {
+        if let Err(e) = platform::storage().write(PROFILE_KEY, &json) {
+            toast_err(&format!("{}: {e}", t("err.save")));
+        }
+    }
+}
+
+pub fn clear_search() {
+    if !SEARCH.peek().is_empty() {
+        *SEARCH.write() = String::new();
+        *SEARCH_RESET.write() += 1;
+    }
+}
+
+pub fn touch() {
+    let ts = now();
+    if *ACTIVITY.peek() != ts {
+        *ACTIVITY.write() = ts;
+    }
+}
+
+pub fn toast(text: &str) {
+    show_toast(text, false);
+}
+
+pub fn toast_err(text: &str) {
+    show_toast(text, true);
+}
+
+fn show_toast(text: &str, error: bool) {
+    let id = TOAST.peek().as_ref().map(|t| t.id + 1).unwrap_or(1);
+    *TOAST.write() = Some(Toast {
+        id,
+        text: text.to_string(),
+        error,
+    });
+    // `spawn_forever`: the timer must survive the component that showed it.
+    dioxus::core::spawn_forever(async move {
+        platform::sleep_ms(if error { 6000 } else { 2600 }).await;
+        if TOAST.peek().as_ref().map(|t| t.id) == Some(id) {
+            *TOAST.write() = None;
+        }
+    });
+}
+
+pub fn busy(text: &str) {
+    *BUSY.write() = Some(text.to_string());
+}
+
+pub fn unbusy() {
+    *BUSY.write() = None;
+}
+
+/// Human readable, translated error message.
+pub fn core_error(e: &twosecret_core::Error) -> String {
+    use twosecret_core::Error as E;
+    match e {
+        E::WrongPassword => t("err.wrong_password").into(),
+        E::InvalidSecretKey(_) => t("err.secret_key").into(),
+        E::PermissionDenied(_) => t("err.permission").into(),
+        other => other.to_string(),
+    }
+}
+
+pub fn client_error(e: &twosecret_client::Error) -> String {
+    use twosecret_client::Error as E;
+    match e {
+        E::Core(c) => core_error(c),
+        E::Unauthorized => t("err.session_expired").into(),
+        E::Network(detail) => format!("{} ({detail})", t("err.network")),
+        E::Api { status: 401, .. } => t("err.wrong_credentials").into(),
+        E::Api { status: 429, .. } => t("err.rate_limited").into(),
+        E::Api { message, .. } => message.clone(),
+        E::NotLinked => t("err.not_linked").into(),
+        E::Protocol(m) => m.clone(),
+    }
+}
+
+/// Run a change against the unlocked session, then save and schedule a sync.
+pub fn mutate<T>(f: impl FnOnce(&mut Session) -> twosecret_core::Result<T>) -> Option<T> {
+    let result = {
+        let mut guard = SESSION.write();
+        let session = guard.as_mut()?;
+        f(session)
+    };
+    match result {
+        Ok(v) => {
+            persist();
+            request_sync();
+            Some(v)
+        }
+        Err(e) => {
+            toast_err(&core_error(&e));
+            None
+        }
+    }
+}
+
+/// Lock: forget all decrypted data.
+pub fn lock() {
+    *SESSION.write() = None;
+    *EDITING.write() = None;
+    *SELECTED.write() = None;
+    clear_search();
+    *MODAL.write() = None;
+    *NAV.write() = Nav::All;
+    *BREACHES.write() = None;
+    *SYNC.write() = SyncStatus::default();
+    *PANE.write() = Pane::List;
+    *PHASE.write() = if load_profile().is_some() { Phase::Locked } else { Phase::Welcome };
+}
+
+/// Remove the account from this device.
+pub fn forget_device() {
+    let _ = platform::storage().delete(PROFILE_KEY);
+    let _ = platform::storage().delete(DEVICE_KEY);
+    lock();
+    *PHASE.write() = Phase::Welcome;
+}
+
+/// Copy a value and clear the clipboard later.
+pub fn copy(value: String, what: &str) {
+    let what = what.to_string();
+    let clear_after = PREFS.peek().clipboard_clear_secs;
+    dioxus::core::spawn_forever(async move {
+        if platform::copy_text(&value).await {
+            toast(&format!("{} {}", what, t("toast.copied")));
+            if clear_after > 0 {
+                platform::sleep_ms(clear_after as u64 * 1000).await;
+                platform::clear_clipboard_if(&value).await;
+            }
+        } else {
+            toast_err(t("err.clipboard"));
+        }
+        let mut v = value;
+        zeroize::Zeroize::zeroize(&mut v);
+    });
+}
+
+pub fn request_sync() {
+    if SESSION.peek().as_ref().is_some_and(|s| s.server().is_some()) {
+        SYNC.write().requested = true;
+    }
+}
+
+struct GlobalSession;
+
+impl SessionAccess for GlobalSession {
+    fn with_session<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> twosecret_client::Result<R> {
+        let mut guard = SESSION.write();
+        match guard.as_mut() {
+            Some(s) => Ok(f(s)),
+            None => Err(twosecret_client::Error::Protocol("locked".into())),
+        }
+    }
+}
+
+/// Synchronise with the server (no-op for local accounts).
+pub async fn run_sync(show_result: bool) {
+    let linked = SESSION.peek().as_ref().map(|s| s.server().is_some() && s.server_token().is_some());
+    match linked {
+        Some(true) => {}
+        Some(false) => {
+            if show_result && SESSION.peek().as_ref().is_some_and(|s| s.server().is_some()) {
+                SYNC.write().needs_reauth = true;
+                *MODAL.write() = Some(Modal::Reauth);
+            }
+            return;
+        }
+        None => return,
+    }
+    if SYNC.peek().running || BUSY.peek().is_some() {
+        return;
+    }
+    {
+        let mut s = SYNC.write();
+        s.running = true;
+        s.requested = false;
+    }
+    let result = twosecret_client::sync_with(&mut GlobalSession).await;
+    let mut status = SYNC.write();
+    status.running = false;
+    match result {
+        Ok(report) => {
+            status.error = None;
+            status.needs_reauth = false;
+            drop(status);
+            persist();
+            // The selected item may have been deleted remotely.
+            let gone = SELECTED
+                .peek()
+                .as_ref()
+                .is_some_and(|id| SESSION.peek().as_ref().is_some_and(|s| s.item(id).is_none()));
+            if gone && EDITING.peek().is_none() {
+                *SELECTED.write() = None;
+            }
+            if show_result {
+                toast(&format!(
+                    "{} ↑{} ↓{}",
+                    t("toast.synced"),
+                    report.uploaded,
+                    report.downloaded + report.deleted
+                ));
+            }
+        }
+        Err(twosecret_client::Error::Protocol(m)) if m == "locked" => {}
+        Err(e) => {
+            let unauthorized = matches!(e, twosecret_client::Error::Unauthorized);
+            status.error = Some(client_error(&e));
+            status.needs_reauth = unauthorized;
+            drop(status);
+            if show_result {
+                toast_err(&client_error(&e));
+            }
+        }
+    }
+}
+
+/// Work on an independent copy of the session for multi-step server
+/// operations, then install the result. The UI is blocked meanwhile.
+pub fn session_copy() -> Option<Session> {
+    SESSION.peek().as_ref().and_then(|s| s.try_clone().ok())
+}
+
+pub fn install_session(session: Session) {
+    *SESSION.write() = Some(session);
+    persist();
+}

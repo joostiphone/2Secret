@@ -1,0 +1,36 @@
+[package]
+name = "twosecret-app"
+description = "2Secret password manager app for desktop (macOS, Windows, Linux, BSD), web and iOS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "twosecret-app"
+path = "src/main.rs"
+
+[features]
+default = ["desktop"]
+desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio"]
+web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
+mobile = ["dioxus/mobile", "dep:tokio"]
+
+[dependencies]
+twosecret-core.workspace = true
+twosecret-client.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+dioxus = { version = "0.7", default-features = false, features = ["lib", "launch", "logger"] }
+futures-channel = "0.3"
+chrono = "0.4"
+arboard = { version = "3", optional = true, default-features = false }
+tokio = { version = "1", features = ["time", "rt"], optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Window", "Storage", "Navigator", "Document", "Element", "HtmlElement", "HtmlAnchorElement", "Location", "Clipboard", "Blob", "BlobPropertyBag", "Url"] }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+gloo-timers = { version = "0.3", optional = true, features = ["futures"] }

@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 use twosecret_core::api::*;
-use twosecret_core::crypto::{derive_keys, KdfParams, SecretKey};
+use twosecret_core::crypto::{derive_keys, DerivedKeys, KdfParams, SecretKey};
 use twosecret_core::profile::{AccountRecord, Role, ServerLink, SyncState};
-use twosecret_core::session::Session;
+use twosecret_core::session::{PasswordChange, Session};
 use twosecret_core::sync::SyncReport;
 use twosecret_core::util::{b64, unb64};
 use twosecret_core::watchtower;
@@ -47,6 +47,17 @@ pub async fn connect(
     device_name: &str,
 ) -> Result<SyncReport> {
     let keys = session.verify_password(password, secret_key)?;
+    connect_with_keys(session, server_url, &keys, invite_code, device_name).await
+}
+
+/// Like [`connect`], with keys derived beforehand (e.g. on a worker thread).
+pub async fn connect_with_keys(
+    session: &mut Session,
+    server_url: &str,
+    keys: &DerivedKeys,
+    invite_code: Option<&str>,
+    device_name: &str,
+) -> Result<SyncReport> {
     let url = normalize_server_url(server_url);
     let client = Client::new(&url);
     let account = session.account().clone();
@@ -78,12 +89,24 @@ pub async fn signin(
     secret_key: &SecretKey,
     device_name: &str,
 ) -> Result<Session> {
-    let url = normalize_server_url(server_url);
-    let client = Client::new(&url);
-    let pre = client.prelogin(email).await?;
-    pre.kdf.validate()?;
+    let pre = prelogin(server_url, email).await?;
     let salt = unb64(&pre.salt)?;
     let keys = derive_keys(password, secret_key, email, &salt, &pre.kdf)?;
+    signin_with_keys(server_url, email, &keys, device_name).await
+}
+
+/// First step of signing in: fetch the account's salt and KDF parameters.
+pub async fn prelogin(server_url: &str, email: &str) -> Result<PreloginResponse> {
+    let pre = Client::new(server_url).prelogin(email).await?;
+    pre.kdf.validate()?;
+    unb64(&pre.salt)?;
+    Ok(pre)
+}
+
+/// Second step of signing in, with keys derived from the prelogin answer.
+pub async fn signin_with_keys(server_url: &str, email: &str, keys: &DerivedKeys, device_name: &str) -> Result<Session> {
+    let url = normalize_server_url(server_url);
+    let client = Client::new(&url);
     let resp = client
         .login(&LoginRequest {
             email: email.to_string(),
@@ -103,7 +126,7 @@ pub async fn signin(
     };
     let mut session = Session::from_server_account(
         account,
-        &keys,
+        keys,
         ServerLink {
             url: url.clone(),
             token: None,
@@ -118,8 +141,12 @@ pub async fn signin(
 /// Obtain a fresh token for a linked session (after it expired or was
 /// revoked) using the master password.
 pub async fn reauthenticate(session: &mut Session, password: &str, secret_key: &SecretKey, device_name: &str) -> Result<()> {
-    let link = session.server().ok_or(Error::NotLinked)?.clone();
     let keys = session.verify_password(password, secret_key)?;
+    reauthenticate_with_keys(session, &keys, device_name).await
+}
+
+pub async fn reauthenticate_with_keys(session: &mut Session, keys: &DerivedKeys, device_name: &str) -> Result<()> {
+    let link = session.server().ok_or(Error::NotLinked)?.clone();
     let client = Client::new(&link.url);
     let resp = client
         .login(&LoginRequest {
@@ -128,22 +155,44 @@ pub async fn reauthenticate(session: &mut Session, password: &str, secret_key: &
             device_name: Some(device_name.to_string()),
         })
         .await?;
-    // Pick up a password changed on another device.
-    let info = resp.account;
-    if info.keyset != session.account().keyset {
+    if resp.account.keyset != session.account().keyset {
         return Err(Error::Protocol(
-            "the account keyset changed on the server; sign in again".into(),
+            "the master password was changed on another device; remove this account from the device and sign in again"
+                .into(),
         ));
     }
     session.set_server(&link.url, &resp.token);
     Ok(())
 }
 
+/// Access to a session that may live elsewhere (e.g. inside a UI signal).
+///
+/// [`sync_with`] only borrows the session for short, synchronous steps and
+/// never across network calls, so apps stay responsive (and editable) while
+/// syncing.
+pub trait SessionAccess {
+    /// Run `f` on the session. Fails when the session is gone (locked).
+    fn with_session<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> Result<R>;
+}
+
+impl SessionAccess for &mut Session {
+    fn with_session<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> Result<R> {
+        Ok(f(self))
+    }
+}
+
 /// Synchronise all vaults with the server.
 pub async fn sync(session: &mut Session) -> Result<SyncReport> {
-    let client = client_for(session)?;
+    let mut access = session;
+    sync_with(&mut access).await
+}
 
-    for v in session.vaults_pending(SyncState::PendingCreate) {
+/// Synchronise using short-lived borrows of the session (see [`SessionAccess`]).
+pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
+    let client = access.with_session(|s| client_for(s))??;
+
+    let creates = access.with_session(|s| s.vaults_pending(SyncState::PendingCreate))?;
+    for v in creates {
         client
             .create_vault(&CreateVaultRequest {
                 id: v.id.clone(),
@@ -151,9 +200,10 @@ pub async fn sync(session: &mut Session) -> Result<SyncReport> {
                 wrapped_key: v.wrapped_key.clone(),
             })
             .await?;
-        session.mark_vault_synced(&v.id);
+        access.with_session(|s| s.mark_vault_synced(&v.id))?;
     }
-    for v in session.vaults_pending(SyncState::PendingUpdate) {
+    let updates = access.with_session(|s| s.vaults_pending(SyncState::PendingUpdate))?;
+    for v in updates {
         if v.role.can_manage() {
             match client.update_vault(&v.id, &UpdateVaultRequest { meta: v.meta.clone() }).await {
                 Ok(()) => {}
@@ -161,30 +211,35 @@ pub async fn sync(session: &mut Session) -> Result<SyncReport> {
                 Err(e) => return Err(e),
             }
         }
-        session.mark_vault_synced(&v.id);
+        // Only mark synced if the metadata was not changed again meanwhile.
+        access.with_session(|s| {
+            if s.profile().vault(&v.id).is_some_and(|cur| cur.meta == v.meta) {
+                s.mark_vault_synced(&v.id);
+            }
+        })?;
     }
-    for v in session.vaults_pending(SyncState::PendingDelete) {
+    let deletes = access.with_session(|s| s.vaults_pending(SyncState::PendingDelete))?;
+    for v in deletes {
         match client.delete_vault(&v.id).await {
             Ok(()) => {}
             Err(e) if e.is_not_found() => {}
             Err(e) => return Err(e),
         }
-        session.forget_vault(&v.id);
+        access.with_session(|s| s.forget_vault(&v.id))?;
     }
 
     let mut total = SyncReport::default();
     for _ in 0..5 {
-        let req = session.sync_request();
+        let req = access.with_session(|s| s.sync_request())?;
         let resp = client.sync(&req).await?;
-        let report = session.apply_sync_response(resp)?;
+        let (report, dirty) = access.with_session(|s| -> Result<(SyncReport, bool)> {
+            let report = s.apply_sync_response_for(Some(&req), resp)?;
+            let dirty = s.profile().items.iter().any(|i| {
+                i.dirty && s.profile().vault(&i.vault_id).is_some_and(|v| v.role.can_write())
+            });
+            Ok((report, dirty))
+        })??;
         total.merge(&report);
-        let dirty = session.profile().items.iter().any(|i| {
-            i.dirty
-                && session
-                    .profile()
-                    .vault(&i.vault_id)
-                    .is_some_and(|v| v.role.can_write())
-        });
         if !report.needs_another_round && !dirty && report.vaults_added == 0 {
             break;
         }
@@ -245,6 +300,11 @@ pub async fn remove_member(session: &mut Session, vault_id: &str, account_id: &s
 /// server. Other devices are signed out by the server.
 pub async fn change_password(session: &mut Session, current: &str, new: &str, secret_key: &SecretKey) -> Result<()> {
     let change = session.prepare_password_change(current, new, secret_key)?;
+    submit_password_change(session, &change).await
+}
+
+/// Send a prepared password change to the server (if any) and apply it.
+pub async fn submit_password_change(session: &mut Session, change: &PasswordChange) -> Result<()> {
     if session.server().is_some() {
         let client = client_for(session)?;
         client
@@ -257,7 +317,7 @@ pub async fn change_password(session: &mut Session, current: &str, new: &str, se
             })
             .await?;
     }
-    session.commit_password_change(&change);
+    session.commit_password_change(change);
     Ok(())
 }
 
@@ -274,6 +334,10 @@ pub async fn sign_out(session: &mut Session) -> Result<()> {
 /// The local copy is turned into a local-only account.
 pub async fn delete_server_account(session: &mut Session, password: &str, secret_key: &SecretKey) -> Result<()> {
     let keys = session.verify_password(password, secret_key)?;
+    delete_server_account_with_keys(session, &keys).await
+}
+
+pub async fn delete_server_account_with_keys(session: &mut Session, keys: &DerivedKeys) -> Result<()> {
     client_for(session)?
         .delete_account(&b64(keys.auth_key.as_bytes()))
         .await?;
@@ -285,15 +349,29 @@ pub async fn delete_server_account(session: &mut Session, password: &str, secret
 /// first five hex characters of each SHA-1 hash are sent. Returns breach
 /// counts by item id.
 pub async fn breach_check(session: &Session) -> Result<HashMap<String, u64>> {
+    breach_check_hashes(breach_check_prepare(session)).await
+}
+
+/// Hash all passwords (item id, SHA-1 prefix, SHA-1 suffix) so the network
+/// part can run without access to the session.
+pub fn breach_check_prepare(session: &Session) -> Vec<(String, String, String)> {
+    session
+        .all_items()
+        .filter(|(_, item)| !item.is_trashed())
+        .filter_map(|(_, item)| {
+            item.password().map(|pw| {
+                let (prefix, suffix) = watchtower::hibp_hash(pw);
+                (item.id.clone(), prefix, suffix)
+            })
+        })
+        .collect()
+}
+
+/// Query the Have I Been Pwned range API for prepared hashes.
+pub async fn breach_check_hashes(entries: Vec<(String, String, String)>) -> Result<HashMap<String, u64>> {
     let mut by_prefix: HashMap<String, Vec<(String, String)>> = HashMap::new();
-    for (_, item) in session.all_items() {
-        if item.is_trashed() {
-            continue;
-        }
-        if let Some(pw) = item.password() {
-            let (prefix, suffix) = watchtower::hibp_hash(pw);
-            by_prefix.entry(prefix).or_default().push((item.id.clone(), suffix));
-        }
+    for (id, prefix, suffix) in entries {
+        by_prefix.entry(prefix).or_default().push((id, suffix));
     }
     let http = reqwest::Client::new();
     let mut out = HashMap::new();

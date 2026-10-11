@@ -99,6 +99,21 @@ impl Session {
 
     /// Merge a server response into the local state.
     pub fn apply_sync_response(&mut self, response: SyncResponse) -> Result<SyncReport> {
+        self.apply_sync_response_for(None, response)
+    }
+
+    /// Merge a server response, knowing which request produced it. Local
+    /// edits made while the request was in flight stay marked as changed
+    /// (they are uploaded in the next round instead of being lost).
+    pub fn apply_sync_response_for(&mut self, request: Option<&SyncRequest>, response: SyncResponse) -> Result<SyncReport> {
+        let sent: std::collections::HashMap<&str, &Option<crate::crypto::EncString>> = request
+            .map(|r| {
+                r.vaults
+                    .iter()
+                    .flat_map(|v| v.changes.iter().map(|c| (c.id.as_str(), &c.data)))
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut report = SyncReport::default();
         self.apply_vault_list(&response.vaults, &mut report)?;
 
@@ -109,10 +124,18 @@ impl Session {
             }
 
             for acc in &result.accepted {
+                let changed_since = sent
+                    .get(acc.id.as_str())
+                    .map(|data| self.profile().item(&acc.id).is_some_and(|r| &r.data != *data))
+                    .unwrap_or(false);
                 let p = self.profile_mut();
                 if let Some(pos) = p.items.iter().position(|i| i.id == acc.id) {
                     report.uploaded += 1;
-                    if p.items[pos].data.is_none() {
+                    if changed_since {
+                        // Edited again meanwhile: keep it dirty, rebased.
+                        p.items[pos].revision = acc.revision;
+                        report.needs_another_round = true;
+                    } else if p.items[pos].data.is_none() {
                         p.items.remove(pos);
                     } else {
                         p.items[pos].revision = acc.revision;
@@ -516,6 +539,30 @@ mod tests {
         assert_eq!(b.item(&id).unwrap().notes, "important");
         server.full_sync(&mut a);
         assert_eq!(a.item(&id).unwrap().notes, "important");
+    }
+
+    #[test]
+    fn edits_during_flight_are_not_lost() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let id = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        server.create_vaults(&mut a);
+        let req = a.sync_request();
+        // The user edits while the request is on the wire.
+        let mut item = a.item(&id).unwrap().clone();
+        item.set_value("password", "p2");
+        a.update_item(item).unwrap();
+        let resp = server.sync(req.clone());
+        let r = a.apply_sync_response_for(Some(&req), resp).unwrap();
+        assert!(r.needs_another_round);
+        assert!(a.profile().item(&id).unwrap().dirty);
+        server.full_sync(&mut a);
+        assert!(!a.profile().has_pending_changes());
+        let b = second_device(&a);
+        assert_eq!(b.item(&id).unwrap().password(), Some("p2"));
+        let stored = server.items.iter().find(|i| i.id == id).unwrap();
+        assert_eq!(stored.revision, 2);
     }
 
     #[test]
