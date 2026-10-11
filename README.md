@@ -18,6 +18,13 @@
 
 **🇳🇱 Nederlands:** [lees verder in het Nederlands](#-nederlands) ↓
 
+<p align="center">
+  <img src="docs/screenshots/item.png" width="49%" alt="Item details with live one-time code">
+  <img src="docs/screenshots/dark.png" width="49%" alt="Dark theme">
+  <img src="docs/screenshots/watchtower.png" width="49%" alt="Watchtower">
+  <img src="docs/screenshots/generator.png" width="49%" alt="Password generator">
+</p>
+
 2Secret keeps your passwords, credit cards, notes, identities, SSH keys and
 other secrets end-to-end encrypted. It works like 1Password – master password
 **plus** a Secret Key, vaults you can share with family or colleagues,
@@ -37,7 +44,8 @@ is free, open source, and you can host the sync server yourself.
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
-| ⌨️ **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
+| ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
+| 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. |
 | 🌍 **English & Nederlands** | The apps follow your system language. |

@@ -113,6 +113,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
 /* Main shell */
 .shell { flex: 1; display: grid; grid-template-columns: 240px 340px 1fr; min-height: 0; }
+.shell.pages { grid-template-columns: 240px 1fr; }
 .sidebar { background: var(--sidebar); color: var(--sidebar-text); display: flex; flex-direction: column; min-height: 0; }
 .sidebar-head { padding: 14px 12px 10px; display: flex; align-items: center; gap: 10px; }
 .sidebar-head .who { min-width: 0; flex: 1; }
@@ -247,7 +248,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .root.ext { width: 380px; height: 600px; }
 
 /* Responsive: one pane at a time on narrow screens (phones, small windows). */
-@media (max-width: 1000px) { .shell { grid-template-columns: 210px 290px 1fr; } }
+@media (max-width: 1000px) { .shell { grid-template-columns: 210px 290px 1fr; } .shell.pages { grid-template-columns: 210px 1fr; } }
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr !important; }
   .shell > .pane-hidden { display: none !important; }

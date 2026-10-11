@@ -145,6 +145,8 @@ pub static NAV: GlobalSignal<Nav> = Signal::global(|| Nav::All);
 pub static SELECTED: GlobalSignal<Option<String>> = Signal::global(|| None);
 pub static EDITING: GlobalSignal<Option<Draft>> = Signal::global(|| None);
 pub static SEARCH: GlobalSignal<String> = Signal::global(String::new);
+/// The search field (for the Ctrl/Cmd+F shortcut).
+pub static SEARCH_EL: GlobalSignal<Option<std::rc::Rc<MountedData>>> = Signal::global(|| None);
 /// Bumped when the search text is changed programmatically.
 pub static SEARCH_RESET: GlobalSignal<u32> = Signal::global(|| 0);
 pub static TOAST: GlobalSignal<Option<Toast>> = Signal::global(|| None);

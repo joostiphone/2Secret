@@ -53,7 +53,7 @@ pub fn Shell() -> Element {
     let page = nav.is_page();
     let class = |p: Pane| if pane == p { "" } else { "pane-hidden" };
     rsx! {
-        div { class: "shell", style: if page { "grid-template-columns: var(--sb, 240px) 1fr" } else { "" },
+        div { class: if page { "shell pages" } else { "shell" },
             nav { class: "sidebar {class(Pane::Nav)}", Sidebar {} }
             if page {
                 main { class: if pane == Pane::Nav { "detail-pane pane-hidden" } else { "detail-pane" },
@@ -327,6 +327,7 @@ fn ItemList() -> Element {
                 for k in [SEARCH_RESET()] {
                     input {
                         key: "{k}",
+                        onmounted: move |e: MountedEvent| *SEARCH_EL.write() = Some(e.data()),
                         placeholder: t("list.search"),
                         initial_value: "{search}",
                         autocapitalize: "off",

@@ -45,6 +45,44 @@ fn main() {
     dioxus::launch(App);
 }
 
+/// Keyboard shortcuts: Ctrl/Cmd+L lock, Ctrl/Cmd+N new item, Ctrl/Cmd+F search,
+/// Escape closes dialogs.
+fn shortcut(e: KeyboardEvent) {
+    let m = e.modifiers();
+    if e.key() == Key::Escape && MODAL.peek().is_some() {
+        *MODAL.write() = None;
+        return;
+    }
+    if !(m.ctrl() || m.meta()) || *PHASE.peek() != Phase::Unlocked || BUSY.peek().is_some() {
+        return;
+    }
+    let Key::Character(c) = e.key() else { return };
+    match c.to_lowercase().as_str() {
+        "l" => {
+            e.prevent_default();
+            lock();
+        }
+        "n" if EDITING.peek().is_none() => {
+            e.prevent_default();
+            *MODAL.write() = Some(Modal::NewItem);
+        }
+        "f" => {
+            e.prevent_default();
+            if NAV.peek().is_page() {
+                *NAV.write() = Nav::All;
+            }
+            *PANE.write() = Pane::List;
+            let el = SEARCH_EL.peek().clone();
+            if let Some(el) = el {
+                spawn(async move {
+                    let _ = el.set_focus(true).await;
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
 #[component]
 fn App() -> Element {
     use_hook(|| {
@@ -66,7 +104,10 @@ fn App() -> Element {
             class: if extension::ENABLED { "root ext" } else { "root" },
             "data-theme": theme,
             onclick: move |_| touch(),
-            onkeydown: move |_| touch(),
+            onkeydown: move |e: KeyboardEvent| {
+                touch();
+                shortcut(e);
+            },
             match phase {
                 Phase::Loading => rsx! {},
                 Phase::Welcome => rsx! { Welcome {} },
