@@ -1,0 +1,7 @@
+/target
+/dist
+**/*.rs.bk
+.DS_Store
+*.tmp
+/crates/app/dist
+/crates/app/target
