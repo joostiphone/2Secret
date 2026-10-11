@@ -1,0 +1,20 @@
+[package]
+name = "twosecret-client"
+description = "HTTP client and sync engine for the 2Secret password manager (native and WebAssembly)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+twosecret-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+twosecret-server = { path = "../server" }
