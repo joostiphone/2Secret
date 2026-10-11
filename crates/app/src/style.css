@@ -80,6 +80,8 @@ label.label { display: block; font-size: 12px; font-weight: 600; color: var(--mu
 .input-group { display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); padding-right: 4px; }
 .input-group:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input-group .input { border: none; box-shadow: none !important; background: transparent; }
+.input-group.secret-area { align-items: flex-start; padding-top: 4px; }
+.input-group .input.masked { cursor: pointer; color: var(--muted); }
 input[type=range] { width: 100%; accent-color: var(--accent); }
 .error-box { background: var(--danger-soft); color: var(--danger); padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; }
 .info-box { background: var(--accent-soft); color: var(--text); padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; line-height: 1.5; }

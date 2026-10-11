@@ -44,6 +44,7 @@ For unattended use, `TWOSECRET_PASSWORD` can provide the master password
 2secret add login --title GitHub --username octocat --generate --url github.com --tag dev
 2secret add credit_card --title Visa --field number=4111111111111111 --field expiry=12/2030 --secret-field cvv=123
 2secret add secure_note --title "Wifi" --notes "SSID: Home"
+2secret add ssh_key --title deploy --generate   # new Ed25519 key, prints the public key
 2secret edit ITEM --password - --url https://new.example.com --remove-field "old field"
 2secret totp ITEM                    # current one-time code
 2secret copy ITEM --field password   # clipboard, cleared after 45 s

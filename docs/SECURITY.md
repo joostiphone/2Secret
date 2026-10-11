@@ -173,7 +173,9 @@ conflict never silently loses a password. Deletions are tombstones.
   of bugs (buffer overflows, use-after-free) in the crypto and parsing code.
 - **Auto-lock** after inactivity (default 10 minutes).
 - **Clipboard**: copied secrets are cleared after a configurable time
-  (default 90 s) if the clipboard still contains them.
+  (default 90 s) if the clipboard still contains them. Browsers only allow
+  reading the clipboard after a permission prompt, so the web vault and the
+  extension clear it without checking.
 - **CLI sessions** (`eval "$(2secret unlock)"`) store the account key
   encrypted with a random key that lives only in the shell's environment
   variable, and expire after 30 minutes of inactivity.

@@ -315,7 +315,14 @@ pub fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         None => session.default_vault_id().ok_or_else(|| anyhow!("no writable vault"))?,
     };
     let mut item = Item::new(category, "");
-    apply_opts(&mut item, &args.opts)?;
+    let mut opts = args.opts.clone();
+    if category == Category::SshKey && opts.generate {
+        // `--generate` creates a key pair for SSH Key items.
+        opts.generate = false;
+        let comment = opts.title.clone().unwrap_or_else(|| session.account().email.clone());
+        twosecret_core::ssh::fill_item(&mut item, &comment)?;
+    }
+    apply_opts(&mut item, &opts)?;
     if item.title.trim().is_empty() && item.urls.is_empty() {
         bail!("give the item a --title");
     }
@@ -326,7 +333,9 @@ pub fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
     } else {
         let item = session.item(&id).expect("just added");
         eprintln!("Created '{}' ({id}).", item.title);
-        if args.opts.generate {
+        if let (Category::SshKey, Some(public)) = (category, item.value("public_key")) {
+            println!("{public}");
+        } else if args.opts.generate {
             eprintln!("A new password was generated. Copy it with: 2secret copy {}", &id[..8]);
         }
     }

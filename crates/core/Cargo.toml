@@ -32,6 +32,7 @@ zxcvbn = "3"
 csv = "1.3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.37"
+ssh-key = { version = "0.6", default-features = false, features = ["alloc", "ed25519", "rand_core"] }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

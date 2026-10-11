@@ -254,6 +254,7 @@ static TABLE: &[Entry] = &[
     ("edit.totp_hint", "otpauth://… or setup key", "otpauth://… of instelsleutel"),
     ("edit.attach_hint", "Files up to 5 MB are encrypted and stored with the item.", "Bestanden tot 5 MB worden versleuteld en bij het item opgeslagen."),
     ("edit.err_title", "Give the item a title.", "Geef het item een titel."),
+    ("edit.generate_ssh", "Generate Ed25519 key", "Ed25519-sleutel genereren"),
 
     // Fields
     ("field.username", "username", "gebruikersnaam"),

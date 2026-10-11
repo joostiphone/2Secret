@@ -122,6 +122,18 @@ fn local_workflow() {
     cli(&home).args(["list", "--vault", "work"]).assert().success().stdout(predicate::str::contains("Visa"));
     cli(&home).args(["vault", "list"]).assert().success().stdout(predicate::str::contains("Work"));
 
+    // SSH keys can be generated.
+    cli(&home)
+        .args(["add", "ssh_key", "--title", "deploy", "--generate"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("ssh-ed25519 "));
+    cli(&home)
+        .args(["read", "2s://deploy/private_key"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("BEGIN OPENSSH PRIVATE KEY"));
+
     // Wrong password is refused.
     cli(&home)
         .args(["list"])
@@ -162,7 +174,7 @@ fn local_workflow() {
         .write_stdin("export-pass\n")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Imported 2 of 2"));
+        .stderr(predicate::str::contains("Imported 3 of 3"));
     cli(&home2).args(["read", "2s://GitHub/password"]).assert().success().stdout("a-new-password-42\n");
 
     // run: references in the environment are resolved for the child only.

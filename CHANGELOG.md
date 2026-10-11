@@ -13,7 +13,7 @@ First release of 2Secret.
 - Self-hostable zero-knowledge sync server with invite-only sign-ups.
 - 19 item types, custom fields, attachments, tags, favorites, trash,
   password history.
-- TOTP one-time passwords, password generator, Watchtower with Have I Been
-  Pwned breach check.
+- TOTP one-time passwords, password generator, Ed25519 SSH key generation,
+  Watchtower with Have I Been Pwned breach check.
 - Import from 1Password, Bitwarden, LastPass, Chrome, Firefox, Safari,
   KeePass, KeePassXC and Dashlane; encrypted and plain exports.

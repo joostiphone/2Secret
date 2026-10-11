@@ -427,17 +427,11 @@ mod imp {
         wasm_bindgen_futures::JsFuture::from(promise).await.is_ok()
     }
 
-    pub async fn clear_clipboard_if(text: &str) {
+    /// Browsers only let pages *read* the clipboard after a permission
+    /// prompt, so the web vault clears it without checking its contents.
+    pub async fn clear_clipboard_if(_text: &str) {
         let Some(window) = web_sys::window() else { return };
-        // Reading may be refused; only clear when we can confirm it is ours
-        // or when reading is not permitted at all.
-        let current = wasm_bindgen_futures::JsFuture::from(window.navigator().clipboard().read_text())
-            .await
-            .ok()
-            .and_then(|v| v.as_string());
-        if current.as_deref().is_none_or(|c| c == text) {
-            let _ = wasm_bindgen_futures::JsFuture::from(window.navigator().clipboard().write_text("")).await;
-        }
+        let _ = wasm_bindgen_futures::JsFuture::from(window.navigator().clipboard().write_text("")).await;
     }
 
     pub async fn save_file(name: &str, mime: &str, content: &[u8]) -> Result<String, String> {

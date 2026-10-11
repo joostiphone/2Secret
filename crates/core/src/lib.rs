@@ -19,6 +19,7 @@ pub mod item;
 pub mod profile;
 pub mod secret_ref;
 pub mod session;
+pub mod ssh;
 pub mod storage;
 pub mod strength;
 pub mod sync;

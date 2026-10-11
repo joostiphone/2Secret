@@ -6,7 +6,7 @@ use twosecret_core::item::{Attachment, Category, Field, FieldKind};
 use crate::components::item_view::human_size;
 use crate::components::widgets::*;
 use crate::i18n::{category_name, field_kind_name, field_label, t};
-use crate::icons::{Icon, ItemAvatar};
+use crate::icons::{either, Icon, ItemAvatar};
 use crate::state::*;
 
 fn draft_mut(f: impl FnOnce(&mut Draft)) {
@@ -30,6 +30,8 @@ pub fn ItemEditor() -> Element {
     let mut error = use_signal(|| None::<String>);
     // Bumped on structural URL changes so uncontrolled inputs are re-created.
     let mut url_rev = use_signal(|| 0u32);
+    // Bumped when field values are replaced programmatically (SSH key generation).
+    let mut field_rev = use_signal(|| 0u32);
     let draft = EDITING.read().clone();
     let Some(draft) = draft else { return rsx! {} };
     let item = draft.item.clone();
@@ -109,9 +111,28 @@ pub fn ItemEditor() -> Element {
                 }
                 div { class: "section",
                     for (idx , f) in item.fields.iter().enumerate() {
-                        EditField { key: "{f.id}", idx, field: f.clone(), title: item.title.clone() }
+                        EditField { key: "{f.id}-{field_rev}", idx, field: f.clone(), title: item.title.clone() }
                     }
                     div { class: "add-field-row",
+                        if item.category == Category::SshKey && item.value("private_key").is_none_or(|v| v.trim().is_empty()) {
+                            button { class: "btn small primary",
+                                onclick: move |_| {
+                                    let mut failed = None;
+                                    draft_mut(|d| {
+                                        let comment = if d.item.title.trim().is_empty() { "2secret".to_string() } else { d.item.title.clone() };
+                                        if let Err(e) = twosecret_core::ssh::fill_item(&mut d.item, &comment) {
+                                            failed = Some(e.to_string());
+                                        }
+                                    });
+                                    match failed {
+                                        Some(e) => toast_err(&e),
+                                        None => field_rev += 1,
+                                    }
+                                },
+                                Icon { name: "key", size: 14 }
+                                {t("edit.generate_ssh")}
+                            }
+                        }
                         select { class: "input", style: "width:auto",
                             onchange: move |e| {
                                 if let Some(k) = FieldKind::parse(&e.value()) { new_kind.set(k); }
@@ -230,6 +251,26 @@ fn mime_for(name: &str) -> &'static str {
     }
 }
 
+/// A concealed value that may span several lines. Hidden until revealed;
+/// revealing shows an editable text area.
+#[component]
+fn SecretArea(value: String, oninput: EventHandler<String>) -> Element {
+    let mut reveal = use_signal(|| value.is_empty());
+    rsx! {
+        div { class: "input-group secret-area",
+            if reveal() {
+                textarea { class: "input mono", initial_value: "{value}", autocomplete: "off", spellcheck: "false",
+                    autocapitalize: "off", oninput: move |e| oninput.call(e.value()) }
+            } else {
+                div { class: "input masked", onclick: move |_| reveal.set(true), "••••••••••" }
+            }
+            button { class: "icon-btn", r#type: "button", title: t("common.reveal"), onclick: move |_| reveal.toggle(),
+                Icon { name: either(reveal(), "eye-off", "eye"), size: 16 }
+            }
+        }
+    }
+}
+
 #[component]
 fn EditField(idx: usize, field: Field, title: String) -> Element {
     let label = field_label(&field);
@@ -264,6 +305,10 @@ fn EditField(idx: usize, field: Field, title: String) -> Element {
                     div { class: "label-input", "{label}" }
                 }
                 match field.kind {
+                    // Private keys span several lines, which single-line inputs would drop.
+                    FieldKind::Concealed if field.id == "private_key" || value.contains('\n') => rsx! {
+                        SecretArea { value: value.clone(), oninput: set }
+                    },
                     FieldKind::Concealed => rsx! {
                         PasswordInput { value: value.clone(), oninput: set, generate: is_password_field(&field) }
                         if is_password_field(&field) {
