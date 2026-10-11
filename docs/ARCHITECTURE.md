@@ -108,6 +108,6 @@ password history) and repeat until nothing is pending.
 | Linux / BSD | `$XDG_DATA_HOME/2secret` or `~/.local/share/2secret` |
 | macOS / iOS | `~/Library/Application Support/2Secret` |
 | Windows | `%APPDATA%\2Secret` |
-| Web / extension | `localStorage` keys `2secret.profile`, `2secret.device`, `2secret.prefs` |
+| Web / extension | IndexedDB database `2secret` (object store `kv`: `profile`, `device`, `prefs`) |
 
 `TWOSECRET_HOME` overrides the directory on desktop and CLI.

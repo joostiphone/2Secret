@@ -109,11 +109,24 @@ impl Ctx {
         if tty {
             eprint!("Unlocking… ");
         }
-        let session = Session::unlock(profile, &password, &sk);
+        let session = self.open_session(profile, &password, &sk);
         if tty {
             eprint!("\r            \r");
         }
-        Ok(session?)
+        session
+    }
+
+    /// Unlock locally; for linked accounts fall back to the server, which
+    /// knows about master password changes made on other devices.
+    fn open_session(&self, profile: Profile, password: &str, sk: &SecretKey) -> Result<Session> {
+        match Session::unlock(profile.clone(), password, sk) {
+            Err(twosecret_core::Error::WrongPassword) if profile.server.is_some() && !self.offline => {
+                let session = self.block_on(twosecret_client::unlock_online(profile, password, sk, &device_name()))?;
+                self.save(&session)?;
+                Ok(session)
+            }
+            other => Ok(other?),
+        }
     }
 
     /// Unlock and also return the verified password (for sensitive commands).
@@ -121,7 +134,7 @@ impl Ctx {
         let profile = self.load_profile()?;
         let sk = self.secret_key()?;
         let password = self.master_password("Master password: ")?;
-        let session = Session::unlock(profile, &password, &sk)?;
+        let session = self.open_session(profile, &password, &sk)?;
         Ok((session, password, sk))
     }
 

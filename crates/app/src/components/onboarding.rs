@@ -10,6 +10,7 @@ use crate::i18n::t;
 use crate::icons::Icon;
 use crate::platform;
 use crate::state::*;
+use twosecret_core::profile::PROFILE_KEY;
 
 #[component]
 pub fn Welcome() -> Element {
@@ -354,7 +355,17 @@ pub fn LockScreen() -> Element {
         error.set(None);
         spawn(async move {
             busy(t("busy.unlocking"));
-            let result = platform::run_heavy(move || Session::unlock(profile, &pw, &sk)).await;
+            let linked = profile.server.is_some();
+            let (pw2, profile2) = (pw.clone(), profile.clone());
+            let mut result =
+                platform::run_heavy(move || Session::unlock(profile, &pw, &sk)).await.map_err(|e| core_error(&e));
+            if linked && result.is_err() {
+                // The password may have been changed on another device.
+                result = unlock_online(profile2, pw2).await;
+                if let Ok(session) = &result {
+                    let _ = platform::storage().write(PROFILE_KEY, &session.profile().to_json());
+                }
+            }
             unbusy();
             match result {
                 Ok(session) => {
@@ -365,10 +376,10 @@ pub fn LockScreen() -> Element {
                     remember_unlock();
                     request_sync();
                 }
-                Err(e) => {
+                Err(msg) => {
                     password.set(String::new());
                     reset += 1;
-                    error.set(Some(core_error(&e)));
+                    error.set(Some(msg));
                 }
             }
         });

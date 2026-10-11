@@ -482,6 +482,26 @@ pub fn session_copy() -> Option<Session> {
     SESSION.peek().as_ref().and_then(|s| s.try_clone().ok())
 }
 
+/// Online unlock for linked accounts (handles master password changes made
+/// on another device and expired sessions). Runs Argon2id off the UI thread.
+pub async fn unlock_online(profile: Profile, password: String) -> Result<Session, String> {
+    let sk = secret_key().ok_or_else(|| t("err.no_account").to_string())?;
+    let url = profile.server.as_ref().map(|s| s.url.clone()).ok_or_else(|| t("err.not_linked").to_string())?;
+    let email = profile.account.email.clone();
+    let pre = twosecret_client::prelogin(&url, &email).await.map_err(|e| client_error(&e))?;
+    let salt = twosecret_core::util::unb64(&pre.salt).map_err(|e| core_error(&e))?;
+    let keys =
+        platform::run_heavy(move || twosecret_core::crypto::derive_keys(&password, &sk, &email, &salt, &pre.kdf))
+            .await
+            .map_err(|e| core_error(&e))?;
+    twosecret_client::unlock_online_with_keys(profile, &keys, &platform::device_name()).await.map_err(|e| match e {
+        twosecret_client::Error::Api { status: 401, .. } | twosecret_client::Error::Core(_) => {
+            t("err.wrong_password").to_string()
+        }
+        other => client_error(&other),
+    })
+}
+
 /// Extension: fill the active tab with an item's username, password and
 /// current one-time code, then close the popup.
 pub fn fill_item(id: &str) {

@@ -166,7 +166,8 @@ conflict never silently loses a password. Deletions are tombstones.
   owner-only permissions (`0600`), with one backup copy.
 - **Device secrets** (`device.json`): the Secret Key. Kept separate so the
   profile can be backed up or synced by other means without the Secret Key.
-- Web vault: both live in the browser's `localStorage` for the vault origin.
+- Web vault and extension: both live in the browser's IndexedDB for the
+  vault (or extension) origin.
 - Decrypted keys and items exist only in memory while unlocked and are wiped
   (zeroized) when the app locks. Rust's memory safety rules out whole classes
   of bugs (buffer overflows, use-after-free) in the crypto and parsing code.

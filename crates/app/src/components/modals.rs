@@ -8,7 +8,6 @@ use twosecret_core::profile::Role;
 use crate::components::widgets::*;
 use crate::i18n::{category_name, role_name, t};
 use crate::icons::{category_icon, either, Icon};
-use crate::platform;
 use crate::state::*;
 
 fn close() {
@@ -380,23 +379,13 @@ fn ReauthModal() -> Element {
     let mut error = use_signal(|| None::<String>);
     let submit = move || {
         let pw = password();
-        let (Some(session), Some(sk)) = (session_copy(), secret_key()) else { return };
+        let Some(profile) = SESSION.peek().as_ref().map(|s| s.profile().clone()) else { return };
         spawn(async move {
             busy(t("busy.signing_in"));
-            let (mut session, keys) = platform::run_heavy(move || {
-                let k = session.verify_password(&pw, &sk);
-                (session, k)
-            })
-            .await;
-            let result = match keys {
-                Ok(k) => twosecret_client::reauthenticate_with_keys(&mut session, &k, &platform::device_name())
-                    .await
-                    .map_err(|e| client_error(&e)),
-                Err(e) => Err(core_error(&e)),
-            };
+            let result = unlock_online(profile, pw).await;
             unbusy();
             match result {
-                Ok(()) => {
+                Ok(session) => {
                     install_session(session);
                     SYNC.write().needs_reauth = false;
                     close();

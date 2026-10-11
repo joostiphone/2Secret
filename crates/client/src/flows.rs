@@ -163,6 +163,59 @@ pub async fn reauthenticate_with_keys(session: &mut Session, keys: &DerivedKeys,
     Ok(())
 }
 
+/// Unlock a linked account with the help of the server. Needed after the
+/// master password was changed on another device: the local profile still
+/// holds the keyset encrypted with the old password. The server's keyset is
+/// adopted only if it decrypts with the new password *and* contains the same
+/// account key.
+pub async fn unlock_online(
+    profile: twosecret_core::Profile,
+    password: &str,
+    secret_key: &SecretKey,
+    device_name: &str,
+) -> Result<Session> {
+    let link = profile.server.clone().ok_or(Error::NotLinked)?;
+    let pre = prelogin(&link.url, &profile.account.email).await?;
+    let salt = unb64(&pre.salt)?;
+    let keys = derive_keys(password, secret_key, &profile.account.email, &salt, &pre.kdf)?;
+    unlock_online_with_keys(profile, &keys, device_name).await
+}
+
+/// Second half of [`unlock_online`], with keys derived from the server's
+/// current salt and KDF parameters.
+pub async fn unlock_online_with_keys(
+    mut profile: twosecret_core::Profile,
+    keys: &DerivedKeys,
+    device_name: &str,
+) -> Result<Session> {
+    let link = profile.server.clone().ok_or(Error::NotLinked)?;
+    let resp = Client::new(&link.url)
+        .login(&LoginRequest {
+            email: profile.account.email.clone(),
+            auth_key: b64(keys.auth_key.as_bytes()),
+            device_name: Some(device_name.to_string()),
+        })
+        .await?;
+    let info = resp.account;
+    if info.account_id != profile.account.id {
+        return Err(Error::Protocol("the server returned a different account".into()));
+    }
+    let new_keyset = twosecret_core::crypto::Keyset::decrypt(&info.keyset, &keys.master_key)?;
+    // If we can still open the old keyset, make sure it is the same account key.
+    if let Ok(session) = Session::open(profile.clone(), keys) {
+        if session.account_key() != &new_keyset.account_key {
+            return Err(Error::Protocol("the account key on the server does not match this device".into()));
+        }
+    }
+    profile.account.salt = info.salt;
+    profile.account.kdf = info.kdf;
+    profile.account.keyset = info.keyset;
+    profile.account.name = info.name;
+    let mut session = Session::open(profile, keys)?;
+    session.set_server(&link.url, &resp.token);
+    Ok(session)
+}
+
 /// Access to a session that may live elsewhere (e.g. inside a UI signal).
 ///
 /// [`sync_with`] only borrows the session for short, synchronous steps and

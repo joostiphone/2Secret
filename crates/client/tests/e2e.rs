@@ -287,3 +287,27 @@ async fn server_enforces_read_only_access() {
         .unwrap();
     assert!(resp.results.iter().all(|r| r.vault_id != shared));
 }
+
+#[tokio::test]
+async fn password_changed_on_other_device() {
+    let url = start_server(Config::default()).await;
+    let (mut a, sk) = client::signup(&url, "G", "g@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();
+    let v = a.default_vault_id().unwrap();
+    let id = a.add_item(&v, Item::login("Mail", "g", "pw", None)).unwrap();
+    client::sync(&mut a).await.unwrap();
+    let b = client::signin(&url, "g@example.com", PW, &sk, "b").await.unwrap();
+    let b_profile = b.profile().clone();
+    drop(b);
+
+    client::change_password(&mut a, PW, "the new master password", &sk).await.unwrap();
+
+    // Device B still has the old keyset: the new password fails locally...
+    assert!(Session::unlock(b_profile.clone(), "the new master password", &sk).is_err());
+    // ...but works online, which also updates B's keyset.
+    let mut b = client::unlock_online(b_profile.clone(), "the new master password", &sk, "b").await.unwrap();
+    assert_eq!(b.item(&id).unwrap().password(), Some("pw"));
+    client::sync(&mut b).await.unwrap();
+    assert!(Session::unlock(b.profile().clone(), "the new master password", &sk).is_ok());
+    // The old password is useless online.
+    assert!(client::unlock_online(b_profile, PW, &sk, "b").await.is_err());
+}
