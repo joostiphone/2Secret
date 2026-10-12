@@ -52,3 +52,22 @@ or Apache-2.0 license, at the user's option.
 3. The workflow builds all installers and the Docker image and publishes the
    release with all downloads attached. Versions with a suffix (`v1.3.0-beta.1`)
    become pre-releases.
+
+### Signing the macOS app
+
+Without further setup the macOS app is signed ad hoc, and people have to allow
+it once under *System Settings → Privacy & Security*. With an Apple Developer
+Program membership the release workflow signs it with your Developer ID and
+has Apple notarize it, so it opens without warnings. Add these repository
+secrets (*Settings → Secrets and variables → Actions*):
+
+| Secret | Value |
+|---|---|
+| `APPLE_CERTIFICATE` | Your *Developer ID Application* certificate with its private key, exported from Keychain Access as `.p12` and base64 encoded (`base64 -i certificate.p12 \| pbcopy`) |
+| `APPLE_CERTIFICATE_PASSWORD` | The password you chose when exporting the `.p12` |
+| `APPLE_ID` | The Apple ID of the developer account |
+| `APPLE_PASSWORD` | An app-specific password for that Apple ID (account.apple.com → *Sign-In and Security*) |
+| `APPLE_TEAM_ID` | Your 10-character Team ID (developer.apple.com → *Account → Membership details*) |
+
+Create the certificate on a Mac in Xcode (*Settings → Accounts → Manage
+Certificates → + → Developer ID Application*) or on developer.apple.com.

@@ -7,6 +7,8 @@
 
 It stores only encrypted data (see [SECURITY.md](SECURITY.md)) in a SQLite
 database. A small VPS, a Raspberry Pi or a NAS is plenty for a family or team.
+The Docker image `ghcr.io/joostiphone/2secret` runs on x86_64 and ARM64
+(64-bit Raspberry Pi OS, ARM-based NAS and cloud servers).
 
 ## Option 1: Docker Compose with automatic HTTPS (recommended)
 
@@ -26,10 +28,12 @@ desktop/mobile apps, the extension or the CLI.
 ## Option 2: Docker only
 
 ```sh
-docker build -t 2secret .
 docker run -d --name 2secret -p 127.0.0.1:8743:8743 -v 2secret-data:/data \
-  -e TWOSECRET_SIGNUPS=invite -e TWOSECRET_INVITE_CODES=my-secret-code 2secret
+  -e TWOSECRET_SIGNUPS=invite -e TWOSECRET_INVITE_CODES=my-secret-code \
+  ghcr.io/joostiphone/2secret:latest
 ```
+
+To build the image yourself instead: `docker build -t 2secret .`
 
 Put a TLS-terminating reverse proxy in front of it (see below).
 

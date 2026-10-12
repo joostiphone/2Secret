@@ -125,7 +125,7 @@ jobs:
         working-directory: crates/app
         shell: bash
         run: dx bundle --platform desktop --release ${{ matrix.types }} --out-dir "$GITHUB_WORKSPACE/bundles"
-      - name: Bundle, sign and package (macOS)
+      - name: Bundle (macOS)
         if: runner.os == 'macOS'
         working-directory: crates/app
         run: |
@@ -140,20 +140,80 @@ jobs:
           mkdir -p "$RUNNER_TEMP/llvm" && ln -sf "$llvm" "$RUNNER_TEMP/llvm/libLLVM.dylib"
           DYLD_LIBRARY_PATH="$RUNNER_TEMP/llvm" dx bundle --platform desktop --release \
             --target ${{ matrix.target }} --package-types macos --out-dir "$RUNNER_TEMP/app"
-
-          # Without a Developer ID, sign ad hoc: a downloaded app with an
-          # unsigned bundle is reported as "damaged", an ad-hoc signed one can
-          # be allowed in System Settings → Privacy & Security.
+      - name: Sign, notarize and package (macOS)
+        if: runner.os == 'macOS'
+        # Set these repository secrets to sign with a Developer ID and notarize
+        # (see CONTRIBUTING.md); without them the app is signed ad hoc.
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
           app="$(find "$RUNNER_TEMP/app" -maxdepth 2 -name '*.app' -type d -print -quit)"
-          codesign --force --deep --sign - "$app"
+          dmg="$GITHUB_WORKSPACE/bundles/2Secret_${TAG#v}_${{ matrix.arch }}.dmg"
+          mkdir -p "$GITHUB_WORKSPACE/bundles" "$RUNNER_TEMP/dmg"
+
+          notarize() {
+            out="$(xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" --wait --output-format json)" || true
+            echo "$out"
+            status="$(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))')"
+            if [ "$status" != "Accepted" ]; then
+              id="$(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))')"
+              [ -n "$id" ] && xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+              echo "::error::Notarization of $(basename "$1") failed: $status"
+              exit 1
+            fi
+          }
+
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            # Developer ID certificate in a temporary keychain.
+            keychain="$RUNNER_TEMP/signing.keychain-db"
+            keychain_password="$(openssl rand -hex 24)"
+            echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            rm "$RUNNER_TEMP/certificate.p12"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+            security list-keychains -d user -s "$keychain" login.keychain-db
+            identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+            if [ -z "$identity" ]; then
+              echo "::error::APPLE_CERTIFICATE contains no 'Developer ID Application' certificate"
+              exit 1
+            fi
+            echo "Signing with: $identity"
+            codesign --force --deep --options runtime --timestamp --sign "$identity" "$app"
+          else
+            # Without a Developer ID, sign ad hoc: a downloaded app with an
+            # unsigned bundle is reported as "damaged", an ad-hoc signed one can
+            # be allowed in System Settings → Privacy & Security.
+            codesign --force --deep --sign - "$app"
+          fi
           codesign --verify --deep --strict --verbose=2 "$app"
           lipo -info "$app/Contents/MacOS/"*
 
-          mkdir -p "$RUNNER_TEMP/dmg" "$GITHUB_WORKSPACE/bundles"
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_ID" ]; then
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/app.zip"
+            notarize "$RUNNER_TEMP/app.zip"
+            xcrun stapler staple "$app"
+          fi
+
           cp -R "$app" "$RUNNER_TEMP/dmg/"
           ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
-          hdiutil create -volname 2Secret -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO \
-            "$GITHUB_WORKSPACE/bundles/2Secret_${TAG#v}_${{ matrix.arch }}.dmg"
+          hdiutil create -volname 2Secret -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$dmg"
+
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            codesign --force --timestamp --sign "$identity" "$dmg"
+            if [ -n "$APPLE_ID" ]; then
+              notarize "$dmg"
+              xcrun stapler staple "$dmg"
+              spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+            fi
+          fi
       - name: Bundle RPM (with Fedora package names)
         if: runner.os == 'Linux'
         working-directory: crates/app
@@ -187,7 +247,7 @@ jobs:
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - working-directory: crates/app
         run: dx bundle --platform web --release
-      - run: mkdir out && tar czf out/2secret-web-${TAG}.tar.gz -C crates/app/dist/public .
+      - run: mkdir out && tar czf "out/2secret-web-${TAG}.tar.gz" -C crates/app/dist/public .
       - uses: actions/upload-artifact@v4
         with:
           name: dist-web
@@ -206,7 +266,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
-      - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip out/2secret-extension-${TAG}.zip
+      - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip "out/2secret-extension-${TAG}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-extension
@@ -226,7 +286,7 @@ jobs:
           merge-multiple: true
       - name: Checksums and release notes
         run: |
-          cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS && cd ..
+          cd out && sha256sum -- * > SHA256SUMS && cat SHA256SUMS && cd ..
           awk '/^## /{if (seen) exit; seen=1; next} seen' CHANGELOG.md > notes.md
           cat .github/release-notes.md >> notes.md
       - uses: softprops/action-gh-release@v2
@@ -248,6 +308,7 @@ jobs:
       DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -265,6 +326,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

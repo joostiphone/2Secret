@@ -12,13 +12,14 @@
 | `2secret-extension-*.zip` | Browser extension for Chrome, Edge, Brave and Firefox (load unpacked) |
 | `SHA256SUMS` | Checksums of all files |
 
-Server image: `docker pull ghcr.io/joostiphone/2secret:latest` – see
+Server image for x86_64 and ARM64 (e.g. Raspberry Pi 4/5 with a 64-bit OS):
+`docker pull ghcr.io/joostiphone/2secret:latest` – see
 [self-hosting](https://github.com/joostiphone/2Secret/blob/HEAD/docs/SELF-HOSTING.md).
 
-The apps are not signed with an Apple Developer ID yet. On macOS, drag 2Secret
-to *Applications* and open it; when macOS says it cannot verify the app, open
-*System Settings → Privacy & Security* and click *Open Anyway* (on macOS 14 and
-older you can also right-click the app and choose *Open*).
+On macOS, drag 2Secret to *Applications* and open it. If macOS says it cannot
+verify the app, open *System Settings → Privacy & Security* and click *Open
+Anyway* (on macOS 14 and older you can also right-click the app and choose
+*Open*).
 On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*).
 
 FreeBSD, OpenBSD, NetBSD and iOS: build from source, see the

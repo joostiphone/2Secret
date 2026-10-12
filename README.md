@@ -76,7 +76,7 @@ vaults, run the server – it also serves the web vault:
 ```sh
 docker compose -f deploy/docker-compose.yml up -d     # with automatic HTTPS via Caddy
 # or
-docker build -t 2secret . && docker run -p 8743:8743 -v 2secret-data:/data 2secret
+docker run -p 8743:8743 -v 2secret-data:/data ghcr.io/joostiphone/2secret:latest
 ```
 
 See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) for TLS, invite-only sign-ups, backups and systemd.

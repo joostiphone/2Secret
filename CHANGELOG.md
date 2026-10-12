@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- The Docker image is also available for ARM64 (Raspberry Pi, ARM servers).
+- The release workflow can sign and notarize the macOS app with an Apple
+  Developer ID (see CONTRIBUTING.md); without one it stays signed ad hoc.
+
 ## 1.0.1
 
 - macOS: separate downloads for Apple silicon and Intel Macs; the app is

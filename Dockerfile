@@ -1,27 +1,57 @@
-# 2Secret server + web vault in one small image.
+# 2Secret server + web vault in one small image (linux/amd64 and linux/arm64).
 #
 #   docker build -t 2secret .
 #   docker run -p 8743:8743 -v 2secret-data:/data 2secret
 #
+#   # both architectures (needs QEMU for the final stage's RUN):
+#   docker buildx build --platform linux/amd64,linux/arm64 -t 2secret .
+#
 # Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of it.
 
-FROM rust:1-trixie AS build
+# The web vault is WebAssembly and the same for every architecture: build it
+# once, natively on the build machine.
+FROM --platform=$BUILDPLATFORM rust:1-trixie AS web
 ARG DX_VERSION=0.7.10
 RUN rustup target add wasm32-unknown-unknown \
- && curl -sSfL "https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-x86_64-unknown-linux-gnu.tar.gz" \
+ && curl -sSfL "https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-$(uname -m)-unknown-linux-gnu.tar.gz" \
     | tar xz -C /usr/local/cargo/bin
 WORKDIR /src
 COPY . .
-RUN cargo build --release -p twosecret-server
 RUN cd crates/app && dx bundle --platform web --release
+
+# The server is cross-compiled on the build machine for the target architecture.
+FROM --platform=$BUILDPLATFORM rust:1-trixie AS server
+ARG BUILDARCH
+ARG TARGETARCH
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu; gcc=x86-64-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; gcc=aarch64-linux-gnu ;; \
+      *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    if [ "$TARGETARCH" != "$BUILDARCH" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends "gcc-$gcc" "libc6-dev-$TARGETARCH-cross"; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    rustup target add "$triple"; \
+    echo "$triple" > /triple
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+    CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+WORKDIR /src
+COPY . .
+RUN triple="$(cat /triple)" \
+ && cargo build --release -p twosecret-server --target "$triple" \
+ && cp "target/$triple/release/2secret-server" /2secret-server
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home /data twosecret \
  && mkdir -p /data && chown twosecret /data
-COPY --from=build /src/target/release/2secret-server /usr/local/bin/2secret-server
-COPY --from=build /src/crates/app/dist/public /srv/2secret-web
+COPY --from=server /2secret-server /usr/local/bin/2secret-server
+COPY --from=web /src/crates/app/dist/public /srv/2secret-web
 ENV TWOSECRET_BIND=0.0.0.0:8743 \
     TWOSECRET_DATA_DIR=/data \
     TWOSECRET_WEB_DIR=/srv/2secret-web
