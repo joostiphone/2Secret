@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- iOS AutoFill: fill passwords and sign in with passkeys in Safari and apps,
+  after Face ID or Touch ID (needs *Unlock with Face ID* in the app).
+- The iOS app can be published on the App Store: an Xcode project with the
+  AutoFill extension (`ios/`), store texts and screenshots in English and
+  Dutch, and automatic uploads to TestFlight (see docs/APP-STORE.md).
 - Android app (Android 7 and newer), attached to releases as a signed `.apk`
   and an `.aab` for app stores. Its data stays out of Android's cloud backups.
 - Passkeys: the browser extension offers to save new passkeys in 2Secret and

@@ -344,6 +344,7 @@ fn finish_unlock(session: Session) {
     *PHASE.write() = Phase::Unlocked;
     touch();
     remember_unlock();
+    refresh_autofill();
     request_sync();
 }
 

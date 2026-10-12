@@ -158,8 +158,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build for iOS devices
         run: cargo build -p twosecret-app --release --target aarch64-apple-ios --no-default-features --features mobile
-      - name: Build for the iOS simulator
-        run: cargo build -p twosecret-app --target aarch64-apple-ios-sim --no-default-features --features mobile
+      - name: App and AutoFill extension for the simulator (Xcode)
+        run: |
+          brew install xcodegen
+          scripts/ios-appstore.sh
 
   freebsd:
     name: FreeBSD

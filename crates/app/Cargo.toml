@@ -14,6 +14,10 @@ authors.workspace = true
 name = "2-secret"
 path = "src/main.rs"
 
+[lib]
+name = "twosecret_app"
+path = "src/lib.rs"
+
 [features]
 default = ["desktop"]
 desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio"]
@@ -52,9 +56,10 @@ security-framework = "3"
 security-framework-sys = "2"
 core-foundation = "0.10"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSFileManager", "NSURL", "NSArray", "NSData"] }
 objc2-local-authentication = { version = "0.3", default-features = false, features = ["std", "block2", "LAContext", "LAError", "LABiometryType"] }
 block2 = "0.6"
+objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
 
 # Unlocking with Windows Hello.
 [target.'cfg(windows)'.dependencies]

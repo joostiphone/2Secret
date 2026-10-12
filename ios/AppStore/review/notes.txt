@@ -1,0 +1,8 @@
+No account with us is needed. On first launch choose "Create a new account",
+fill in a name, an e-mail address and a master password (at least 12
+characters), and leave "Sync with a 2Secret server" off. The vault then
+stays on the device. Syncing needs the user's own self-hosted 2Secret server
+(open source, https://github.com/joostiphone/2Secret).
+
+AutoFill: turn on "Unlock with Face ID" in Settings → Security in the app,
+then enable 2Secret under iOS Settings → General → AutoFill & Passwords.

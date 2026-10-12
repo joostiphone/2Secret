@@ -9,6 +9,7 @@
 //! Windows, Linux, the BSDs, iOS and the web (`wasm32-unknown-unknown`).
 
 pub mod api;
+pub mod autofill;
 pub mod biometric;
 pub mod brand;
 pub mod crypto;

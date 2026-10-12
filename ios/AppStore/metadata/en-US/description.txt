@@ -1,0 +1,24 @@
+2Secret keeps your passwords, passkeys, cards, notes, identities and other secrets safe – end-to-end encrypted, open source, and under your control.
+
+SECURITY FIRST
+• Everything is encrypted on your device before it is stored or synced (XChaCha20-Poly1305, 256-bit keys).
+• Your vault is protected by your master password and a 130-bit Secret Key that never leaves your devices. Even a stolen server database is useless without both.
+• Sharing with family or colleagues uses quantum-resistant encryption (X25519 + ML-KEM-768).
+• Unlock with Face ID or Touch ID. The master password is still asked every 14 days, so you never forget it.
+• Fully open source: anyone can check how it works.
+
+YOUR DATA, YOUR CHOICE
+• Use 2Secret on this device only – no account with us, no server needed.
+• Or sync between your devices through your own 2Secret server (a free Docker container on a Raspberry Pi, NAS or VPS). We never see or store your vault.
+
+EVERYTHING IN ONE PLACE
+• Logins, passkeys, credit cards, bank accounts, identities, passports, Wi-Fi, SSH keys, API keys, software licenses, secure notes and more.
+• Built-in authenticator for one-time codes (TOTP).
+• AutoFill passwords and passkeys in Safari and apps.
+• Watchtower finds weak, reused and breached passwords and expiring cards.
+• Strong password and passphrase generator.
+• Shared vaults with viewer, editor and manager roles.
+• Import from 1Password, Bitwarden, LastPass, KeePass, Chrome, Firefox and more.
+• Apps for iPhone, iPad, Mac, Windows, Linux, Android, the web and your browser.
+
+No subscription. No ads. No tracking.

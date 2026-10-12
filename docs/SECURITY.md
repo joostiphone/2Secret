@@ -264,6 +264,14 @@ conflict never silently loses a password. Deletions are tombstones.
   challenge: the private key stays in the TPM and the device key is never
   stored. The master password is required again every 14 days, and turning
   the feature off or removing the account deletes the device key.
+- **iOS AutoFill** (only while biometric unlock is on): the app shares the
+  logins and passkeys AutoFill may fill with its extension through a file in
+  the app group, encrypted with ChaCha20-Poly1305 under a new random key on
+  every write. The key is a keychain item that opens only after Face ID or
+  Touch ID with the current enrolment, on this device. The extension cannot
+  change the vault and stops filling after the same 14 days. iOS receives
+  websites, user names and passkey IDs for its suggestions, never passwords
+  or keys. Details: [APP-STORE.md](APP-STORE.md#how-autofill-works).
 - **Clipboard**: copied secrets are cleared after a configurable time
   (default 90 s) if the clipboard still contains them. Browsers only allow
   reading the clipboard after a permission prompt, so the web vault and the

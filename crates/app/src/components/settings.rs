@@ -498,6 +498,7 @@ fn BiometricRow() -> Element {
             match platform::run_heavy(move || biometric::create_device_key(&id, &reason)).await {
                 Ok(device_key) => {
                     save_biometric_unlock(&BiometricUnlock::new(&account_id, &account_key, &device_key));
+                    refresh_autofill();
                     enabled.set(true);
                     toast(&with_kind(t("settings.biometric_on"), kind));
                 }

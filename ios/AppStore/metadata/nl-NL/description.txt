@@ -1,0 +1,24 @@
+2Secret bewaart je wachtwoorden, passkeys, passen, notities, identiteiten en andere geheimen veilig – end-to-end versleuteld, open source en onder jouw controle.
+
+VEILIGHEID VOOROP
+• Alles wordt op je apparaat versleuteld voordat het wordt opgeslagen of gesynchroniseerd (XChaCha20-Poly1305, 256-bits sleutels).
+• Je kluis is beschermd met je hoofdwachtwoord én een geheime sleutel van 130 bits die je apparaten nooit verlaat. Zelfs een gestolen serverdatabase is zonder beide waardeloos.
+• Delen met familie of collega's gebeurt met kwantumbestendige versleuteling (X25519 + ML-KEM-768).
+• Ontgrendel met Face ID of Touch ID. Elke 14 dagen vraagt 2Secret je hoofdwachtwoord, zodat je het nooit vergeet.
+• Volledig open source: iedereen kan controleren hoe het werkt.
+
+JOUW DATA, JOUW KEUZE
+• Gebruik 2Secret alleen op dit apparaat – geen account bij ons, geen server nodig.
+• Of synchroniseer tussen je apparaten via je eigen 2Secret-server (een gratis Docker-container op een Raspberry Pi, NAS of VPS). Wij zien of bewaren je kluis nooit.
+
+ALLES OP ÉÉN PLEK
+• Logins, passkeys, creditcards, bankrekeningen, identiteiten, paspoorten, wifi, SSH-sleutels, API-sleutels, softwarelicenties, beveiligde notities en meer.
+• Ingebouwde authenticator voor eenmalige codes (TOTP).
+• Wachtwoorden en passkeys automatisch invullen in Safari en apps.
+• Watchtower vindt zwakke, hergebruikte en gelekte wachtwoorden en verlopende passen.
+• Sterke wachtwoord- en wachtzingenerator.
+• Gedeelde kluizen met de rollen lezer, bewerker en beheerder.
+• Importeren uit 1Password, Bitwarden, LastPass, KeePass, Chrome, Firefox en meer.
+• Apps voor iPhone, iPad, Mac, Windows, Linux, Android, het web en je browser.
+
+Geen abonnement. Geen advertenties. Geen tracking.

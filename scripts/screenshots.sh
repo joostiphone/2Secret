@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates docs/screenshots (English and Dutch, light and dark, desktop
 # and phone) and docs/screenshots/manifest.json, which the 2secret.app
-# website imports.
+# website imports, plus the App Store screenshots in ios/AppStore.
 #
 #   scripts/screenshots.sh
 #
@@ -31,13 +31,18 @@ scripts/screenshots/seed.sh "$server" "$tmp/work" nl
 
 rm -f "$out"/*.png "$out/manifest.json"
 node scripts/screenshots/shoot.js "$server" "$tmp/work" "$out"
+appstore="$root/ios/AppStore/screenshots"
+rm -rf "$appstore"
+node scripts/screenshots/appstore.js "$server" "$tmp/work" "$appstore"
 
 if python3 -c 'import PIL' 2> /dev/null; then
-  python3 - "$out" <<'PY'
+  python3 - "$out" "$appstore" <<'PY'
 import sys, pathlib
 from PIL import Image
-for p in pathlib.Path(sys.argv[1]).glob('*.png'):
-    Image.open(p).save(p, optimize=True)
+for d in sys.argv[1:]:
+    for p in pathlib.Path(d).rglob('*.png'):
+        # App Store Connect refuses screenshots with an alpha channel.
+        Image.open(p).convert('RGB').save(p, optimize=True)
 PY
 fi
-echo "Screenshots written to docs/screenshots."
+echo "Screenshots written to docs/screenshots and ios/AppStore/screenshots."
