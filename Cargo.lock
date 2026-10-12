@@ -6314,7 +6314,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-app"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "arboard",
  "chrono",
@@ -6335,7 +6335,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -6354,7 +6354,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "reqwest",
  "serde",
@@ -6367,7 +6367,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -6398,7 +6398,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-server"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum",

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- macOS: separate downloads for Apple silicon and Intel Macs; the app is
+  signed ad hoc, so macOS offers *Open Anyway* instead of reporting it as
+  damaged, and it declares macOS 11 as the minimum version.
+
 ## 1.0.0
 
 First release of 2Secret.

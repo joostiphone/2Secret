@@ -26,3 +26,6 @@ long_description = "2Secret keeps passwords, cards, notes and other secrets end-
 # Debian/Ubuntu package names; the release workflow swaps in Fedora names for the RPM.
 [bundle.deb]
 depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3", "libssl3"]
+
+[bundle.macos]
+minimum_system_version = "11.0"

@@ -94,44 +94,66 @@ jobs:
           if-no-files-found: error
 
   desktop:
-    name: Desktop app (${{ matrix.os }})
+    name: Desktop app (${{ matrix.name }})
     needs: tag
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, types: "--package-types deb --package-types appimage" }
-          - { os: macos-latest, types: "--package-types macos --package-types dmg" }
-          - { os: windows-latest, types: "--package-types msi --package-types nsis" }
+          - { name: linux, os: ubuntu-latest, types: "--package-types deb --package-types appimage" }
+          - { name: macos-arm64, os: macos-latest, target: aarch64-apple-darwin, arch: aarch64 }
+          - { name: macos-x64, os: macos-latest, target: x86_64-apple-darwin, arch: x64 }
+          - { name: windows, os: windows-latest, types: "--package-types msi --package-types nsis" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Install GUI libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - name: Bundle
+        if: runner.os != 'macOS'
         working-directory: crates/app
         shell: bash
+        run: dx bundle --platform desktop --release ${{ matrix.types }} --out-dir "$GITHUB_WORKSPACE/bundles"
+      - name: Bundle, sign and package (macOS)
+        if: runner.os == 'macOS'
+        working-directory: crates/app
         run: |
           # dx strips the app with the toolchain's rust-objcopy, which needs
           # libLLVM, but only tells the Linux loader where to find it.
-          if [ "$RUNNER_OS" = macOS ]; then
-            sysroot="$(rustc --print sysroot)"
+          sysroot="$(rustc --print sysroot)"
+          llvm="$(find "$sysroot" -name 'libLLVM*.dylib' -print -quit)"
+          if [ -z "$llvm" ]; then
+            rustup component add llvm-tools
             llvm="$(find "$sysroot" -name 'libLLVM*.dylib' -print -quit)"
-            if [ -z "$llvm" ]; then
-              rustup component add llvm-tools
-              llvm="$(find "$sysroot" -name 'libLLVM*.dylib' -print -quit)"
-            fi
-            mkdir -p "$RUNNER_TEMP/llvm" && ln -sf "$llvm" "$RUNNER_TEMP/llvm/libLLVM.dylib"
-            export DYLD_LIBRARY_PATH="$RUNNER_TEMP/llvm"
           fi
-          dx bundle --platform desktop --release ${{ matrix.types }} --out-dir "$GITHUB_WORKSPACE/bundles"
+          mkdir -p "$RUNNER_TEMP/llvm" && ln -sf "$llvm" "$RUNNER_TEMP/llvm/libLLVM.dylib"
+          DYLD_LIBRARY_PATH="$RUNNER_TEMP/llvm" dx bundle --platform desktop --release \
+            --target ${{ matrix.target }} --package-types macos --out-dir "$RUNNER_TEMP/app"
+
+          # Without a Developer ID, sign ad hoc: a downloaded app with an
+          # unsigned bundle is reported as "damaged", an ad-hoc signed one can
+          # be allowed in System Settings → Privacy & Security.
+          app="$(find "$RUNNER_TEMP/app" -maxdepth 2 -name '*.app' -type d -print -quit)"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -info "$app/Contents/MacOS/"*
+
+          mkdir -p "$RUNNER_TEMP/dmg" "$GITHUB_WORKSPACE/bundles"
+          cp -R "$app" "$RUNNER_TEMP/dmg/"
+          ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+          hdiutil create -volname 2Secret -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO \
+            "$GITHUB_WORKSPACE/bundles/2Secret_${TAG#v}_${{ matrix.arch }}.dmg"
       - name: Bundle RPM (with Fedora package names)
         if: runner.os == 'Linux'
         working-directory: crates/app
@@ -147,7 +169,7 @@ jobs:
           test -n "$(ls out)"
       - uses: actions/upload-artifact@v4
         with:
-          name: dist-desktop-${{ matrix.os }}
+          name: dist-desktop-${{ matrix.name }}
           path: out/*
           if-no-files-found: error
 
