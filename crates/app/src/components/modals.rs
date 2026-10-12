@@ -282,6 +282,26 @@ fn ShareModal(id: String) -> Element {
         });
     };
 
+    let vid_rotate = id.clone();
+    let rotate = move |_| {
+        let Some(mut session) = session_copy() else { return };
+        let vid = vid_rotate.clone();
+        error.set(None);
+        spawn(async move {
+            busy(t("busy.working"));
+            let result = twosecret_client::rotate_vault_key(&mut session, &vid).await;
+            unbusy();
+            match result {
+                Ok(()) => {
+                    install_session(session);
+                    toast(t("share.rotated"));
+                }
+                Err(e) => error.set(Some(client_error(&e))),
+            }
+        });
+    };
+    let shared = members().is_some_and(|m| m.len() > 1);
+
     rsx! {
         ModalFrame { title: format!("{} · {}", t("vault.share"), vault.name),
             if let Some(err) = error() { div { class: "error-box", "{err}" } }
@@ -308,6 +328,12 @@ fn ShareModal(id: String) -> Element {
                                 changed: { let load = load.clone(); move |_| load() } }
                         }
                     },
+                }
+            }
+            if vault.role.can_manage() && shared {
+                div { class: "row", style: "margin-top:16px;align-items:flex-start",
+                    p { class: "small muted grow", style: "margin:0", {t("share.rotate_desc")} }
+                    button { class: "btn", onclick: rotate, Icon { name: "key", size: 15 } {t("share.rotate")} }
                 }
             }
         }

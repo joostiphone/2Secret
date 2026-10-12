@@ -11,8 +11,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ItemChange, ItemDto, SyncRequest, SyncResponse, VaultDto, VaultSyncRequest};
+use crate::crypto::SymmetricKey;
 use crate::item::{Item, PasswordHistoryEntry, MAX_PASSWORD_HISTORY};
-use crate::profile::{ItemRecord, SyncState, VaultRecord};
+use crate::profile::{aad, ItemRecord, SyncState, VaultRecord};
 use crate::session::Session;
 use crate::util::now;
 use crate::Result;
@@ -83,6 +84,7 @@ impl Session {
                     .filter(|i| i.vault_id == v.id && i.dirty && v.role.can_write())
                     .map(|i| ItemChange { id: i.id.clone(), base_revision: i.revision, data: i.data.clone() })
                     .collect(),
+                key_rev: Some(v.key_rev),
             })
             .collect();
         SyncRequest { vaults }
@@ -143,6 +145,13 @@ impl Session {
                 refetch = true;
             }
 
+            if !result.stale_key.is_empty() {
+                // Encrypted with a vault key that was replaced meanwhile. The
+                // vault list above brought the new key and re-encrypted our
+                // copies; they stay changed and go out in the next round.
+                report.needs_another_round = true;
+            }
+
             for remote in &result.changes {
                 self.apply_remote_item(remote, &mut report);
             }
@@ -173,6 +182,23 @@ impl Session {
     }
 
     fn apply_vault_list(&mut self, vaults: &[VaultDto], report: &mut SyncReport) -> Result<()> {
+        // Vaults whose key someone replaced: re-encrypt our copies with the
+        // new key while we still have the old one.
+        let replaced: Vec<(String, SymmetricKey)> = vaults
+            .iter()
+            .filter_map(|dto| {
+                let local = self.profile().vault(&dto.id)?;
+                if local.wrapped_key == dto.wrapped_key {
+                    return None;
+                }
+                let new_key = dto.wrapped_key.unwrap(self.keyset(), &aad::vault_key(&dto.id)).ok()?;
+                (self.vault_key(&dto.id)? != &new_key).then(|| (dto.id.clone(), new_key))
+            })
+            .collect();
+        for (vault_id, key) in &replaced {
+            self.reencrypt_vault(vault_id, key);
+        }
+
         let account_id = self.account().id.clone();
         let p = self.profile_mut();
         // Vaults we lost access to (deleted by the owner or access revoked).
@@ -198,6 +224,7 @@ impl Session {
                     if local.wrapped_key != dto.wrapped_key {
                         local.wrapped_key = dto.wrapped_key.clone();
                     }
+                    local.key_rev = dto.key_rev;
                 }
                 None => {
                     report.vaults_added += 1;
@@ -215,6 +242,7 @@ impl Session {
                         sync_state: SyncState::Synced,
                         member_count: dto.member_count,
                         created_at: dto.created_at,
+                        key_rev: dto.key_rev,
                     });
                 }
             }
@@ -337,7 +365,7 @@ fn merge_password_history(item: &mut Item, other: &Item) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{Accepted, VaultSyncResult};
+    use crate::api::{Accepted, MemberDto, RotateVaultKeyRequest, VaultSyncResult};
     use crate::profile::Role;
     use crate::session::tests::new_session;
 
@@ -360,6 +388,7 @@ mod tests {
                     revision: 0,
                     member_count: 1,
                     created_at: v.created_at,
+                    key_rev: 0,
                 });
                 s.mark_vault_synced(&v.id);
             }
@@ -373,7 +402,12 @@ mod tests {
                 };
                 let mut accepted = Vec::new();
                 let mut conflicts = Vec::new();
+                let mut stale_key = Vec::new();
                 for ch in vr.changes {
+                    if ch.data.is_some() && vr.key_rev.unwrap_or(0) != vault.key_rev {
+                        stale_key.push(ch.id);
+                        continue;
+                    }
                     let current = self.items.iter().find(|i| i.id == ch.id).cloned();
                     let current_rev = current.as_ref().map(|c| c.revision).unwrap_or(0);
                     if current_rev != ch.base_revision {
@@ -405,6 +439,7 @@ mod tests {
                     conflicts,
                     changes,
                     rejected: vec![],
+                    stale_key,
                 });
             }
             SyncResponse { vaults: self.vaults.clone(), results }
@@ -422,6 +457,70 @@ mod tests {
             }
             total
         }
+    }
+
+    impl FakeServer {
+        /// Apply a key replacement the way the real server does.
+        fn rotate(&mut self, vault_id: &str, req: RotateVaultKeyRequest) {
+            let Self { vaults, items } = self;
+            let vault = vaults.iter_mut().find(|v| v.id == vault_id).unwrap();
+            assert_eq!(vault.key_rev, req.key_rev);
+            vault.key_rev += 1;
+            vault.meta = req.meta;
+            vault.wrapped_key = req.members[0].wrapped_key.clone();
+            for rotated in req.items {
+                vault.revision += 1;
+                let item = items.iter_mut().find(|i| i.id == rotated.id).unwrap();
+                item.data = Some(rotated.data);
+                item.revision = vault.revision;
+            }
+        }
+    }
+
+    fn me(s: &Session) -> MemberDto {
+        MemberDto {
+            account_id: s.account().id.clone(),
+            email: s.account().email.clone(),
+            name: s.account().name.clone(),
+            role: Role::Owner,
+            public_key: s.public_key().to_b64(),
+            pq_public_key: None,
+        }
+    }
+
+    #[test]
+    fn replaced_vault_keys_reach_other_devices_without_losing_edits() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let id = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        server.full_sync(&mut a);
+        let mut b = second_device(&a);
+        let old_key = a.vault_key(&v).unwrap().clone();
+
+        // Device B edits and adds an item offline, while A replaces the key.
+        let mut edited = b.item(&id).unwrap().clone();
+        edited.set_value("password", "p2");
+        b.update_item(edited).unwrap();
+        let added = b.add_item(&v, Item::login("New", "n", "p3", None)).unwrap();
+
+        assert!(b.rotate_vault_key_request(&v, &[me(&b)]).is_err(), "B has unsynced changes");
+        let req = a.rotate_vault_key_request(&v, &[me(&a)]).unwrap();
+        assert_eq!(req.items.len(), 1);
+        server.rotate(&v, req);
+        server.full_sync(&mut a);
+        assert_ne!(a.vault_key(&v).unwrap(), &old_key);
+        assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
+
+        // B's uploads under the old key are refused, re-encrypted, sent again.
+        server.full_sync(&mut b);
+        assert_eq!(b.vault_key(&v), a.vault_key(&v));
+        assert!(!b.profile().has_pending_changes());
+        server.full_sync(&mut a);
+        assert_eq!(a.item(&id).unwrap().password(), Some("p2"));
+        assert_eq!(a.item(&added).unwrap().title, "New");
+        assert!(a.undecryptable().is_empty() && b.undecryptable().is_empty());
+        assert_eq!(a.vault(&v).unwrap().name, "Personal");
     }
 
     fn second_device(s: &Session) -> Session {

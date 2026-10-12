@@ -249,6 +249,11 @@ impl Client {
         self.empty(Method::PUT, &format!("/vaults/{vault_id}/key"), Some(req)).await
     }
 
+    /// Replace a vault's key (see [`RotateVaultKeyRequest`]).
+    pub async fn rotate_vault_key(&self, vault_id: &str, req: &RotateVaultKeyRequest) -> Result<()> {
+        self.empty(Method::POST, &format!("/vaults/{vault_id}/rotate-key"), Some(req)).await
+    }
+
     /// Publish our ML-KEM-768 public key.
     pub async fn set_pq_key(&self, req: &SetPqKeyRequest) -> Result<()> {
         self.empty(Method::PUT, "/account/pq-key", Some(req)).await

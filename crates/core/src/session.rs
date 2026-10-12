@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::{MemberDto, MemberKey, RotateVaultKeyRequest, RotatedItem};
 use crate::crypto::{
     decrypt_json, derive_keys, encrypt, encrypt_json, AccountPublicKeys, DerivedKeys, EncString, EncryptedKeyset,
     KdfParams, Keyset, PublicKey, SecretKey, SymmetricKey, WrappedKey,
@@ -60,6 +61,16 @@ fn require_master_password(password: &str, context: &[&str]) -> Result<()> {
 struct OpenVault {
     key: SymmetricKey,
     meta: VaultMeta,
+}
+
+/// A vault key that was shared with us, wrapped again with our own account
+/// key (see [`Session::vault_keys_to_rewrap`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeyRewrap {
+    pub vault_id: String,
+    pub wrapped_key: WrappedKey,
+    /// Generation of the vault key, so the server can refuse a stale rewrap.
+    pub key_rev: u64,
 }
 
 /// Public information about a vault for display.
@@ -178,10 +189,12 @@ impl Session {
             server: None,
             vaults: Vec::new(),
             items: Vec::new(),
+            default_vault: None,
         };
         let mut session = Session::from_parts(profile, keyset)?;
         let name = if default_vault_name.trim().is_empty() { "Personal" } else { default_vault_name };
-        session.create_vault(name, "")?;
+        let personal = session.create_vault(name, "")?;
+        session.profile.default_vault = Some(personal);
         Ok((session, secret_key, keys))
     }
 
@@ -195,6 +208,7 @@ impl Session {
             server: Some(server),
             vaults: Vec::new(),
             items: Vec::new(),
+            default_vault: None,
         };
         Session::open(profile, keys)
     }
@@ -333,16 +347,99 @@ impl Session {
     /// Vault keys that others shared with us by public-key encryption, wrapped
     /// again with our own account key. Once the server stores these instead,
     /// nothing that a future quantum computer could open stays on the server.
-    pub fn vault_keys_to_rewrap(&self) -> Vec<(String, WrappedKey)> {
+    pub fn vault_keys_to_rewrap(&self) -> Vec<KeyRewrap> {
         self.profile
             .vaults
             .iter()
             .filter(|v| v.wrapped_key.is_sealed() && v.sync_state == SyncState::Synced)
             .filter_map(|v| {
                 let key = self.vaults.get(&v.id)?.key.clone();
-                Some((v.id.clone(), WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &aad::vault_key(&v.id))))
+                Some(KeyRewrap {
+                    vault_id: v.id.clone(),
+                    wrapped_key: WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &aad::vault_key(&v.id)),
+                    key_rev: v.key_rev,
+                })
             })
             .collect()
+    }
+
+    /// Build the request that replaces a vault's key (see
+    /// [`RotateVaultKeyRequest`]): a new random key, the metadata and every
+    /// item re-encrypted with it, and the key wrapped for each of `members`
+    /// (the vault's current members as listed by the server; for us with our
+    /// own account key, for everybody else with their public keys).
+    ///
+    /// The vault must be fully synced, so that no local edit is left behind
+    /// encrypted with the old key.
+    pub fn rotate_vault_key_request(&self, vault_id: &str, members: &[MemberDto]) -> Result<RotateVaultKeyRequest> {
+        let record = self.profile.vault(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        if !record.role.can_manage() {
+            return Err(Error::PermissionDenied("only the owner and managers can replace a vault's key".into()));
+        }
+        let pending = self.profile.items.iter().any(|i| i.vault_id == vault_id && i.dirty);
+        if record.sync_state != SyncState::Synced || pending {
+            return Err(Error::invalid("sync the vault before replacing its key"));
+        }
+        let open = self.vaults.get(vault_id).ok_or(Error::Decryption)?;
+        let key = SymmetricKey::generate();
+        let key_aad = aad::vault_key(vault_id);
+
+        let mut items = Vec::new();
+        for rec in self.profile.items.iter().filter(|i| i.vault_id == vault_id) {
+            if let Some(data) = &rec.data {
+                let item = self.decrypt_item(vault_id, &rec.id, data)?;
+                items.push(RotatedItem {
+                    id: rec.id.clone(),
+                    data: encrypt_json(&key, &item, &aad::item(vault_id, &rec.id))?,
+                });
+            }
+        }
+
+        let me = &self.profile.account.id;
+        if !members.iter().any(|m| &m.account_id == me) {
+            return Err(Error::invalid("the member list does not include this account"));
+        }
+        let mut wrapped = Vec::new();
+        for m in members {
+            let wrapped_key = if &m.account_id == me {
+                WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &key_aad)
+            } else {
+                let keys = AccountPublicKeys::from_b64(&m.public_key, m.pq_public_key.as_deref())?;
+                WrappedKey::wrap_for(&keys, &key, &key_aad)?
+            };
+            wrapped.push(MemberKey { account_id: m.account_id.clone(), wrapped_key });
+        }
+
+        Ok(RotateVaultKeyRequest {
+            key_rev: record.key_rev,
+            meta: encrypt_json(&key, &open.meta, &aad::vault_meta(vault_id))?,
+            members: wrapped,
+            items,
+        })
+    }
+
+    /// Re-encrypt what this device stores for a vault with `new_key`, after
+    /// someone else replaced the vault's key. Records that cannot be read with
+    /// the old key are left untouched.
+    pub(crate) fn reencrypt_vault(&mut self, vault_id: &str, new_key: &SymmetricKey) {
+        let Some(old) = self.vaults.get(vault_id).map(|v| v.key.clone()) else { return };
+        if let Some(v) = self.profile.vaults.iter_mut().find(|v| v.id == vault_id) {
+            let meta_aad = aad::vault_meta(vault_id);
+            if let Ok(meta) = decrypt_json::<VaultMeta>(&old, &v.meta, &meta_aad) {
+                if let Ok(enc) = encrypt_json(new_key, &meta, &meta_aad) {
+                    v.meta = enc;
+                }
+            }
+        }
+        for rec in self.profile.items.iter_mut().filter(|i| i.vault_id == vault_id) {
+            let item_aad = aad::item(vault_id, &rec.id);
+            let Some(data) = &rec.data else { continue };
+            if let Ok(item) = decrypt_json::<Item>(&old, data, &item_aad) {
+                if let Ok(enc) = encrypt_json(new_key, &item, &item_aad) {
+                    rec.data = Some(enc);
+                }
+            }
+        }
     }
 
     /// Store a vault key wrapping that the server has accepted.
@@ -424,9 +521,21 @@ impl Session {
         }
     }
 
-    /// The vault new items go to by default: the oldest vault we own.
+    /// The vault new items go to by default: the personal vault created with
+    /// the account, or else the oldest vault we own that is not shared.
+    /// A shared vault is only chosen when nothing else can be written to.
     pub fn default_vault_id(&self) -> Option<String> {
-        self.vaults().into_iter().find(|v| v.role.can_write()).map(|v| v.id)
+        let vaults = self.vaults();
+        if let Some(id) = &self.profile.default_vault {
+            if vaults.iter().any(|v| &v.id == id && v.role.can_write()) {
+                return Some(id.clone());
+            }
+        }
+        vaults
+            .iter()
+            .find(|v| v.is_owner && !v.is_shared())
+            .or_else(|| vaults.iter().find(|v| v.role.can_write()))
+            .map(|v| v.id.clone())
     }
 
     pub fn vault_key(&self, vault_id: &str) -> Option<&SymmetricKey> {
@@ -452,6 +561,7 @@ impl Session {
             sync_state: SyncState::PendingCreate,
             member_count: 1,
             created_at: now(),
+            key_rev: 0,
         };
         self.profile.vaults.push(record);
         self.vaults.insert(id.clone(), OpenVault { key, meta });
@@ -1017,6 +1127,31 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn new_items_go_to_the_personal_vault() {
+        let (mut s, _) = new_session();
+        let personal = s.default_vault_id().unwrap();
+        // Created in the same second as the personal vault, and sorted before it.
+        s.create_vault("Aardvark", "").unwrap();
+        assert_eq!(s.default_vault_id().unwrap(), personal);
+
+        // On devices that signed in later there is no stored default: a vault
+        // someone shared with us must not win over our own.
+        let (alice, _) = new_session();
+        let v = alice.default_vault_id().unwrap();
+        let mut record = alice.profile().vault(&v).unwrap().clone();
+        record.wrapped_key = alice.wrap_vault_key_for(&v, &s.public_keys()).unwrap();
+        record.owner_id = alice.account().id.clone();
+        record.role = Role::Editor;
+        record.created_at = 0;
+        record.sync_state = SyncState::Synced;
+        s.profile.vaults.push(record);
+        s.profile.default_vault = None;
+        s.reload().unwrap();
+        let chosen = s.vault(&s.default_vault_id().unwrap()).unwrap();
+        assert!(chosen.is_owner);
+    }
+
+    #[test]
     fn shared_vault_keys_are_rewrapped_with_the_own_account_key() {
         let (alice, _) = new_session();
         let (mut bob, _) = new_session();
@@ -1032,9 +1167,9 @@ pub(crate) mod tests {
         bob.reload().unwrap();
         let rewraps = bob.vault_keys_to_rewrap();
         assert_eq!(rewraps.len(), 1);
-        let (id, symmetric) = rewraps.into_iter().next().unwrap();
-        assert!(!symmetric.is_sealed());
-        bob.set_vault_wrapped_key(&id, symmetric);
+        let rewrap = rewraps.into_iter().next().unwrap();
+        assert!(!rewrap.wrapped_key.is_sealed());
+        bob.set_vault_wrapped_key(&rewrap.vault_id, rewrap.wrapped_key);
         bob.reload().unwrap();
         assert_eq!(bob.vault_key(&v), alice.vault_key(&v));
         assert!(bob.vault_keys_to_rewrap().is_empty());

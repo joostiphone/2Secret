@@ -178,6 +178,92 @@ async fn vault_sharing_and_permissions() {
 }
 
 #[tokio::test]
+async fn removing_a_member_replaces_the_vault_key() {
+    use twosecret_core::api::{ItemChange, SyncRequest, VaultSyncRequest};
+    use twosecret_core::crypto::decrypt_json;
+    use twosecret_core::profile::aad;
+
+    let url = start_server(Config::default()).await;
+    let signup = |name: &'static str, email: &'static str| {
+        let url = url.clone();
+        async move { client::signup(&url, name, email, PW, None, name, "Personal", kdf()).await.unwrap().0 }
+    };
+    let mut alice = signup("Alice", "alice@example.com").await;
+    let mut bob = signup("Bob", "bob@example.com").await;
+    let mut carol = signup("Carol", "carol@example.com").await;
+    let team = alice.create_vault("Team", "").unwrap();
+    let wifi = alice.add_item(&team, Item::login("Wi-Fi", "office", "old-secret", None)).unwrap();
+    client::share_vault(&mut alice, &team, "bob@example.com", Role::Editor).await.unwrap();
+    client::share_vault(&mut alice, &team, "carol@example.com", Role::Viewer).await.unwrap();
+    client::sync(&mut bob).await.unwrap();
+    client::sync(&mut carol).await.unwrap();
+    let old_key = alice.vault_key(&team).unwrap().clone();
+    assert_eq!(carol.vault_key(&team), Some(&old_key));
+
+    // Bob edits offline while Alice removes Carol.
+    let mut edit = bob.item(&wifi).unwrap().clone();
+    edit.set_value("password", "new-secret");
+    bob.update_item(edit).unwrap();
+    client::remove_member(&mut alice, &team, &carol.account().id).await.unwrap();
+    let new_key = alice.vault_key(&team).unwrap().clone();
+    assert_ne!(new_key, old_key);
+    assert_eq!(alice.item(&wifi).unwrap().password(), Some("old-secret"));
+    assert_eq!(alice.profile().vault(&team).unwrap().key_rev, 1);
+
+    // Carol is out; Bob gets the new key and his edit is not lost.
+    client::sync(&mut carol).await.unwrap();
+    assert!(carol.vault(&team).is_none());
+    client::sync(&mut bob).await.unwrap();
+    assert_eq!(bob.vault_key(&team), Some(&new_key));
+    assert!(!bob.profile().has_pending_changes());
+    client::sync(&mut alice).await.unwrap();
+    assert_eq!(alice.item(&wifi).unwrap().password(), Some("new-secret"));
+
+    // Everything on the server is encrypted with the new key; the old key
+    // Carol may have kept opens nothing.
+    let api = client::client_for(&alice).unwrap();
+    let req = SyncRequest {
+        vaults: vec![VaultSyncRequest { vault_id: team.clone(), since: 0, changes: vec![], key_rev: None }],
+    };
+    let resp = api.sync(&req).await.unwrap();
+    let vault = resp.vaults.iter().find(|v| v.id == team).unwrap();
+    assert!(decrypt_json::<serde_json::Value>(&old_key, &vault.meta, &aad::vault_meta(&team)).is_err());
+    let items = &resp.results.iter().find(|r| r.vault_id == team).unwrap().changes;
+    assert!(!items.is_empty());
+    for item in items {
+        let data = item.data.as_ref().unwrap();
+        assert!(decrypt_json::<serde_json::Value>(&old_key, data, &aad::item(&team, &item.id)).is_err());
+        assert!(decrypt_json::<serde_json::Value>(&new_key, data, &aad::item(&team, &item.id)).is_ok());
+    }
+
+    // Writes encrypted with the old key are refused.
+    let forged = alice.profile().item(&wifi).unwrap().data.clone();
+    let stale = SyncRequest {
+        vaults: vec![VaultSyncRequest {
+            vault_id: team.clone(),
+            since: 0,
+            changes: vec![ItemChange {
+                id: "11111111-2222-4333-8444-555555555555".into(),
+                base_revision: 0,
+                data: forged,
+            }],
+            key_rev: Some(0),
+        }],
+    };
+    let resp = api.sync(&stale).await.unwrap();
+    let result = resp.results.iter().find(|r| r.vault_id == team).unwrap();
+    assert_eq!(result.stale_key.len(), 1);
+    assert!(result.accepted.is_empty());
+
+    // The key can also be replaced on request, e.g. after someone left.
+    client::rotate_vault_key(&mut alice, &team).await.unwrap();
+    client::sync(&mut bob).await.unwrap();
+    assert_eq!(bob.vault_key(&team), alice.vault_key(&team));
+    assert_eq!(bob.item(&wifi).unwrap().password(), Some("new-secret"));
+    assert!(bob.undecryptable().is_empty());
+}
+
+#[tokio::test]
 async fn local_account_connects_later_and_password_change() {
     let url = start_server(Config::default()).await;
     let (mut s, sk) = Session::create_account("Carol", "carol@example.com", PW, kdf(), "Personal").unwrap();
@@ -263,6 +349,7 @@ async fn server_enforces_read_only_access() {
                     ItemChange { id: id.clone(), base_revision: 1, data: None },
                     ItemChange { id: "new-item".into(), base_revision: 0, data: forged },
                 ],
+                key_rev: None,
             }],
         })
         .await
@@ -275,7 +362,10 @@ async fn server_enforces_read_only_access() {
     assert_eq!(
         api.update_vault(
             &shared,
-            &twosecret_core::api::UpdateVaultRequest { meta: bob.profile().vault(&shared).unwrap().meta.clone() }
+            &twosecret_core::api::UpdateVaultRequest {
+                meta: bob.profile().vault(&shared).unwrap().meta.clone(),
+                key_rev: None
+            }
         )
         .await
         .unwrap_err()
@@ -294,7 +384,9 @@ async fn server_enforces_read_only_access() {
     let carol_api = client::client_for(&carol).unwrap();
     assert_eq!(carol_api.members(&shared).await.unwrap_err().status(), Some(404));
     let resp = carol_api
-        .sync(&SyncRequest { vaults: vec![VaultSyncRequest { vault_id: shared.clone(), since: 0, changes: vec![] }] })
+        .sync(&SyncRequest {
+            vaults: vec![VaultSyncRequest { vault_id: shared.clone(), since: 0, changes: vec![], key_rev: None }],
+        })
         .await
         .unwrap();
     assert!(resp.results.iter().all(|r| r.vault_id != shared));

@@ -119,7 +119,6 @@ Compared with 1Password, these are missing today – contributions welcome:
 - Unlocking with Touch ID / Face ID / Windows Hello (the master password is always required).
 - Storing and using passkeys.
 - iOS system AutoFill and a Safari extension; an Android app.
-- Rotating a vault key when someone is removed from a shared vault (see [docs/SECURITY.md](docs/SECURITY.md#sharing)).
 - An independent security audit.
 
 ## Security

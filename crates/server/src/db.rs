@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS vaults (
     meta       TEXT NOT NULL,
     revision   INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    key_rev    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS vault_members (
     vault_id    TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
@@ -132,6 +133,14 @@ impl Db {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        // Added in 1.2: the generation of each vault's key.
+        let has_key_rev: bool =
+            conn.query_row("SELECT COUNT(*) FROM pragma_table_info('vaults') WHERE name = 'key_rev'", [], |r| {
+                r.get::<_, i64>(0).map(|n| n > 0)
+            })?;
+        if !has_key_rev {
+            conn.execute("ALTER TABLE vaults ADD COLUMN key_rev INTEGER NOT NULL DEFAULT 0", [])?;
+        }
         conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')", [])?;
         Ok(Self { conn: Arc::new(Mutex::new(conn)) })
     }
@@ -270,7 +279,7 @@ pub fn sessions_for_account(conn: &Connection, account_id: &str) -> rusqlite::Re
 pub fn vault_dto(conn: &Connection, vault_id: &str, account_id: &str) -> rusqlite::Result<Option<VaultDto>> {
     conn.query_row(
         "SELECT v.id, v.owner_id, m.role, v.meta, m.wrapped_key, v.revision, v.created_at,
-                (SELECT COUNT(*) FROM vault_members x WHERE x.vault_id = v.id)
+                (SELECT COUNT(*) FROM vault_members x WHERE x.vault_id = v.id), v.key_rev
          FROM vaults v JOIN vault_members m ON m.vault_id = v.id
          WHERE v.id = ?1 AND m.account_id = ?2",
         params![vault_id, account_id],
@@ -285,6 +294,7 @@ fn map_vault(r: &rusqlite::Row<'_>) -> rusqlite::Result<VaultDto> {
     let wrapped: String = r.get(4)?;
     let revision: i64 = r.get(5)?;
     let members: i64 = r.get(7)?;
+    let key_rev: i64 = r.get(8)?;
     Ok(VaultDto {
         id: r.get(0)?,
         owner_id: r.get(1)?,
@@ -294,18 +304,24 @@ fn map_vault(r: &rusqlite::Row<'_>) -> rusqlite::Result<VaultDto> {
         revision: revision as u64,
         created_at: r.get(6)?,
         member_count: members as u32,
+        key_rev: key_rev as u64,
     })
 }
 
 pub fn vaults_for_account(conn: &Connection, account_id: &str) -> rusqlite::Result<Vec<VaultDto>> {
     let mut stmt = conn.prepare(
         "SELECT v.id, v.owner_id, m.role, v.meta, m.wrapped_key, v.revision, v.created_at,
-                (SELECT COUNT(*) FROM vault_members x WHERE x.vault_id = v.id)
+                (SELECT COUNT(*) FROM vault_members x WHERE x.vault_id = v.id), v.key_rev
          FROM vaults v JOIN vault_members m ON m.vault_id = v.id
          WHERE m.account_id = ?1 ORDER BY v.created_at",
     )?;
     let rows = stmt.query_map([account_id], map_vault)?;
     rows.collect()
+}
+
+/// The current generation of a vault's key.
+pub fn key_rev(conn: &Connection, vault_id: &str) -> rusqlite::Result<u64> {
+    conn.query_row("SELECT key_rev FROM vaults WHERE id = ?1", [vault_id], |r| r.get::<_, i64>(0)).map(|n| n as u64)
 }
 
 pub fn membership(conn: &Connection, vault_id: &str, account_id: &str) -> rusqlite::Result<Option<Membership>> {
@@ -347,4 +363,27 @@ pub fn items_since(conn: &Connection, vault_id: &str, since: u64) -> rusqlite::R
     )?;
     let rows = stmt.query_map(params![vault_id, since as i64], map_item)?;
     rows.collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn databases_from_1_1_get_the_key_rev_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE accounts (id TEXT PRIMARY KEY);
+             CREATE TABLE vaults (
+                 id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, meta TEXT NOT NULL,
+                 revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+             );
+             INSERT INTO accounts VALUES ('a');
+             INSERT INTO vaults VALUES ('v', 'a', 'm', 3, 1, 1);",
+        )
+        .unwrap();
+        let db = Db::init(conn).unwrap();
+        let conn = db.conn.lock().unwrap();
+        assert_eq!(key_rev(&conn, "v").unwrap(), 0);
+    }
 }

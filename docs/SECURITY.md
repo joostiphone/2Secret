@@ -187,12 +187,27 @@ Comparing it out of band protects against a malicious server substituting
 its own keys. A fingerprint changes once, when an account created with 1.0
 publishes its ML-KEM key.
 
-### Revocation
+### Revocation and key rotation
 
-Removing someone stops the server from sending them further
-updates, but they may have kept copies of what they could already see — and
-the vault key. As with 1Password, change the passwords that matter after
-removing someone, or move the items to a new vault.
+Removing someone stops the server from sending them further updates, and the
+vault immediately gets a **new key**: the remover's device generates a random
+vault key, re-encrypts the vault name and every item with it, wraps it for
+each remaining member (hybrid sealed, as above) and uploads everything in one
+request. The server applies it all or nothing, and only if the vault's member
+list and items still match what the client saw, so nobody is left behind and
+no item stays under the old key. Whatever is added or changed afterwards is
+unreadable with the key the removed person had, even with a copy of the
+server database.
+
+Each vault key has a generation number. Writes encrypted under an older
+generation (from a device that was offline during the rotation) are refused;
+that device receives the new key on its next sync, re-encrypts its pending
+changes and sends them again, so no edit is lost. Managers can also replace
+a vault's key on request, for example after someone left on their own.
+
+What rotation cannot undo: the removed person may have kept copies of what
+they could already see. Change the passwords that matter after removing
+someone.
 
 ## Sync and conflicts
 
@@ -276,7 +291,8 @@ the apps warn about this.
 
 ## Known limitations
 
-- No key rotation when a vault member is removed (see *Sharing*).
+- Rotating a vault key uses the members' public keys as the server reports
+  them; compare fingerprints in the member list (see *Fingerprints*).
 - Metadata listed above (counts, size classes, timestamps, sharing graph,
   e-mail addresses) is visible to the server operator.
 - Login uses TLS from the operating system or browser; whether that

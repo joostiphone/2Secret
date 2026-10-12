@@ -128,6 +128,10 @@ pub struct SetPqKeyRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SetVaultKeyRequest {
     pub wrapped_key: WrappedKey,
+    /// Generation of the vault key being stored (see [`VaultDto::key_rev`]);
+    /// refused when the key was replaced meanwhile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_rev: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -140,6 +144,9 @@ pub struct CreateVaultRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateVaultRequest {
     pub meta: EncString,
+    /// Generation of the vault key `meta` is encrypted with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_rev: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -152,6 +159,11 @@ pub struct VaultDto {
     pub revision: u64,
     pub member_count: u32,
     pub created_at: i64,
+    /// Generation of the vault key: increased every time the key is replaced
+    /// (after removing a member). Writes encrypted with an older generation
+    /// are refused.
+    #[serde(default)]
+    pub key_rev: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -170,6 +182,33 @@ pub struct AddMemberRequest {
     pub account_id: String,
     pub role: Role,
     pub wrapped_key: WrappedKey,
+    /// Generation of the vault key in `wrapped_key`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_rev: Option<u64>,
+}
+
+/// Replace a vault's key: new metadata, every item re-encrypted and the new
+/// key wrapped for every member. The server applies it all or nothing, and
+/// only if the vault's key generation, member list and item list still match.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RotateVaultKeyRequest {
+    /// The key generation being replaced.
+    pub key_rev: u64,
+    pub meta: EncString,
+    pub members: Vec<MemberKey>,
+    pub items: Vec<RotatedItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MemberKey {
+    pub account_id: String,
+    pub wrapped_key: WrappedKey,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RotatedItem {
+    pub id: String,
+    pub data: EncString,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -204,6 +243,9 @@ pub struct VaultSyncRequest {
     pub since: u64,
     #[serde(default)]
     pub changes: Vec<ItemChange>,
+    /// Generation of the vault key `changes` are encrypted with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_rev: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -230,6 +272,11 @@ pub struct VaultSyncResult {
     /// Changes that were refused (e.g. read-only access).
     #[serde(default)]
     pub rejected: Vec<String>,
+    /// Changes that were not applied because they were encrypted with a
+    /// vault key that has been replaced. The client re-encrypts them with the
+    /// new key and sends them again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stale_key: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

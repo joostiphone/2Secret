@@ -73,7 +73,8 @@ of an id. Categories: `login`, `password`, `secure_note`, `credit_card`,
 2secret vault share Familie partner@example.com --role editor   # viewer | editor | manager
 2secret vault members Familie
 2secret vault set-role Familie partner@example.com viewer
-2secret vault unshare Familie partner@example.com
+2secret vault unshare Familie partner@example.com   # also gives the vault a new key
+2secret vault rotate-key Familie    # new key on request, e.g. after someone left
 2secret vault delete Familie        # owners delete, members leave
 ```
 

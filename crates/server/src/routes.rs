@@ -34,6 +34,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/vaults", get(list_vaults).post(create_vault))
         .route("/vaults/{id}", put(update_vault).delete(delete_vault))
         .route("/vaults/{id}/key", put(set_own_vault_key))
+        .route("/vaults/{id}/rotate-key", post(rotate_vault_key))
         .route("/vaults/{id}/members", get(list_members).post(add_member))
         .route("/vaults/{id}/members/{account_id}", put(update_member).delete(remove_member))
         .route("/sync", post(sync))
@@ -516,6 +517,16 @@ fn require_role(conn: &rusqlite::Connection, vault_id: &str, account_id: &str, m
     Ok(m)
 }
 
+/// Writes that carry encrypted data must use the vault's current key.
+/// Clients from before key rotation send no generation, which is fine until
+/// the key is replaced for the first time.
+fn require_key_rev(conn: &rusqlite::Connection, vault_id: &str, sent: Option<u64>) -> ApiResult<()> {
+    if sent.unwrap_or(0) != db::key_rev(conn, vault_id)? {
+        return Err(ApiError::conflict("the vault key was replaced; sync and try again"));
+    }
+    Ok(())
+}
+
 async fn update_vault(
     State(state): State<AppState>,
     auth: Auth,
@@ -526,6 +537,7 @@ async fn update_vault(
         .db
         .run(move |c| {
             require_role(c, &id, &auth.account_id, Role::Manager)?;
+            require_key_rev(c, &id, req.key_rev)?;
             c.execute(
                 "UPDATE vaults SET meta = ?1, updated_at = ?2 WHERE id = ?3",
                 params![req.meta.as_str(), now(), id],
@@ -603,6 +615,7 @@ async fn add_member(
         .db
         .run(move |c| {
             require_role(c, &id, &auth.account_id, Role::Manager)?;
+            require_key_rev(c, &id, req.key_rev)?;
             if db::account_by_id(c, &req.account_id)?.is_none() {
                 return Err(ApiError::not_found("account not found"));
             }
@@ -638,6 +651,8 @@ async fn set_own_vault_key(
     state
         .db
         .run(move |c| {
+            require_role(c, &id, &auth.account_id, Role::Viewer)?;
+            require_key_rev(c, &id, req.key_rev)?;
             let updated = c.execute(
                 "UPDATE vault_members SET wrapped_key = ?1 WHERE vault_id = ?2 AND account_id = ?3",
                 params![serde_json::to_string(&req.wrapped_key)?, id, auth.account_id],
@@ -645,6 +660,77 @@ async fn set_own_vault_key(
             if updated == 0 {
                 return Err(ApiError::not_found("vault not found"));
             }
+            Ok(())
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Replace a vault's key (after removing a member): new metadata, every item
+/// re-encrypted and the new key for every member, all or nothing.
+async fn rotate_vault_key(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(req): Json<RotateVaultKeyRequest>,
+) -> ApiResult<StatusCode> {
+    valid_id(&id)?;
+    let max_item = state.config.max_item_bytes;
+    if req.items.iter().any(|i| i.data.len() > max_item) {
+        return Err(ApiError::bad_request("item too large"));
+    }
+    state
+        .db
+        .run(move |conn| {
+            let tx = conn.transaction()?;
+            require_role(&tx, &id, &auth.account_id, Role::Manager)?;
+            if db::key_rev(&tx, &id)? != req.key_rev {
+                return Err(ApiError::conflict("the vault key was replaced meanwhile; sync and try again"));
+            }
+
+            // The new key goes to every current member and nobody else.
+            let members: HashSet<String> = tx
+                .prepare("SELECT account_id FROM vault_members WHERE vault_id = ?1")?
+                .query_map([&id], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let sent: HashSet<String> = req.members.iter().map(|m| m.account_id.clone()).collect();
+            if sent.len() != req.members.len() || sent != members {
+                return Err(ApiError::conflict("the members of this vault changed; sync and try again"));
+            }
+            if req.members.iter().any(|m| m.account_id != auth.account_id && !m.wrapped_key.is_sealed()) {
+                return Err(ApiError::bad_request("shared vault keys must be sealed to the member's public key"));
+            }
+
+            // Every item is re-encrypted, and nothing else.
+            let items: HashSet<String> = tx
+                .prepare("SELECT id FROM items WHERE vault_id = ?1 AND data IS NOT NULL")?
+                .query_map([&id], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let sent: HashSet<String> = req.items.iter().map(|i| i.id.clone()).collect();
+            if sent.len() != req.items.len() || sent != items {
+                return Err(ApiError::conflict("the items of this vault changed; sync and try again"));
+            }
+
+            let mut revision: i64 = tx.query_row("SELECT revision FROM vaults WHERE id = ?1", [&id], |r| r.get(0))?;
+            let at = now();
+            for item in &req.items {
+                revision += 1;
+                tx.execute(
+                    "UPDATE items SET data = ?1, revision = ?2, updated_at = ?3 WHERE vault_id = ?4 AND id = ?5",
+                    params![item.data.as_str(), revision, at, id, item.id],
+                )?;
+            }
+            tx.execute(
+                "UPDATE vaults SET meta = ?1, key_rev = key_rev + 1, revision = ?2, updated_at = ?3 WHERE id = ?4",
+                params![req.meta.as_str(), revision, at, id],
+            )?;
+            for m in &req.members {
+                tx.execute(
+                    "UPDATE vault_members SET wrapped_key = ?1 WHERE vault_id = ?2 AND account_id = ?3",
+                    params![serde_json::to_string(&m.wrapped_key)?, id, m.account_id],
+                )?;
+            }
+            tx.commit()?;
             Ok(())
         })
         .await?;
@@ -723,7 +809,9 @@ async fn sync(
                 let mut accepted = Vec::new();
                 let mut conflicts = Vec::new();
                 let mut rejected = Vec::new();
+                let mut stale_key = Vec::new();
                 if let Some(request) = request {
+                    let current_key = request.key_rev.unwrap_or(0) == vault.key_rev;
                     let mut seen = HashSet::new();
                     for change in &request.changes {
                         if !seen.insert(change.id.clone()) {
@@ -734,6 +822,10 @@ async fn sync(
                             || change.data.as_ref().is_some_and(|d| d.len() > max_item)
                         {
                             rejected.push(change.id.clone());
+                            continue;
+                        }
+                        if change.data.is_some() && !current_key {
+                            stale_key.push(change.id.clone());
                             continue;
                         }
                         let current = db::item(&tx, &vault.id, &change.id)?;
@@ -783,6 +875,7 @@ async fn sync(
                     conflicts,
                     changes,
                     rejected,
+                    stale_key,
                 });
             }
             let vaults = db::vaults_for_account(&tx, &auth.account_id)?;

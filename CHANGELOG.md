@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Removing someone from a shared vault gives the vault a new key: everything
+  is re-encrypted, so what is added or changed afterwards is unreadable with
+  the key they had. Managers can also replace a vault's key themselves
+  (*Share → Replace vault key*, `2secret vault rotate-key`).
+- New items without a chosen vault go to your personal vault, never to a
+  vault that is shared with others.
+- Fresh screenshots in English and Dutch (`scripts/screenshots.sh`).
+
 ## 1.1.0
 
 Quantum-resistant sharing:

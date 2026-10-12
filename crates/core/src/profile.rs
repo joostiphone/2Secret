@@ -45,6 +45,10 @@ pub struct Profile {
     pub vaults: Vec<VaultRecord>,
     #[serde(default)]
     pub items: Vec<ItemRecord>,
+    /// The vault new items go to when none is chosen: the personal vault
+    /// created with the account. Unset on devices that signed in later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_vault: Option<String>,
 }
 
 impl Profile {
@@ -187,6 +191,9 @@ pub struct VaultRecord {
     #[serde(default = "one")]
     pub member_count: u32,
     pub created_at: i64,
+    /// Generation of the vault key (see `VaultDto::key_rev`).
+    #[serde(default)]
+    pub key_rev: u64,
 }
 
 fn one() -> u32 {

@@ -380,7 +380,10 @@ static TABLE: &[Entry] = &[
     ("share.explain", "People need a 2Secret account on the same server. The vault key is encrypted to their public key – compare the fingerprint with them to be sure.", "Mensen hebben een 2Secret-account op dezelfde server nodig. De kluissleutel wordt versleuteld met hun publieke sleutel – vergelijk de vingerafdruk met hen voor zekerheid."),
     ("share.needs_server", "Sharing requires a sync server. Connect your account to a server first.", "Delen vereist een synchronisatieserver. Verbind je account eerst met een server."),
     ("share.shared_with", "Shared with", "Gedeeld met"),
-    ("share.removed", "Access removed", "Toegang ingetrokken"),
+    ("share.removed", "Access removed – the vault has a new key", "Toegang ingetrokken – de kluis heeft een nieuwe sleutel"),
+    ("share.rotate", "Replace vault key", "Kluissleutel vervangen"),
+    ("share.rotate_desc", "Removing someone gives the vault a new key automatically. Replace it yourself after someone left the vault on their own.", "Iemand verwijderen geeft de kluis automatisch een nieuwe sleutel. Vervang hem zelf als iemand de kluis zelf heeft verlaten."),
+    ("share.rotated", "The vault has a new key", "De kluis heeft een nieuwe sleutel"),
 
     // Generator
     ("gen.random", "Random", "Willekeurig"),

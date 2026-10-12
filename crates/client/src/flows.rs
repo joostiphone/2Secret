@@ -259,9 +259,13 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     let updates = access.with_session(|s| s.vaults_pending(SyncState::PendingUpdate))?;
     for v in updates {
         if v.role.can_manage() {
-            match client.update_vault(&v.id, &UpdateVaultRequest { meta: v.meta.clone() }).await {
+            let req = UpdateVaultRequest { meta: v.meta.clone(), key_rev: Some(v.key_rev) };
+            match client.update_vault(&v.id, &req).await {
                 Ok(()) => {}
                 Err(e) if e.is_not_found() || e.status() == Some(403) => {}
+                // The vault key was replaced: the sync below re-encrypts the
+                // name with the new key, and the next sync sends it.
+                Err(e) if e.status() == Some(409) => continue,
                 Err(e) => return Err(e),
             }
         }
@@ -318,10 +322,12 @@ async fn post_quantum_upkeep<A: SessionAccess>(client: &Client, access: &mut A) 
             Err(e) => return Err(e),
         }
     }
-    for (vault_id, wrapped_key) in access.with_session(|s| s.vault_keys_to_rewrap())? {
-        match client.set_vault_key(&vault_id, &SetVaultKeyRequest { wrapped_key: wrapped_key.clone() }).await {
-            Ok(()) => access.with_session(|s| s.set_vault_wrapped_key(&vault_id, wrapped_key))?,
-            Err(e) if unsupported(&e) => {}
+    for rewrap in access.with_session(|s| s.vault_keys_to_rewrap())? {
+        let req = SetVaultKeyRequest { wrapped_key: rewrap.wrapped_key.clone(), key_rev: Some(rewrap.key_rev) };
+        match client.set_vault_key(&rewrap.vault_id, &req).await {
+            Ok(()) => access.with_session(|s| s.set_vault_wrapped_key(&rewrap.vault_id, rewrap.wrapped_key))?,
+            // Unsupported, or the key was replaced meanwhile (next sync).
+            Err(e) if unsupported(&e) || e.status() == Some(409) => {}
             Err(e) => return Err(e),
         }
     }
@@ -344,8 +350,12 @@ pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, rol
     }
     let keys = AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?;
     let wrapped = session.wrap_vault_key_for(vault_id, &keys)?;
+    let key_rev = session.profile().vault(vault_id).map(|v| v.key_rev);
     client
-        .add_member(vault_id, &AddMemberRequest { account_id: user.account_id.clone(), role, wrapped_key: wrapped })
+        .add_member(
+            vault_id,
+            &AddMemberRequest { account_id: user.account_id.clone(), role, wrapped_key: wrapped, key_rev },
+        )
         .await?;
     sync(session).await?;
     Ok(user)
@@ -360,8 +370,33 @@ pub async fn set_member_role(session: &mut Session, vault_id: &str, account_id: 
     sync(session).await.map(|_| ())
 }
 
+/// Remove someone from a vault, then replace the vault key so that whatever
+/// is added or changed from now on is unreadable with the key they had.
 pub async fn remove_member(session: &mut Session, vault_id: &str, account_id: &str) -> Result<()> {
     client_for(session)?.remove_member(vault_id, account_id).await?;
+    if account_id == session.account().id {
+        // We left the vault ourselves.
+        return sync(session).await.map(|_| ());
+    }
+    rotate_vault_key(session, vault_id).await
+}
+
+/// Replace a vault's key: a new random key, the vault re-encrypted with it,
+/// and the key wrapped for every current member. Retried when another device
+/// changed the vault at the same moment.
+pub async fn rotate_vault_key(session: &mut Session, vault_id: &str) -> Result<()> {
+    let client = client_for(session)?;
+    let mut attempts = 0;
+    loop {
+        sync(session).await?;
+        let members = client.members(vault_id).await?;
+        let req = session.rotate_vault_key_request(vault_id, &members)?;
+        match client.rotate_vault_key(vault_id, &req).await {
+            Ok(()) => break,
+            Err(e) if e.status() == Some(409) && attempts < 3 => attempts += 1,
+            Err(e) => return Err(e),
+        }
+    }
     sync(session).await.map(|_| ())
 }
 

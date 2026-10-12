@@ -40,8 +40,10 @@ pub enum VaultCmd {
     Members { vault: String },
     /// Change the role of a member.
     SetRole { vault: String, email: String, role: String },
-    /// Remove someone's access to a vault.
+    /// Remove someone's access to a vault (the vault gets a new key).
     Unshare { vault: String, email: String },
+    /// Give a vault a new key, e.g. after someone left it.
+    RotateKey { vault: String },
 }
 
 fn role(s: &str) -> Result<Role> {
@@ -177,8 +179,18 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
             ctx.block_on(twosecret_client::remove_member(&mut session, &v.id, &m.account_id))?;
             ctx.save(&session)?;
             eprintln!(
-                "Removed {email}. Note: they may still know secrets they saw before; change important passwords."
+                "Removed {email} and gave '{}' a new key. They may still know secrets they saw before; \
+                 change important passwords.",
+                v.name
             );
+            Ok(())
+        }
+        VaultCmd::RotateKey { vault } => {
+            let mut session = ctx.unlock()?;
+            let v = session.find_vault(&vault)?;
+            ctx.block_on(twosecret_client::rotate_vault_key(&mut session, &v.id))?;
+            ctx.save(&session)?;
+            eprintln!("'{}' has a new key; members get it on their next sync.", v.name);
             Ok(())
         }
     }
