@@ -21,7 +21,40 @@ use crate::util::{b64, new_id, normalize_email, now, random_bytes, unb64, url_ma
 use crate::{Error, Result};
 
 /// Minimum length of a master password.
-pub const MIN_PASSWORD_LEN: usize = 8;
+/// Minimum length of a master password (LastPass allowed 8 characters for
+/// years; 12 is today's common minimum).
+pub const MIN_PASSWORD_LEN: usize = 12;
+
+/// Minimum strength of a master password: "good" (3 of 4) on the zxcvbn scale.
+pub const MIN_PASSWORD_LEVEL: crate::strength::StrengthLevel = crate::strength::StrengthLevel::Good;
+
+/// Why a master password is not acceptable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordProblem {
+    TooShort,
+    TooWeak,
+}
+
+/// Check a new master password against the policy. `context` holds words a
+/// guesser would try first (name, e-mail address).
+pub fn check_master_password(password: &str, context: &[&str]) -> std::result::Result<(), PasswordProblem> {
+    if password.chars().count() < MIN_PASSWORD_LEN {
+        return Err(PasswordProblem::TooShort);
+    }
+    if crate::strength::estimate(password, context).level < MIN_PASSWORD_LEVEL {
+        return Err(PasswordProblem::TooWeak);
+    }
+    Ok(())
+}
+
+fn require_master_password(password: &str, context: &[&str]) -> Result<()> {
+    check_master_password(password, context).map_err(|p| match p {
+        PasswordProblem::TooShort => {
+            Error::invalid(format!("the master password must be at least {MIN_PASSWORD_LEN} characters"))
+        }
+        PasswordProblem::TooWeak => Error::invalid("the master password is too easy to guess"),
+    })
+}
 
 /// A decrypted vault.
 struct OpenVault {
@@ -123,9 +156,7 @@ impl Session {
         if email.is_empty() {
             return Err(Error::invalid("an e-mail address is required"));
         }
-        if password.chars().count() < MIN_PASSWORD_LEN {
-            return Err(Error::invalid(format!("the master password must be at least {MIN_PASSWORD_LEN} characters")));
-        }
+        require_master_password(password, &[name, &email])?;
         kdf.validate()?;
         let secret_key = SecretKey::generate();
         let salt: [u8; 16] = random_bytes();
@@ -687,9 +718,7 @@ impl Session {
         new_password: &str,
         secret_key: &SecretKey,
     ) -> Result<PasswordChange> {
-        if new_password.chars().count() < MIN_PASSWORD_LEN {
-            return Err(Error::invalid(format!("the master password must be at least {MIN_PASSWORD_LEN} characters")));
-        }
+        require_master_password(new_password, &[&self.profile.account.name, &self.profile.account.email])?;
         let current = self.verify_password(current_password, secret_key)?;
         let salt: [u8; 16] = random_bytes();
         let kdf = KdfParams::default().max_with(&self.profile.account.kdf);

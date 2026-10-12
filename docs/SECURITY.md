@@ -115,7 +115,7 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Public key | yes |
 | Vault names and descriptions | **no** (encrypted) |
 | Item titles, usernames, passwords, URLs, notes, files | **no** (encrypted) |
-| Number of vaults/items, approximate item sizes, modification times | yes (metadata) |
+| Number of vaults/items, size class of each item (padded), modification times | yes (metadata) |
 | Who shares which vault with whom, and with which role | yes |
 
 **Unknown accounts:** the pre-login endpoint answers unknown e-mail addresses
@@ -183,7 +183,39 @@ conflict never silently loses a password. Deletions are tombstones.
   the popup opens, the account key is kept in `chrome.storage.session` —
   browser memory that is only accessible to the extension and cleared when the
   browser closes — until the auto-lock time passes. Autofill injects a small
-  self-contained function into the active tab only when you click *Fill*.
+  self-contained function into the active tab only when you click *Fill*; the
+  extension has no content scripts and no message endpoints that web pages
+  can reach. Right before filling, the tab's address and the address of every
+  frame are checked again against the item's websites, so credentials never
+  reach a frame from another site (an ad, a hostile embed) or a page the tab
+  navigated to after the popup opened. Websites are matched by registrable
+  domain using the Public Suffix List (`alice.github.io` never matches
+  `mallory.github.io`), an `https` item is never filled into an `http` page,
+  and an item URL with a port only matches that port.
+
+## Master password and key derivation policy
+
+- Master passwords need at least 12 characters and a "good" zxcvbn rating
+  (name and e-mail address count against it).
+- Argon2id parameters are stored per account so they can be raised later.
+  Clients refuse to derive keys, and servers refuse to store accounts, with
+  parameters below 19 MiB of memory and 2 passes, so a hostile or outdated
+  server cannot talk a client into weak key derivation.
+- Every encrypted JSON blob (items, vault names, keys, tokens) is padded with
+  JSON whitespace to a size class before encryption: 256-byte steps up to
+  4 KiB, 4 KiB steps up to 64 KiB, then 64 KiB steps.
+
+## Lessons from the LastPass breaches
+
+| What went wrong at LastPass | How 2Secret handles it |
+|---|---|
+| Stolen vault backups could be attacked offline; weak master passwords fell first | The Secret Key adds 125 random bits to every account: the server database alone is useless for guessing passwords |
+| Website URLs were stored unencrypted, revealing which sites every user has | Titles, URLs, usernames, notes and vault names are all encrypted; item sizes are padded |
+| Old accounts kept 1–5,000 PBKDF2 iterations for years | Argon2id (64 MiB, 3 passes) from day one, with an enforced minimum on client and server |
+| Short master passwords (8 characters) were allowed | At least 12 characters and a "good" strength rating |
+| Older vaults used AES-ECB/CBC without integrity protection | Authenticated encryption (XChaCha20-Poly1305) with every ciphertext bound to its place (associated data) |
+| Browser extension bugs let web pages and iframes trigger fills or read data | Fill only on an explicit click, page and every frame re-checked against the item, no content scripts or page-reachable messaging |
+| Access to the vault storage by a compromised engineer exposed everything | The server never holds a key that decrypts anything; self-hosters keep their own infrastructure |
 
 ## Web vault hardening
 
@@ -202,8 +234,10 @@ the apps warn about this.
 ## Known limitations
 
 - No key rotation when a vault member is removed (see *Sharing*).
-- Metadata listed above (counts, sizes, timestamps, sharing graph, e-mail
-  addresses) is visible to the server operator.
+- Metadata listed above (counts, size classes, timestamps, sharing graph,
+  e-mail addresses) is visible to the server operator.
+- X25519, used to share vault keys with other people, would be broken by a
+  large quantum computer; personal vaults rely only on 256-bit symmetric keys.
 - The web vault is only as trustworthy as the server that serves its code. If
   you do not trust the server operator, use the desktop/mobile apps or the
   extension, whose code does not come from the server.

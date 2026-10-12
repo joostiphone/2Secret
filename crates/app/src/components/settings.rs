@@ -133,12 +133,19 @@ fn ChangePasswordForm(done: EventHandler<()>) -> Element {
     let mut error = use_signal(|| None::<String>);
     let submit = move |_| {
         let (cur, nw, cf) = (current(), new(), confirm());
-        if nw.chars().count() < twosecret_core::session::MIN_PASSWORD_LEN {
-            error.set(Some(t("create.err_short").into()));
-            return;
-        }
-        if twosecret_core::strength::estimate(&nw, &[]).level < twosecret_core::strength::StrengthLevel::Fair {
-            error.set(Some(t("create.err_weak").into()));
+        let context = SESSION
+            .peek()
+            .as_ref()
+            .map(|s| (s.profile().account.name.clone(), s.profile().account.email.clone()))
+            .unwrap_or_default();
+        if let Err(problem) = twosecret_core::session::check_master_password(&nw, &[&context.0, &context.1]) {
+            error.set(Some(
+                match problem {
+                    twosecret_core::session::PasswordProblem::TooShort => t("create.err_short"),
+                    twosecret_core::session::PasswordProblem::TooWeak => t("create.err_weak"),
+                }
+                .into(),
+            ));
             return;
         }
         if nw != cf {

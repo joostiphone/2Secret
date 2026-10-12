@@ -2,8 +2,7 @@
 
 use dioxus::prelude::*;
 use twosecret_core::crypto::{derive_keys, KdfParams, SecretKey};
-use twosecret_core::session::{Session, MIN_PASSWORD_LEN};
-use twosecret_core::strength::{estimate, StrengthLevel};
+use twosecret_core::session::{check_master_password, PasswordProblem, Session};
 
 use crate::components::widgets::*;
 use crate::i18n::t;
@@ -58,10 +57,11 @@ pub fn CreateAccount() -> Element {
             Some(t("create.err_name"))
         } else if !e.contains('@') {
             Some(t("create.err_email"))
-        } else if pw.chars().count() < MIN_PASSWORD_LEN {
-            Some(t("create.err_short"))
-        } else if estimate(&pw, &[&n, &e]).level < StrengthLevel::Fair {
-            Some(t("create.err_weak"))
+        } else if let Err(problem) = check_master_password(&pw, &[&n, &e]) {
+            Some(match problem {
+                PasswordProblem::TooShort => t("create.err_short"),
+                PasswordProblem::TooWeak => t("create.err_weak"),
+            })
         } else if pw != c {
             Some(t("create.err_mismatch"))
         } else if use_server() && server().trim().is_empty() {

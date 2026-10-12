@@ -170,8 +170,23 @@ pub fn decrypt(key: &SymmetricKey, enc: &EncString, aad: &[u8]) -> Result<Zeroiz
 
 /// Serialize `value` as JSON and encrypt it.
 pub fn encrypt_json<T: Serialize>(key: &SymmetricKey, value: &T, aad: &[u8]) -> Result<EncString> {
-    let json = Zeroizing::new(serde_json::to_vec(value)?);
+    let mut json = Zeroizing::new(serde_json::to_vec(value)?);
+    // Trailing spaces are valid JSON whitespace: padding means a ciphertext
+    // only reveals a size class, not the exact length of a title or password.
+    let padded = padded_len(json.len());
+    json.resize(padded, b' ');
     Ok(encrypt(key, &json, aad))
+}
+
+/// Size classes for padding: 256-byte steps up to 4 KiB, 4 KiB steps up to
+/// 64 KiB, then 64 KiB steps.
+fn padded_len(len: usize) -> usize {
+    let step = match len {
+        0..=4096 => 256,
+        4097..=65536 => 4096,
+        _ => 65536,
+    };
+    len.div_ceil(step).max(1) * step
 }
 
 /// Decrypt a blob and deserialize the JSON inside.
@@ -183,6 +198,12 @@ pub fn decrypt_json<T: DeserializeOwned>(key: &SymmetricKey, enc: &EncString, aa
 // ---------------------------------------------------------------------------
 // Password hashing
 // ---------------------------------------------------------------------------
+
+/// Minimum Argon2id memory cost accepted anywhere (OWASP: 19 MiB with 2 passes).
+pub const MIN_KDF_MEMORY_KIB: u32 = 19 * 1024;
+/// Minimum Argon2id passes accepted anywhere.
+pub const MIN_KDF_ITERATIONS: u32 = 2;
+static WEAK_KDF_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Argon2id parameters. Stored with the account so they can be raised later.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,8 +223,10 @@ impl Default for KdfParams {
 }
 
 impl KdfParams {
-    /// Deliberately weak parameters for unit tests only.
+    /// Deliberately weak parameters for tests only. Calling this also lifts the
+    /// minimum below for the rest of the process.
     pub fn insecure_for_tests() -> Self {
+        Self::allow_weak_for_tests();
         Self { algorithm: "argon2id".into(), memory_kib: 64, iterations: 1, parallelism: 1 }
     }
 
@@ -222,7 +245,27 @@ impl KdfParams {
         if self.iterations == 0 || self.iterations > 64 {
             return Err(Error::Kdf("iteration count out of range".into()));
         }
+        // A hostile or outdated server must not be able to make clients derive
+        // keys with weak parameters (LastPass kept accounts on 1 or 500
+        // PBKDF2 iterations for years). Servers refuse them too.
+        if self.is_weak() && !WEAK_KDF_ALLOWED.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(Error::Kdf(format!(
+                "Argon2id parameters below the minimum ({} MiB, {} passes)",
+                MIN_KDF_MEMORY_KIB / 1024,
+                MIN_KDF_ITERATIONS
+            )));
+        }
         Ok(())
+    }
+
+    /// Accept parameters below the minimum for the rest of the process (tests).
+    pub fn allow_weak_for_tests() {
+        WEAK_KDF_ALLOWED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Below the minimum this crate accepts outside of tests?
+    pub fn is_weak(&self) -> bool {
+        self.memory_kib < MIN_KDF_MEMORY_KIB || self.iterations < MIN_KDF_ITERATIONS
     }
 
     /// Run Argon2id with these parameters.
@@ -657,6 +700,24 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_is_padded_to_size_classes() {
+        let key = SymmetricKey::generate();
+        let short = encrypt_json(&key, &"x", b"aad").unwrap();
+        let longer = encrypt_json(&key, &"x".repeat(200), b"aad").unwrap();
+        assert_eq!(short.as_str().len(), longer.as_str().len());
+        let back: String = decrypt_json(&key, &longer, b"aad").unwrap();
+        assert_eq!(back, "x".repeat(200));
+        assert_eq!([0, 256, 257, 4096, 5000, 70_000].map(padded_len), [256, 256, 512, 4096, 8192, 131_072]);
+    }
+
+    #[test]
+    fn weak_kdf_parameters_are_detected() {
+        assert!(!KdfParams::default().is_weak());
+        assert!(KdfParams { memory_kib: 8 * 1024, ..Default::default() }.is_weak());
+        assert!(KdfParams { iterations: 1, ..Default::default() }.is_weak());
+    }
 
     #[test]
     fn encrypt_roundtrip_and_aad_binding() {

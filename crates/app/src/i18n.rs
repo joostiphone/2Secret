@@ -151,7 +151,7 @@ static TABLE: &[Entry] = &[
     ("create.submit", "Create account", "Account aanmaken"),
     ("create.err_name", "Please enter your name.", "Vul je naam in."),
     ("create.err_email", "Please enter a valid e-mail address.", "Vul een geldig e-mailadres in."),
-    ("create.err_short", "Use at least 8 characters.", "Gebruik minstens 8 tekens."),
+    ("create.err_short", "Use at least 12 characters.", "Gebruik minstens 12 tekens."),
     ("create.err_weak", "This password is too easy to guess. Choose a stronger one.", "Dit wachtwoord is te makkelijk te raden. Kies een sterker wachtwoord."),
     ("create.err_mismatch", "The passwords do not match.", "De wachtwoorden komen niet overeen."),
     ("create.err_server", "Enter the address of your 2Secret server.", "Vul het adres van je 2Secret-server in."),
@@ -514,6 +514,11 @@ static TABLE: &[Entry] = &[
     ("ext.fill", "Fill", "Invullen"),
     ("ext.suggestions", "Suggestions for", "Suggesties voor"),
     ("ext.nothing_to_fill", "No login form found on this page.", "Geen inlogformulier gevonden op deze pagina."),
+    (
+        "ext.wrong_site",
+        "This item is not saved for this website. Add the website to the item to fill it here.",
+        "Dit item hoort niet bij deze website. Voeg de website toe aan het item om hier in te vullen.",
+    ),
 
     // Toasts
     ("toast.copied", "copied", "gekopieerd"),

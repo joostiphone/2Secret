@@ -218,6 +218,7 @@ fn generator_and_strength() {
 fn server_workflow() {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
     let url = rt.block_on(async {
+        twosecret_core::crypto::KdfParams::allow_weak_for_tests();
         let state = twosecret_server::AppState::in_memory(Default::default()).unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());

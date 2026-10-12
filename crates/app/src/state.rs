@@ -507,25 +507,32 @@ pub async fn unlock_online(profile: Profile, password: String) -> Result<Session
 /// Extension: fill the active tab with an item's username, password and
 /// current one-time code, then close the popup.
 pub fn fill_item(id: &str) {
-    let Some((user, pw, code)) = SESSION.peek().as_ref().and_then(|s| s.item(id)).map(|i| {
+    let Some((user, pw, code, rules)) = SESSION.peek().as_ref().and_then(|s| s.item(id)).map(|i| {
         let code = i
             .totp_secret()
             .and_then(|t| twosecret_core::totp::Totp::parse(t).ok())
             .map(|t| t.now().0)
             .unwrap_or_default();
-        (i.username().unwrap_or("").to_string(), i.password().unwrap_or("").to_string(), code)
+        let rules = twosecret_core::util::fill_rules(&i.urls);
+        (i.username().unwrap_or("").to_string(), i.password().unwrap_or("").to_string(), code, rules)
     }) else {
         return;
     };
+    if rules.is_empty() {
+        toast_err(t("ext.wrong_site"));
+        return;
+    }
     dioxus::core::spawn_forever(async move {
-        if extension::fill(&user, &pw, &code).await {
-            if !code.is_empty() && !pw.is_empty() {
-                // The code is usually asked on the next page: keep it ready.
-                platform::copy_text(&code).await;
+        match extension::fill(&user, &pw, &code, &rules).await {
+            extension::FillResult::Filled => {
+                if !code.is_empty() && !pw.is_empty() {
+                    // The code is usually asked on the next page: keep it ready.
+                    platform::copy_text(&code).await;
+                }
+                extension::close();
             }
-            extension::close();
-        } else {
-            toast_err(t("ext.nothing_to_fill"));
+            extension::FillResult::WrongSite => toast_err(t("ext.wrong_site")),
+            extension::FillResult::NothingToFill => toast_err(t("ext.nothing_to_fill")),
         }
     });
 }

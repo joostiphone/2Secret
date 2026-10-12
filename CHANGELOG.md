@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+Security hardening, informed by the LastPass breaches:
+
+- Browser extension: right before filling, the page and every frame are
+  checked against the item's websites, so credentials never reach a frame
+  from another site or a page the tab navigated to after the popup opened.
+- Websites are matched by registrable domain using the Public Suffix List,
+  `https` items are never filled into `http` pages, ports are respected.
+- Master passwords need at least 12 characters and a "good" strength rating.
+- Clients and servers refuse Argon2id parameters below 19 MiB / 2 passes.
+- Encrypted data is padded to size classes, so the server no longer learns
+  exact item sizes.
+
 ## 1.0.2
 
 - The Docker image is also available for ARM64 (Raspberry Pi, ARM servers).

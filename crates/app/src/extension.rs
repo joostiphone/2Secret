@@ -4,8 +4,20 @@
 //!
 //! All functions are no-ops outside the extension build.
 
+/// Outcome of filling the active tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(feature = "extension", target_arch = "wasm32")), allow(dead_code))]
+pub enum FillResult {
+    Filled,
+    NothingToFill,
+    /// The page (or the frame with the form) is not one of the item's websites.
+    WrongSite,
+}
+
 #[cfg(all(feature = "extension", target_arch = "wasm32"))]
 mod imp {
+    use super::FillResult;
+    use twosecret_core::util::FillRule;
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen(inline_js = r#"
@@ -16,8 +28,31 @@ export async function activeTabUrl() {
   return tab && tab.url ? tab.url : "";
 }
 
-// Runs inside the web page (serialised by the browser, not eval'd here).
-function twosecretFill(username, password, code) {
+// Is a page location allowed to receive an item's credentials? `rules` are
+// the item's registrable domains, with the https and port requirements.
+function twosecretAllowed(loc, rules) {
+  const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
+  if (!host || !/^https?:$/.test(loc.protocol)) return false;
+  return rules.some((r) =>
+    (host === r.domain || host.endsWith("." + r.domain))
+    && (!r.https || loc.protocol === "https:")
+    && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
+}
+
+// Runs inside every frame of the page (serialised by the browser, not eval'd
+// here, so it has to be self-contained and repeats the check above). Each
+// frame checks its own address, so credentials never reach a frame from
+// another site or a page the tab navigated to in the meantime.
+function twosecretFill(username, password, code, rules) {
+  const allowed = (loc) => {
+    const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
+    if (!host || !/^https?:$/.test(loc.protocol)) return false;
+    return rules.some((r) =>
+      (host === r.domain || host.endsWith("." + r.domain))
+      && (!r.https || loc.protocol === "https:")
+      && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
+  };
+  if (!allowed(window.location)) return "mismatch";
   const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
     && getComputedStyle(el).visibility !== "hidden" && !el.disabled && !el.readOnly;
   const setValue = (el, value) => {
@@ -60,18 +95,23 @@ function twosecretFill(username, password, code) {
       filled = true;
     }
   }
-  return filled;
+  return filled ? "filled" : "nothing";
 }
 
-export async function fillActiveTab(username, password, code) {
+export async function fillActiveTab(username, password, code, rulesJson) {
+  const rules = JSON.parse(rulesJson);
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
-  if (!tab || tab.id === undefined) return false;
+  if (!tab || tab.id === undefined || !tab.url) return "nothing";
+  // The tab may have navigated since the popup opened: check it again now.
+  if (!twosecretAllowed(new URL(tab.url), rules)) return "mismatch";
   const results = await api.scripting.executeScript({
     target: { tabId: tab.id, allFrames: true },
     func: twosecretFill,
-    args: [username, password, code],
+    args: [username, password, code, rules],
   });
-  return results.some((r) => r && r.result === true);
+  const outcomes = results.map((r) => r && r.result);
+  if (outcomes.includes("filled")) return "filled";
+  return outcomes.includes("nothing") ? "nothing" : "mismatch";
 }
 
 export async function sessionGet(key) {
@@ -92,7 +132,12 @@ export function closePopup() {
         #[wasm_bindgen(catch, js_name = activeTabUrl)]
         async fn active_tab_url() -> Result<JsValue, JsValue>;
         #[wasm_bindgen(catch, js_name = fillActiveTab)]
-        async fn fill_active_tab(username: String, password: String, code: String) -> Result<JsValue, JsValue>;
+        async fn fill_active_tab(
+            username: String,
+            password: String,
+            code: String,
+            rules: String,
+        ) -> Result<JsValue, JsValue>;
         #[wasm_bindgen(catch, js_name = sessionGet)]
         async fn session_get(key: &str) -> Result<JsValue, JsValue>;
         #[wasm_bindgen(catch, js_name = sessionSet)]
@@ -107,12 +152,17 @@ export function closePopup() {
         active_tab_url().await.ok().and_then(|v| v.as_string()).filter(|s| s.starts_with("http"))
     }
 
-    pub async fn fill(username: &str, password: &str, code: &str) -> bool {
-        fill_active_tab(username.into(), password.into(), code.into())
+    pub async fn fill(username: &str, password: &str, code: &str, rules: &[FillRule]) -> FillResult {
+        let rules = serde_json::to_string(rules).unwrap_or_else(|_| "[]".into());
+        match fill_active_tab(username.into(), password.into(), code.into(), rules)
             .await
             .ok()
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+            .and_then(|v| v.as_string())
+        {
+            Some(r) if r == "filled" => FillResult::Filled,
+            Some(r) if r == "mismatch" => FillResult::WrongSite,
+            _ => FillResult::NothingToFill,
+        }
     }
 
     pub async fn store(key: &str, value: String) {
@@ -137,8 +187,13 @@ mod imp {
     pub async fn tab_url() -> Option<String> {
         None
     }
-    pub async fn fill(_username: &str, _password: &str, _code: &str) -> bool {
-        false
+    pub async fn fill(
+        _username: &str,
+        _password: &str,
+        _code: &str,
+        _rules: &[twosecret_core::util::FillRule],
+    ) -> super::FillResult {
+        super::FillResult::NothingToFill
     }
     pub async fn store(_key: &str, _value: String) {}
     pub async fn load(_key: &str) -> Option<String> {

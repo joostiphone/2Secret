@@ -150,31 +150,74 @@ pub fn url_host(raw: &str) -> Option<String> {
     Some(host.strip_prefix("www.").unwrap_or(&host).to_string())
 }
 
-/// Very small "registrable domain" approximation: the last two labels, or the
-/// last three when the second-level label is a well known public suffix part
-/// such as `co.uk` or `com.au`.
+/// The registrable domain of a host according to the Public Suffix List:
+/// `login.example.co.uk` becomes `example.co.uk`, while `alice.github.io`
+/// stays `alice.github.io` (every GitHub Pages site belongs to someone else).
+/// IP addresses and single-label hosts are returned unchanged.
 pub fn base_domain(host: &str) -> String {
-    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
-    if labels.len() <= 2 || host.parse::<std::net::IpAddr>().is_ok() {
-        return host.to_string();
+    let host = host.trim_end_matches('.').to_lowercase();
+    if host.parse::<std::net::IpAddr>().is_ok() || !host.contains('.') {
+        return host;
     }
-    let sld = labels[labels.len() - 2];
-    let take = if matches!(sld, "co" | "com" | "net" | "org" | "gov" | "ac" | "edu" | "or" | "ne")
-        && labels[labels.len() - 1].len() == 2
-    {
-        3
-    } else {
-        2
-    };
-    labels[labels.len().saturating_sub(take)..].join(".")
+    psl::domain_str(&host).unwrap_or(&host).to_string()
 }
 
-/// Does a stored item URL match the page the user is on?
-pub fn url_matches(item_url: &str, page_url: &str) -> bool {
-    match (url_host(item_url), url_host(page_url)) {
-        (Some(a), Some(b)) => a == b || base_domain(&a) == base_domain(&b),
-        _ => false,
+fn parse_web_url(raw: &str) -> Option<url::Url> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
     }
+    let with_scheme = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
+    url::Url::parse(&with_scheme).ok().filter(|u| u.host_str().is_some())
+}
+
+/// Does a stored item URL match the page the user is on? The page must be on
+/// the same registrable domain (Public Suffix List), use the same port if the
+/// item names one, and must not downgrade an `https` item to plain `http`.
+pub fn url_matches(item_url: &str, page_url: &str) -> bool {
+    let (Some(item), Some(page)) = (parse_web_url(item_url), parse_web_url(page_url)) else {
+        return false;
+    };
+    if !matches!(page.scheme(), "https" | "http") || (item.scheme() == "https" && page.scheme() != "https") {
+        return false;
+    }
+    if item.port().is_some() && item.port_or_known_default() != page.port_or_known_default() {
+        return false;
+    }
+    let (Some(a), Some(b)) = (item.host_str(), page.host_str()) else { return false };
+    let (a, b) = (a.to_lowercase(), b.to_lowercase());
+    a == b || base_domain(&a) == base_domain(&b)
+}
+
+/// Where an item's credentials may be filled: the browser extension checks
+/// the page and every frame against these rules at the moment of filling.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct FillRule {
+    /// Registrable domain; the page host must equal it or be a subdomain.
+    pub domain: String,
+    /// The item's URL is `https`, so plain `http` pages are refused.
+    pub https: bool,
+    /// The item's URL names this port explicitly.
+    pub port: Option<u16>,
+}
+
+/// Fill rules for an item's URLs (same semantics as [`url_matches`]).
+pub fn fill_rules(item_urls: &[String]) -> Vec<FillRule> {
+    let mut out: Vec<FillRule> = item_urls
+        .iter()
+        .filter_map(|u| parse_web_url(u))
+        .filter(|u| matches!(u.scheme(), "https" | "http"))
+        .filter_map(|u| {
+            Some(FillRule {
+                domain: base_domain(&u.host_str()?.to_lowercase()),
+                https: u.scheme() == "https",
+                port: u.port(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| (&a.domain, a.https, a.port).cmp(&(&b.domain, b.https, b.port)));
+    out.dedup();
+    out
 }
 
 #[cfg(test)]
@@ -190,6 +233,31 @@ mod tests {
         }
         assert_eq!(format_date(0), "1970-01-01");
         assert_eq!(format_timestamp(1_700_000_000), "2023-11-14 22:13");
+    }
+
+    #[test]
+    fn url_matching() {
+        assert!(url_matches("https://github.com/login", "https://github.com/session"));
+        assert!(url_matches("github.com", "https://gist.github.com/x"));
+        assert!(url_matches("https://login.example.co.uk", "https://www.example.co.uk"));
+        // Different owners under a public suffix.
+        assert!(!url_matches("https://alice.github.io", "https://mallory.github.io"));
+        assert!(!url_matches("https://example.co.uk", "https://other.co.uk"));
+        // No downgrade to http, no lookalikes, no other schemes.
+        assert!(!url_matches("https://bank.example", "http://bank.example"));
+        assert!(url_matches("http://router.local", "http://router.local/admin"));
+        assert!(!url_matches("https://github.com", "https://github.com.evil.example"));
+        assert!(!url_matches("https://github.com", "https://evil.example/?github.com"));
+        assert!(!url_matches("https://github.com", "file:///github.com"));
+        // Ports and IP addresses.
+        assert!(!url_matches("https://192.168.1.1:8443", "https://192.168.1.1"));
+        assert!(url_matches("https://192.168.1.1:8443", "https://192.168.1.1:8443/x"));
+        assert!(!url_matches("https://10.0.0.1", "https://10.0.0.2"));
+        assert_eq!(
+            fill_rules(&["https://www.github.com/login".into(), "gist.github.com".into(), "ftp://x.org".into()]),
+            vec![FillRule { domain: "github.com".into(), https: true, port: None }]
+        );
+        assert_eq!(fill_rules(&["http://10.0.0.1:8080".into()])[0].port, Some(8080));
     }
 
     #[test]
