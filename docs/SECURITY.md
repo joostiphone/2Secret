@@ -230,6 +230,17 @@ conflict never silently loses a password. Deletions are tombstones.
   (zeroized) when the app locks. Rust's memory safety rules out whole classes
   of bugs (buffer overflows, use-after-free) in the crypto and parsing code.
 - **Auto-lock** after inactivity (default 10 minutes).
+- **Biometric unlock** (optional; macOS, iOS, Windows): the account key is
+  stored encrypted with a random 256-bit device key that the operating
+  system releases only after Touch ID, Face ID or Windows Hello. On iOS the
+  device key is a keychain item that the Secure Enclave opens only for the
+  currently enrolled face or fingers, on this device, while a passcode is
+  set. On macOS Touch ID is checked through LocalAuthentication and the key
+  sits in the login keychain, readable only by 2Secret. On Windows the
+  device key is derived (HKDF) from a Windows Hello signature over a fixed
+  challenge: the private key stays in the TPM and the device key is never
+  stored. The master password is required again every 14 days, and turning
+  the feature off or removing the account deletes the device key.
 - **Clipboard**: copied secrets are cleared after a configurable time
   (default 90 s) if the clipboard still contains them. Browsers only allow
   reading the clipboard after a permission prompt, so the web vault and the

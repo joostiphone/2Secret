@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use twosecret_client::SessionAccess;
+use twosecret_core::biometric::BiometricUnlock;
 use twosecret_core::crypto::SecretKey;
 use twosecret_core::generator::GeneratorOptions;
 use twosecret_core::item::{Category, Item};
@@ -11,6 +12,7 @@ use twosecret_core::session::Session;
 use twosecret_core::util::now;
 use twosecret_core::watchtower::IssueKind;
 
+use crate::biometric;
 use crate::extension;
 use crate::i18n::{t, Lang, LANG};
 use crate::platform;
@@ -377,8 +379,48 @@ pub fn lock() {
     *PHASE.write() = if load_profile().is_some() { Phase::Locked } else { Phase::Welcome };
 }
 
+const BIOMETRIC_KEY: &str = "biometric";
+
+fn stored_biometric_unlock() -> Option<BiometricUnlock> {
+    let json = platform::storage().read(BIOMETRIC_KEY).ok().flatten()?;
+    BiometricUnlock::from_json(&json).ok()
+}
+
+/// Biometric unlock settings of the account on this device, if turned on.
+pub fn biometric_unlock() -> Option<BiometricUnlock> {
+    let config = stored_biometric_unlock()?;
+    (config.account_id == load_profile()?.account.id).then_some(config)
+}
+
+pub fn save_biometric_unlock(config: &BiometricUnlock) {
+    let _ = platform::storage().write(BIOMETRIC_KEY, &config.to_json());
+}
+
+/// Turn biometric unlock off and let the operating system forget the key.
+pub fn disable_biometric_unlock() {
+    if let Some(config) = stored_biometric_unlock() {
+        biometric::delete_device_key(&config.account_id);
+    }
+    let _ = platform::storage().delete(BIOMETRIC_KEY);
+}
+
+/// The master password was just entered: biometric unlock keeps working for
+/// another [`BiometricUnlock::MAX_DAYS`] days.
+pub fn password_entered() {
+    if let Some(mut config) = biometric_unlock() {
+        config.password_entered();
+        save_biometric_unlock(&config);
+    }
+}
+
+/// "{kind}" in a translated text replaced by the biometric method's name.
+pub fn with_kind(text: &str, kind: biometric::Kind) -> String {
+    text.replace("{kind}", kind.label())
+}
+
 /// Remove the account from this device.
 pub fn forget_device() {
+    disable_biometric_unlock();
     let _ = platform::storage().delete(PROFILE_KEY);
     let _ = platform::storage().delete(DEVICE_KEY);
     lock();

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Unlock with Touch ID (macOS), Face ID or Touch ID (iOS) and Windows Hello
+  (*Settings → Security*). The master password is still needed every 14 days.
 - Removing someone from a shared vault gives the vault a new key: everything
   is re-encrypted, so what is added or changed afterwards is unreadable with
   the key they had. Managers can also replace a vault's key themselves

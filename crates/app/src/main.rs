@@ -1,5 +1,6 @@
 //! 2Secret – one Rust UI for macOS, Windows, Linux, the BSDs, iOS and the web.
 
+mod biometric;
 mod components;
 mod extension;
 mod i18n;

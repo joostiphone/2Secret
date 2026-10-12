@@ -131,6 +131,8 @@ static TABLE: &[Entry] = &[
     ("common.secret_key", "Secret Key", "Geheime sleutel"),
     ("common.server", "Server address", "Serveradres"),
     ("common.show", "Show", "Tonen"),
+    ("common.turn_on", "Turn on", "Inschakelen"),
+    ("common.turn_off", "Turn off", "Uitschakelen"),
 
     // Welcome & onboarding
     ("welcome.tagline", "Free, open-source password manager", "Gratis, open-source wachtwoordmanager"),
@@ -168,6 +170,10 @@ static TABLE: &[Entry] = &[
     ("lock.unlock", "Unlock", "Ontgrendelen"),
     ("lock.lock_now", "Lock now", "Nu vergrendelen"),
     ("lock.other_account", "Use a different account", "Ander account gebruiken"),
+    ("lock.biometric", "Unlock with {kind}", "Ontgrendelen met {kind}"),
+    ("lock.biometric_reason", "unlock your vault", "je kluis ontgrendelen"),
+    ("lock.biometric_password_needed", "Enter your master password. 2Secret asks for it every 14 days, so you will not forget it.", "Vul je hoofdwachtwoord in. 2Secret vraagt er elke 14 dagen om, zodat je het niet vergeet."),
+    ("lock.biometric_unavailable", "{kind} is not available right now. Enter your master password.", "{kind} is nu niet beschikbaar. Vul je hoofdwachtwoord in."),
     ("reauth.explain", "Your session on the sync server has ended. Enter your master password to sign in again.", "Je sessie op de synchronisatieserver is beëindigd. Vul je hoofdwachtwoord in om opnieuw in te loggen."),
 
     // Busy messages
@@ -469,6 +475,12 @@ static TABLE: &[Entry] = &[
     ("settings.security", "Security", "Beveiliging"),
     ("settings.auto_lock", "Lock automatically", "Automatisch vergrendelen"),
     ("settings.auto_lock_desc", "Lock 2Secret after a period of inactivity.", "Vergrendel 2Secret na een periode zonder activiteit."),
+    ("settings.biometric", "Unlock with {kind}", "Ontgrendelen met {kind}"),
+    ("settings.biometric_desc", "Use {kind} instead of typing your master password. It is still needed every 14 days.", "Gebruik {kind} in plaats van je hoofdwachtwoord te typen. Dat blijft elke 14 dagen nodig."),
+    ("settings.biometric_reason", "turn on unlocking with biometrics", "ontgrendelen met biometrie inschakelen"),
+    ("settings.biometric_on", "{kind} unlock is on", "Ontgrendelen met {kind} staat aan"),
+    ("settings.biometric_off", "{kind} unlock is off", "Ontgrendelen met {kind} staat uit"),
+    ("settings.biometric_unavailable", "{kind} is not set up on this device.", "{kind} is niet ingesteld op dit apparaat."),
     ("settings.clipboard", "Clear clipboard", "Klembord wissen"),
     ("settings.clipboard_desc", "Remove copied secrets from the clipboard after a while.", "Verwijder gekopieerde geheimen na een tijdje van het klembord."),
     ("settings.never", "Never", "Nooit"),

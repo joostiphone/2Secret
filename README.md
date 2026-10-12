@@ -47,7 +47,7 @@ is free, open source, and you can host the sync server yourself.
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
-| 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. |
+| 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
 | 🏠 **Self-hostable** | One small server binary (or Docker image) that also serves the web vault. |
 
@@ -116,7 +116,7 @@ Full reference: [docs/CLI.md](docs/CLI.md).
 
 Compared with 1Password, these are missing today – contributions welcome:
 
-- Unlocking with Touch ID / Face ID / Windows Hello (the master password is always required).
+- Biometric unlock on Linux and in the browser (the master password is required there).
 - Storing and using passkeys.
 - iOS system AutoFill and a Safari extension; an Android app.
 - An independent security audit.
@@ -224,14 +224,14 @@ Windows, Linux, BSD, iOS, het web en je browser.
   geheimen.
 - **Importeren** uit 1Password, Bitwarden, LastPass, Chrome, Firefox, Safari,
   KeePass, Dashlane en meer.
-- **Automatisch vergrendelen** en klembord wissen.
+- **Automatisch vergrendelen** en klembord wissen; ontgrendelen met Touch ID,
+  Face ID of Windows Hello.
 - **Nederlands en Engels.**
 
 ### Nog niet aanwezig
 
-Biometrisch ontgrendelen (Touch ID, Face ID, Windows Hello), passkeys,
-automatisch invullen in iOS en Safari, een Android-app, het vervangen van de
-kluissleutel na het verwijderen van een lid, en een onafhankelijke
+Biometrisch ontgrendelen op Linux en in de browser, passkeys, automatisch
+invullen in iOS en Safari, een Android-app, en een onafhankelijke
 beveiligingsaudit.
 
 ### Snel aan de slag

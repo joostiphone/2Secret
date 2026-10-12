@@ -2,8 +2,10 @@
 
 use dioxus::prelude::*;
 use twosecret_core::api::DeviceInfo;
+use twosecret_core::biometric::BiometricUnlock;
 use twosecret_core::import::{self, ImportFormat};
 
+use crate::biometric;
 use crate::components::shell::relative_time;
 use crate::components::widgets::*;
 use crate::i18n::{t, Lang, LANG};
@@ -174,6 +176,7 @@ fn ChangePasswordForm(done: EventHandler<()>) -> Element {
             match result {
                 Ok(()) => {
                     install_session(session);
+                    password_entered();
                     toast(t("toast.password_changed"));
                     done.call(());
                 }
@@ -448,6 +451,52 @@ fn VaultsSection() -> Element {
     }
 }
 
+/// Turn unlocking with Touch ID / Face ID / Windows Hello on or off.
+#[component]
+fn BiometricRow() -> Element {
+    let kind = use_hook(biometric::available);
+    let mut enabled = use_signal(|| biometric_unlock().is_some());
+    let Some(kind) = kind else { return rsx! {} };
+    let toggle = move |_| {
+        if enabled() {
+            disable_biometric_unlock();
+            enabled.set(false);
+            toast(&with_kind(t("settings.biometric_off"), kind));
+            return;
+        }
+        let Some((account_id, account_key)) =
+            SESSION.peek().as_ref().map(|s| (s.account().id.clone(), s.account_key().clone()))
+        else {
+            return;
+        };
+        spawn(async move {
+            let reason = t("settings.biometric_reason").to_string();
+            let id = account_id.clone();
+            match platform::run_heavy(move || biometric::create_device_key(&id, &reason)).await {
+                Ok(device_key) => {
+                    save_biometric_unlock(&BiometricUnlock::new(&account_id, &account_key, &device_key));
+                    enabled.set(true);
+                    toast(&with_kind(t("settings.biometric_on"), kind));
+                }
+                Err(biometric::Error::Cancelled) => {}
+                Err(biometric::Error::Unavailable) => toast_err(&with_kind(t("settings.biometric_unavailable"), kind)),
+                Err(biometric::Error::Failed(msg)) => toast_err(&msg),
+            }
+        });
+    };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {with_kind(t("settings.biometric"), kind)} }
+                div { class: "d", {with_kind(t("settings.biometric_desc"), kind)} }
+            }
+            button { class: either(enabled(), "btn small", "btn small primary"), onclick: toggle,
+                {either(enabled(), t("common.turn_off"), t("common.turn_on"))}
+            }
+        }
+    }
+}
+
 #[component]
 fn SecuritySection() -> Element {
     let prefs = PREFS.read().clone();
@@ -466,6 +515,7 @@ fn SecuritySection() -> Element {
                     }
                 }
             }
+            BiometricRow {}
             div { class: "settings-row",
                 div { class: "k",
                     div { class: "t", {t("settings.clipboard")} }

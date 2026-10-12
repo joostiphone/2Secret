@@ -34,3 +34,7 @@ minimum_system_version = "11.0"
 # instead of embedding the 180 MB offline runtime installer.
 [bundle.windows]
 webview_install_mode = { EmbedBootstrapper = { silent = true } }
+
+# Face ID (NSFaceIDUsageDescription on iOS) for unlocking the vault.
+[permissions.biometrics]
+description = "2Secret uses Face ID to unlock your vault, so you do not have to type your master password every time."

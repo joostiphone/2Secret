@@ -4,6 +4,7 @@ use dioxus::prelude::*;
 use twosecret_core::crypto::{derive_keys, KdfParams, SecretKey};
 use twosecret_core::session::{check_master_password, PasswordProblem, Session};
 
+use crate::biometric;
 use crate::components::widgets::*;
 use crate::i18n::t;
 use crate::icons::Icon;
@@ -334,12 +335,59 @@ pub fn NewAccount(secret_key: String) -> Element {
     }
 }
 
+/// Ask for Touch ID / Face ID / Windows Hello by itself only on the first
+/// lock screen after the app starts, not after every auto-lock.
+static BIOMETRIC_PROMPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn finish_unlock(session: Session) {
+    *SESSION.write() = Some(session);
+    *PHASE.write() = Phase::Unlocked;
+    touch();
+    remember_unlock();
+    request_sync();
+}
+
 #[component]
 pub fn LockScreen() -> Element {
     let profile = use_hook(load_profile);
     let mut password = use_signal(String::new);
     let mut reset = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
+    let bio_config = use_hook(biometric_unlock);
+    let bio_kind = use_hook(|| bio_config.as_ref().and_then(|_| biometric::available()));
+    let password_needed = bio_config.as_ref().is_some_and(|c| c.password_required());
+    let bio_ready = bio_kind.filter(|_| !password_needed);
+
+    let mut unlock_biometric = move || {
+        let (Some(kind), Some(profile), Some(config)) = (bio_ready, load_profile(), biometric_unlock()) else {
+            return;
+        };
+        error.set(None);
+        spawn(async move {
+            let reason = t("lock.biometric_reason").to_string();
+            let account_id = config.account_id.clone();
+            let device_key = platform::run_heavy(move || biometric::device_key(&account_id, &reason)).await;
+            let result = match device_key {
+                Ok(key) => platform::run_heavy(move || {
+                    config.account_key(&key).and_then(|ak| Session::open_with_account_key(profile, ak))
+                })
+                .await
+                .map_err(|e| core_error(&e)),
+                Err(biometric::Error::Cancelled) => return,
+                Err(biometric::Error::Unavailable) => Err(with_kind(t("lock.biometric_unavailable"), kind)),
+                Err(biometric::Error::Failed(msg)) => Err(msg),
+            };
+            match result {
+                Ok(session) => finish_unlock(session),
+                Err(msg) => error.set(Some(msg)),
+            }
+        });
+    };
+    use_hook(move || {
+        if bio_ready.is_some() && !BIOMETRIC_PROMPTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            unlock_biometric();
+        }
+    });
     let (name, email) = profile.as_ref().map(|p| (p.account.name.clone(), p.account.email.clone())).unwrap_or_default();
     let initial: String = name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "?".into());
 
@@ -370,11 +418,8 @@ pub fn LockScreen() -> Element {
             match result {
                 Ok(session) => {
                     password.set(String::new());
-                    *SESSION.write() = Some(session);
-                    *PHASE.write() = Phase::Unlocked;
-                    touch();
-                    remember_unlock();
-                    request_sync();
+                    finish_unlock(session);
+                    password_entered();
                 }
                 Err(msg) => {
                     password.set(String::new());
@@ -393,6 +438,14 @@ pub fn LockScreen() -> Element {
                 p { class: "lead", "{email}" }
                 if let Some(err) = error() {
                     div { class: "error-box", "{err}" }
+                } else if password_needed {
+                    div { class: "info-box small", {t("lock.biometric_password_needed")} }
+                }
+                if let Some(kind) = bio_ready {
+                    button { class: "btn block", style: "margin-bottom:16px", onclick: move |_| unlock_biometric(),
+                        Icon { name: "shield", size: 16 }
+                        {with_kind(t("lock.biometric"), kind)}
+                    }
                 }
                 div { class: "form-group", style: "text-align:left",
                     PasswordInput {
