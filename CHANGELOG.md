@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Passkeys: the browser extension offers to save new passkeys in 2Secret and
+  signs in with them; you can always choose another device or security key
+  instead. Passkeys are end-to-end encrypted and sync with the vault, and
+  can be imported from Bitwarden. Firefox 128 or newer is needed.
 - Unlock with Touch ID (macOS), Face ID or Touch ID (iOS) and Windows Hello
   (*Settings → Security*). The master password is still needed every 14 days.
 - Removing someone from a shared vault gives the vault a new key: everything

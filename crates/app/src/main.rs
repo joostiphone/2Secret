@@ -12,6 +12,7 @@ use dioxus::prelude::*;
 
 use components::modals::ModalHost;
 use components::onboarding::{CreateAccount, LockScreen, NewAccount, SignIn, Welcome};
+use components::passkey::PasskeyPrompt;
 use components::shell::Shell;
 use components::widgets::{BusyOverlay, ToastHost};
 use state::*;
@@ -106,7 +107,11 @@ fn App() -> Element {
             style { dangerous_inner_html: STYLE }
         }
         div {
-            class: if extension::ENABLED { "root ext" } else { "root" },
+            class: match (extension::ENABLED, PASSKEY.read().is_some()) {
+                (true, true) => "root ext window",
+                (true, false) => "root ext",
+                _ => "root",
+            },
             "data-theme": theme,
             onclick: move |_| touch(),
             onkeydown: move |e: KeyboardEvent| {
@@ -120,6 +125,7 @@ fn App() -> Element {
                 Phase::SignIn => rsx! { SignIn {} },
                 Phase::NewAccount { secret_key } => rsx! { NewAccount { secret_key } },
                 Phase::Locked => rsx! { LockScreen {} },
+                Phase::Unlocked if PASSKEY.read().is_some() => rsx! { PasskeyPrompt {} },
                 Phase::Unlocked => rsx! { Shell {} },
             }
             ModalHost {}

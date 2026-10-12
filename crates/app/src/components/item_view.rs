@@ -14,6 +14,7 @@ use crate::state::*;
 pub fn ItemView(id: String) -> Element {
     let mut menu = use_signal(|| false);
     let mut show_history = use_signal(|| false);
+    let mut removing = use_signal(|| None::<String>);
     let session = SESSION.read();
     let Some(s) = session.as_ref() else { return rsx! {} };
     let Some(item) = s.item(&id).cloned() else { return rsx! {} };
@@ -244,6 +245,43 @@ pub fn ItemView(id: String) -> Element {
                                         }
                                     },
                                     Icon { name: "download", size: 16 }
+                                }
+                            }
+                        }
+                    }
+                }
+                if !item.passkeys.is_empty() {
+                    div { class: "section",
+                        div { class: "section-title", {t("passkey.title")} }
+                        for p in item.passkeys.iter() {
+                            div { class: "field", key: "{p.credential_id}",
+                                Icon { name: "key", size: 16 }
+                                div { class: "grow",
+                                    div { "{p.rp_id}" }
+                                    div { class: "small muted",
+                                        if !p.user_name.is_empty() { "{p.user_name} · " }
+                                        "{t(\"item.created\")} {platform::local_time(p.created_at)}"
+                                    }
+                                }
+                                if can_write && !trashed && removing().as_deref() == Some(p.credential_id.as_str()) {
+                                    button { class: "btn small danger",
+                                        onclick: {
+                                            let (item_id, credential) = (id.clone(), p.credential_id.clone());
+                                            move |_| {
+                                                let (item_id, credential) = (item_id.clone(), credential.clone());
+                                                removing.set(None);
+                                                if mutate(move |s| s.remove_passkey(&item_id, &credential)).is_some() {
+                                                    toast(t("passkey.removed"));
+                                                }
+                                            }
+                                        },
+                                        {t("passkey.remove")}
+                                    }
+                                } else if can_write && !trashed {
+                                    button { class: "icon-btn", title: t("passkey.remove"),
+                                        onclick: { let c = p.credential_id.clone(); move |_| removing.set(Some(c.clone())) },
+                                        Icon { name: "trash", size: 16 }
+                                    }
                                 }
                             }
                         }

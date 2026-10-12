@@ -3,6 +3,7 @@ pub mod item_edit;
 pub mod item_view;
 pub mod modals;
 pub mod onboarding;
+pub mod passkey;
 pub mod settings;
 pub mod shell;
 pub mod watchtower;

@@ -44,6 +44,7 @@ is free, open source, and you can host the sync server yourself.
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
+| 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension; end-to-end encrypted and synced. Import from Bitwarden. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
@@ -117,7 +118,7 @@ Full reference: [docs/CLI.md](docs/CLI.md).
 Compared with 1Password, these are missing today – contributions welcome:
 
 - Biometric unlock on Linux and in the browser (the master password is required there).
-- Storing and using passkeys.
+- Passkeys outside the browser extension (iOS AutoFill, Android, desktop apps).
 - iOS system AutoFill and a Safari extension; an Android app.
 - An independent security audit.
 
@@ -219,7 +220,7 @@ Windows, Linux, BSD, iOS, het web en je browser.
 - **Synchronisatie** tussen al je apparaten via je eigen server, ook offline
   bruikbaar.
 - **Browserextensie** (Chrome, Edge, Brave, Firefox) die inloggegevens en
-  eenmalige codes automatisch invult.
+  eenmalige codes automatisch invult, en passkeys bewaart en gebruikt.
 - **Opdrachtregel (CLI)** voor ontwikkelaars, met `2s://`-verwijzingen naar
   geheimen.
 - **Importeren** uit 1Password, Bitwarden, LastPass, Chrome, Firefox, Safari,
@@ -230,8 +231,8 @@ Windows, Linux, BSD, iOS, het web en je browser.
 
 ### Nog niet aanwezig
 
-Biometrisch ontgrendelen op Linux en in de browser, passkeys, automatisch
-invullen in iOS en Safari, een Android-app, en een onafhankelijke
+Biometrisch ontgrendelen op Linux en in de browser, passkeys buiten de
+browserextensie, automatisch invullen in iOS en Safari, een Android-app, en een onafhankelijke
 beveiligingsaudit.
 
 ### Snel aan de slag

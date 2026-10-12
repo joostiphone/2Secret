@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::passkey::Passkey;
 use crate::util::{new_id, now, url_host};
 
 /// Maximum size of a single attachment (before base64 encoding).
@@ -446,6 +447,9 @@ pub struct Item {
     pub password_history: Vec<PasswordHistoryEntry>,
     #[serde(default)]
     pub attachments: Vec<Attachment>,
+    /// Passkeys for the item's website.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passkeys: Vec<Passkey>,
 }
 
 impl Item {
@@ -467,6 +471,7 @@ impl Item {
             trashed_at: None,
             password_history: Vec::new(),
             attachments: Vec::new(),
+            passkeys: Vec::new(),
         }
     }
 

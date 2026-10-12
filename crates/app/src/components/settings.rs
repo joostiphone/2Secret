@@ -451,6 +451,29 @@ fn VaultsSection() -> Element {
     }
 }
 
+/// Extension: offer 2Secret for passkeys, or leave them to the browser.
+#[component]
+fn PasskeysRow() -> Element {
+    let mut enabled = use_signal(|| true);
+    use_hook(move || spawn(async move { enabled.set(crate::extension::passkeys_enabled().await) }));
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.passkeys")} }
+                div { class: "d", {t("settings.passkeys_desc")} }
+            }
+            button { class: either(enabled(), "btn small", "btn small primary"),
+                onclick: move |_| {
+                    let on = !enabled();
+                    enabled.set(on);
+                    spawn(async move { crate::extension::set_passkeys_enabled(on).await });
+                },
+                {either(enabled(), t("common.turn_off"), t("common.turn_on"))}
+            }
+        }
+    }
+}
+
 /// Turn unlocking with Touch ID / Face ID / Windows Hello on or off.
 #[component]
 fn BiometricRow() -> Element {
@@ -516,6 +539,9 @@ fn SecuritySection() -> Element {
                 }
             }
             BiometricRow {}
+            if crate::extension::ENABLED {
+                PasskeysRow {}
+            }
             div { class: "settings-row",
                 div { class: "k",
                     div { class: "t", {t("settings.clipboard")} }

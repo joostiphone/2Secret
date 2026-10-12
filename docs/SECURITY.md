@@ -209,6 +209,29 @@ What rotation cannot undo: the removed person may have kept copies of what
 they could already see. Change the passwords that matter after removing
 someone.
 
+## Passkeys
+
+Passkeys (WebAuthn credentials) are stored inside items, so their private
+keys are end-to-end encrypted and synced like everything else. 2Secret acts
+as a software authenticator for *synced* passkeys: ES256 (ECDSA P-256)
+keys, "none" attestation, the backup-eligible and backed-up flags set, user
+verification by unlocking 2Secret, and a signature counter that stays 0.
+
+In the browser extension, a small script in top-level `https` pages wraps
+`navigator.credentials.create()` and `.get()`. It reads nothing from the
+page; it forwards only the WebAuthn request. 2Secret then opens its own
+window, where you decide: save or use a passkey, use another device or
+security key (the browser takes over), or cancel. The page's origin is taken
+from the browser, never from the page, and a website can only create or use
+passkeys for its own domain or a parent domain that is not a public suffix
+(`alice.github.io` can never use a passkey for `github.io`). The answer goes
+back only to the page that asked, and only while it is still open. Passkey
+suggestions in the username field (conditional mediation) and iframes stay
+with the browser. *Settings → Passkeys in this browser* turns this off.
+
+Passkeys can be imported from Bitwarden JSON exports. `2secret get --json`
+leaves passkey private keys out unless `--reveal` is given.
+
 ## Sync and conflicts
 
 Each vault has a server-side revision counter. Clients upload changes with the
@@ -252,9 +275,8 @@ conflict never silently loses a password. Deletions are tombstones.
   the popup opens, the account key is kept in `chrome.storage.session` —
   browser memory that is only accessible to the extension and cleared when the
   browser closes — until the auto-lock time passes. Autofill injects a small
-  self-contained function into the active tab only when you click *Fill*; the
-  extension has no content scripts and no message endpoints that web pages
-  can reach. Right before filling, the tab's address and the address of every
+  self-contained function into the active tab only when you click *Fill*.
+  Logins and one-time codes never pass through a content script. Right before filling, the tab's address and the address of every
   frame are checked again against the item's websites, so credentials never
   reach a frame from another site (an ad, a hostile embed) or a page the tab
   navigated to after the popup opened. Websites are matched by registrable
@@ -283,7 +305,7 @@ conflict never silently loses a password. Deletions are tombstones.
 | Old accounts kept 1–5,000 PBKDF2 iterations for years | Argon2id (64 MiB, 3 passes) from day one, with an enforced minimum on client and server |
 | Short master passwords (8 characters) were allowed | At least 12 characters and a "good" strength rating |
 | Older vaults used AES-ECB/CBC without integrity protection | Authenticated encryption (XChaCha20-Poly1305) with every ciphertext bound to its place (associated data) |
-| Browser extension bugs let web pages and iframes trigger fills or read data | Fill only on an explicit click, page and every frame re-checked against the item, no content scripts or page-reachable messaging |
+| Browser extension bugs let web pages and iframes trigger fills or read data | Fill only on an explicit click, page and every frame re-checked against the item; pages can only ask for a passkey, which opens 2Secret for the user to decide |
 | Access to the vault storage by a compromised engineer exposed everything | The server never holds a key that decrypts anything; self-hosters keep their own infrastructure |
 
 ## Web vault hardening

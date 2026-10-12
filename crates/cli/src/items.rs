@@ -168,6 +168,11 @@ pub fn get(ctx: &Ctx, args: GetArgs) -> Result<()> {
                     a["data"] = json!(null);
                 }
             }
+            if let Some(passkeys) = v["passkeys"].as_array_mut() {
+                for p in passkeys {
+                    p["private_key"] = json!(null);
+                }
+            }
         }
         print_json(&v);
         return Ok(());
@@ -231,6 +236,12 @@ fn print_item(session: &Session, item: &Item, reveal: bool) {
         println!("\nattachments:");
         for a in &item.attachments {
             println!("    {} ({} bytes)", a.name, a.size);
+        }
+    }
+    if !item.passkeys.is_empty() {
+        println!("\npasskeys:");
+        for p in &item.passkeys {
+            println!("    {} · {} (created {})", p.rp_id, p.user_name, format_timestamp(p.created_at));
         }
     }
     println!();

@@ -18,6 +18,7 @@ pub mod export;
 pub mod generator;
 pub mod import;
 pub mod item;
+pub mod passkey;
 pub mod profile;
 pub mod secret_ref;
 pub mod session;

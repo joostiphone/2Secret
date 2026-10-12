@@ -436,6 +436,9 @@ pub fn LockScreen() -> Element {
                 div { class: "lock-avatar", "{initial}" }
                 h2 { "{name}" }
                 p { class: "lead", "{email}" }
+                if let Some(request) = PASSKEY.read().as_ref() {
+                    div { class: "info-box small", {t("passkey.waiting").replace("{site}", &request.origin)} }
+                }
                 if let Some(err) = error() {
                     div { class: "error-box", "{err}" }
                 } else if password_needed {

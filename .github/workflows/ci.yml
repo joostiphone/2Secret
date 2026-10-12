@@ -96,6 +96,14 @@ jobs:
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - run: ./extension/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Passkeys end to end (Chromium)
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          xvfb-run -a node extension/tests/passkeys.js
       - uses: actions/upload-artifact@v4
         with:
           name: 2secret-extension

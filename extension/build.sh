@@ -19,6 +19,8 @@ rm -rf "$out"
 mkdir -p "$out/icons"
 cp -R "$root/crates/app/dist/public/." "$out/"
 cp "$here/manifest.json" "$out/manifest.json"
+cp "$here/background.js" "$out/background.js"
+mkdir -p "$out/passkeys" && cp "$here"/passkeys/*.js "$out/passkeys/"
 for s in 16 32 64 128; do cp "$root/crates/app/assets/icon-$s.png" "$out/icons/icon-$s.png"; done
 
 # Extension pages may not load scripts from absolute "/./" paths in Firefox.

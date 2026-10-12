@@ -14,6 +14,7 @@ use crate::crypto::{
     KdfParams, Keyset, PublicKey, SecretKey, SymmetricKey, WrappedKey,
 };
 use crate::item::{Category, Item, ItemSummary};
+use crate::passkey::Passkey;
 use crate::profile::{
     aad, AccountRecord, ItemRecord, Profile, Role, ServerLink, SyncState, VaultMeta, VaultRecord, PROFILE_FORMAT,
     PROFILE_VERSION,
@@ -686,6 +687,52 @@ impl Session {
             .collect();
         out.sort_by(|a, b| b.favorite.cmp(&a.favorite).then(a.title.cmp(&b.title)));
         out
+    }
+
+    /// Passkeys for the website `rp_id`, with the id of the item holding them
+    /// (items in the trash are left out).
+    pub fn passkeys_for(&self, rp_id: &str) -> Vec<(String, Passkey)> {
+        let mut out: Vec<(String, Passkey)> = self
+            .items
+            .values()
+            .filter(|(_, i)| !i.is_trashed())
+            .flat_map(|(_, i)| i.passkeys.iter().filter(|p| p.rp_id == rp_id).map(|p| (i.id.clone(), p.clone())))
+            .collect();
+        out.sort_by(|a, b| a.1.user_name.cmp(&b.1.user_name));
+        out
+    }
+
+    /// Store a new passkey: in the login `item_id` if given, otherwise in a
+    /// new login for the website at `url` in `vault_id`. Returns the item id.
+    pub fn save_passkey(
+        &mut self,
+        vault_id: &str,
+        item_id: Option<&str>,
+        url: &str,
+        passkey: Passkey,
+    ) -> Result<String> {
+        if let Some(id) = item_id {
+            let mut item = self.item(id).ok_or_else(|| Error::not_found(format!("item {id}")))?.clone();
+            item.passkeys.retain(|p| p.credential_id != passkey.credential_id);
+            item.passkeys.push(passkey);
+            self.update_item(item)?;
+            return Ok(id.to_string());
+        }
+        let title = if passkey.rp_name.is_empty() { passkey.rp_id.clone() } else { passkey.rp_name.clone() };
+        let mut item = Item::login(&title, &passkey.user_name, "", Some(url));
+        item.passkeys.push(passkey);
+        self.add_item(vault_id, item)
+    }
+
+    /// Delete one passkey from an item.
+    pub fn remove_passkey(&mut self, item_id: &str, credential_id: &str) -> Result<()> {
+        let mut item = self.item(item_id).ok_or_else(|| Error::not_found(format!("item {item_id}")))?.clone();
+        let before = item.passkeys.len();
+        item.passkeys.retain(|p| p.credential_id != credential_id);
+        if item.passkeys.len() == before {
+            return Err(Error::not_found("passkey"));
+        }
+        self.update_item(item)
     }
 
     /// All tags with the number of items using them.

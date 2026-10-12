@@ -162,6 +162,9 @@ pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
 /// Breach counts from the last Have I Been Pwned check (item id → count).
 pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
 
+/// Extension: the passkey request this window was opened for.
+pub static PASSKEY: GlobalSignal<Option<extension::PasskeyRequest>> = Signal::global(|| None);
+
 /// Load preferences and decide the first screen.
 pub fn init() {
     let prefs: Prefs = platform::storage()
@@ -175,6 +178,14 @@ pub fn init() {
     let has_account = load_profile().is_some() && device_secrets().is_some();
     if !has_account {
         *PHASE.write() = Phase::Welcome;
+        if extension::ENABLED {
+            // No 2Secret account yet: leave passkeys to the browser.
+            spawn(async move {
+                if let Some(request) = extension::pending_passkey().await {
+                    extension::answer_passkey(&request.rid, extension::PasskeyAnswer::Fallback).await;
+                }
+            });
+        }
         return;
     }
     if !extension::ENABLED {
@@ -183,6 +194,7 @@ pub fn init() {
     }
     // Extension popups are short-lived: reuse an unlock from the last minutes.
     spawn(async move {
+        *PASSKEY.write() = extension::pending_passkey().await;
         let profile = load_profile();
         let cached = match &profile {
             Some(p) => extension::cached_unlock(&p.account.id).await,

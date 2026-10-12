@@ -127,6 +127,36 @@ export async function sessionRemove(key) {
 export function closePopup() {
   window.close();
 }
+
+// Passkey requests: background.js stores them and opens this page with
+// #passkey=<id>.
+export async function passkeyRequest() {
+  const m = /^#passkey=([0-9a-f-]{36})$/.exec(window.location.hash);
+  if (!m) return null;
+  const key = "2s-passkey:" + m[1];
+  return (await api.storage.session.get(key))[key] ?? null;
+}
+export async function answerPasskey(rid, payloadJson) {
+  const key = "2s-passkey:" + rid;
+  const stored = (await api.storage.session.get(key))[key];
+  if (stored) {
+    const request = JSON.parse(stored);
+    await api.storage.session.remove(key);
+    const message = { ...JSON.parse(payloadJson), type: "2s-passkey-result", id: request.page_id };
+    try {
+      await api.tabs.sendMessage(request.tab_id, message, { frameId: 0 });
+    } catch (e) {
+      // The tab was closed meanwhile.
+    }
+  }
+  window.close();
+}
+export async function passkeysEnabled() {
+  return (await api.storage.local.get("2s-passkeys"))["2s-passkeys"] !== "off";
+}
+export async function setPasskeysEnabled(on) {
+  await api.storage.local.set({ "2s-passkeys": on ? "on" : "off" });
+}
 "#)]
     extern "C" {
         #[wasm_bindgen(catch, js_name = activeTabUrl)]
@@ -146,6 +176,30 @@ export function closePopup() {
         async fn session_remove(key: &str) -> Result<JsValue, JsValue>;
         #[wasm_bindgen(js_name = closePopup)]
         fn close_popup();
+        #[wasm_bindgen(catch, js_name = passkeyRequest)]
+        async fn passkey_request() -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = answerPasskey)]
+        async fn answer_passkey(rid: &str, payload: String) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = passkeysEnabled)]
+        async fn passkeys_enabled_js() -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch, js_name = setPasskeysEnabled)]
+        async fn set_passkeys_enabled_js(on: bool) -> Result<JsValue, JsValue>;
+    }
+
+    pub async fn pending_passkey() -> Option<String> {
+        passkey_request().await.ok().and_then(|v| v.as_string())
+    }
+
+    pub async fn answer(rid: &str, payload: String) {
+        let _ = answer_passkey(rid, payload).await;
+    }
+
+    pub async fn passkeys_enabled() -> bool {
+        passkeys_enabled_js().await.ok().and_then(|v| v.as_bool()).unwrap_or(true)
+    }
+
+    pub async fn set_passkeys_enabled(on: bool) {
+        let _ = set_passkeys_enabled_js(on).await;
     }
 
     pub async fn tab_url() -> Option<String> {
@@ -201,13 +255,58 @@ mod imp {
     }
     pub async fn remove(_key: &str) {}
     pub fn close() {}
+    pub async fn pending_passkey() -> Option<String> {
+        None
+    }
+    pub async fn answer(_rid: &str, _payload: String) {}
+    pub async fn passkeys_enabled() -> bool {
+        false
+    }
+    pub async fn set_passkeys_enabled(_on: bool) {}
 }
 
 use serde::{Deserialize, Serialize};
 use twosecret_core::crypto::SymmetricKey;
 use twosecret_core::util::now;
 
-pub use imp::{close, fill, tab_url};
+pub use imp::{close, fill, passkeys_enabled, set_passkeys_enabled, tab_url};
+
+/// A website's passkey request, waiting for the user in this window.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct PasskeyRequest {
+    pub rid: String,
+    /// "create" or "get".
+    pub kind: String,
+    /// The page's origin, as reported by the browser.
+    pub origin: String,
+    pub options: serde_json::Value,
+}
+
+/// How the window answers the page.
+#[cfg_attr(not(all(feature = "extension", target_arch = "wasm32")), allow(dead_code))]
+pub enum PasskeyAnswer {
+    /// A new passkey (`Registration`) or a sign-in (`Assertion`).
+    Result(serde_json::Value),
+    /// Let the browser handle it (security key, phone, ...).
+    Fallback,
+    /// A DOMException name, e.g. "NotAllowedError".
+    Error(&'static str),
+}
+
+/// The passkey request this window was opened for, if any.
+pub async fn pending_passkey() -> Option<PasskeyRequest> {
+    serde_json::from_str(&imp::pending_passkey().await?).ok()
+}
+
+/// Answer the page and close this window.
+pub async fn answer_passkey(rid: &str, answer: PasskeyAnswer) {
+    let payload = match answer {
+        PasskeyAnswer::Result(r) => serde_json::json!({ "result": r }),
+        PasskeyAnswer::Fallback => serde_json::json!({ "fallback": true }),
+        PasskeyAnswer::Error(name) => serde_json::json!({ "error": name }),
+    };
+    imp::answer(rid, payload.to_string()).await;
+}
 
 /// Is this the browser extension build?
 pub const ENABLED: bool = cfg!(feature = "extension");

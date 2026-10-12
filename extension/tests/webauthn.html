@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebAuthn test</title>
+<button id="reg">Register</button> <button id="login">Sign in</button>
+<pre id="out"></pre>
+<script>
+const out = (s) => (document.getElementById("out").textContent += s + "\n");
+const enc = new TextEncoder();
+let stored = null;
+const der2raw = (der) => {
+  // SEQUENCE { INTEGER r, INTEGER s } -> r||s (32 bytes each)
+  const d = new Uint8Array(der); let i = 2;
+  const read = () => { i++; let len = d[i++]; let v = d.slice(i, i + len); i += len; while (v.length > 32 && v[0] === 0) v = v.slice(1); const o = new Uint8Array(32); o.set(v, 32 - v.length); return o; };
+  const r = read(), s = read(); const raw = new Uint8Array(64); raw.set(r); raw.set(s, 32); return raw;
+};
+const sha = async (b) => new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+const eq = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+document.getElementById("reg").onclick = async () => {
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const cred = await navigator.credentials.create({ publicKey: {
+      rp: { id: "localhost", name: "Test site" },
+      user: { id: enc.encode("user-42"), name: "alex@example.com", displayName: "Alex" },
+      challenge, pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    }});
+    const client = JSON.parse(new TextDecoder().decode(cred.response.clientDataJSON));
+    const auth = new Uint8Array(cred.response.getAuthenticatorData());
+    const ok = cred instanceof PublicKeyCredential && client.type === "webauthn.create" && client.origin === location.origin
+      && eq(auth.slice(0, 32), await sha(enc.encode("localhost"))) && cred.response.getPublicKeyAlgorithm() === -7;
+    stored = { id: cred.rawId, key: await crypto.subtle.importKey("spki", cred.response.getPublicKey(), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]) };
+    out("REGISTERED " + ok + " " + cred.id + " json:" + (cred.toJSON().response.attestationObject.length > 100));
+  } catch (e) { out("REGISTER ERROR " + e.name + " " + e.message); }
+};
+document.getElementById("login").onclick = async () => {
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const cred = await navigator.credentials.get({ publicKey: { rpId: "localhost", challenge, allowCredentials: stored ? [{ type: "public-key", id: stored.id }] : [] } });
+    const r = cred.response;
+    const client = JSON.parse(new TextDecoder().decode(r.clientDataJSON));
+    const data = new Uint8Array([...new Uint8Array(r.authenticatorData), ...await sha(r.clientDataJSON)]);
+    const valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, stored.key, der2raw(r.signature), data);
+    const user = new TextDecoder().decode(r.userHandle);
+    out("SIGNED IN " + (valid && client.type === "webauthn.get" && user === "user-42"));
+  } catch (e) { out("SIGNIN ERROR " + e.name + " " + e.message); }
+};
+</script>

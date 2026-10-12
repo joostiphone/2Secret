@@ -379,6 +379,12 @@ fn import_bitwarden(data: &[u8]) -> Result<ImportResult> {
                         item.urls.push(u);
                     }
                 }
+                for credential in login.get("fido2Credentials").and_then(Value::as_array).cloned().unwrap_or_default() {
+                    match crate::passkey::from_bitwarden(&credential) {
+                        Some(passkey) => item.passkeys.push(passkey),
+                        None => warnings.push(format!("skipped a passkey that 2Secret cannot use: {}", item.title)),
+                    }
+                }
             }
             Category::CreditCard => {
                 let card = bw.get("card").cloned().unwrap_or(Value::Null);
@@ -1002,6 +1008,7 @@ mod tests {
         let r = import(json.as_bytes(), ImportFormat::BitwardenJson, None).unwrap();
         let items = &r.vaults[0].items;
         assert_eq!(items.len(), 4);
+        assert!(items[0].passkeys.is_empty());
         assert_eq!(items[0].tags, vec!["Banking"]);
         assert_eq!(items[0].value("PIN"), Some("1234"));
         assert_eq!(items[0].password_history[0].value, "old");
@@ -1009,6 +1016,40 @@ mod tests {
         assert_eq!(items[2].value("address"), Some("Damrak 1\n1000 AA Amsterdam"));
         assert_eq!(items[3].notes, "hello");
         assert!(import(br#"{"encrypted":true,"items":[]}"#, ImportFormat::BitwardenJson, None).is_err());
+    }
+
+    #[test]
+    fn bitwarden_passkeys() {
+        use p256::pkcs8::EncodePrivateKey;
+        let key = p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng);
+        let der = key.to_pkcs8_der().unwrap();
+        let json = format!(
+            r#"{{"encrypted":false,"items":[{{"type":1,"name":"GitHub","login":{{"username":"octo","uris":[{{"uri":"https://github.com"}}],
+              "fido2Credentials":[
+                {{"credentialId":"7e1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d","keyType":"public-key","keyAlgorithm":"ECDSA","keyCurve":"P-256",
+                  "keyValue":"{}","rpId":"github.com","userHandle":"{}","userName":"octo","counter":"3","rpName":"GitHub",
+                  "userDisplayName":"Octo","discoverable":"true","creationDate":"2024-05-01T10:00:00.000Z"}},
+                {{"credentialId":"b64.AAECAw","keyAlgorithm":"EdDSA","keyCurve":"Ed25519","keyValue":"x","rpId":"github.com","userHandle":"AQ"}}
+              ]}}}}]}}"#,
+            crate::util::b64url(der.as_bytes()),
+            crate::util::b64url(b"user-7"),
+        );
+        let r = import(json.as_bytes(), ImportFormat::BitwardenJson, None).unwrap();
+        let item = &r.vaults[0].items[0];
+        assert_eq!(item.passkeys.len(), 1);
+        assert_eq!(r.warnings.len(), 1);
+        let p = &item.passkeys[0];
+        assert_eq!(p.rp_id, "github.com");
+        assert_eq!(p.counter, 3);
+        assert_eq!(p.created_at, 1_714_557_600);
+        assert_eq!(crate::util::unb64url(&p.credential_id).unwrap()[..2], [0x7e, 0x1b]);
+        // The imported key signs sign-ins.
+        let options = crate::passkey::RequestOptions {
+            rp_id: None,
+            challenge: crate::util::b64url(&[5u8; 32]),
+            allow_credentials: vec![],
+        };
+        assert!(crate::passkey::assert(p, "https://github.com", &options).is_ok());
     }
 
     #[test]

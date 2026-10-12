@@ -3,7 +3,7 @@
   "name": "2Secret",
   "short_name": "2Secret",
   "version": "1.1.0",
-  "description": "Free, open-source password manager. Fill logins and one-time codes from your end-to-end encrypted 2Secret vault.",
+  "description": "Free, open-source password manager. Fill logins, one-time codes and passkeys from your end-to-end encrypted 2Secret vault.",
   "homepage_url": "https://github.com/joostiphone/2Secret",
   "action": {
     "default_title": "2Secret",
@@ -21,18 +21,64 @@
     "64": "icons/icon-64.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "scripting", "storage", "clipboardWrite"],
-  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://localhost/*",
+        "http://*.localhost/*"
+      ],
+      "js": [
+        "passkeys/page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://localhost/*",
+        "http://*.localhost/*"
+      ],
+      "js": [
+        "passkeys/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "Command+Shift+L" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
       "description": "Open 2Secret"
     }
   },
   "browser_specific_settings": {
-    "gecko": { "id": "2secret@joostiphone.github.io", "strict_min_version": "121.0" }
+    "gecko": {
+      "id": "2secret@joostiphone.github.io",
+      "strict_min_version": "128.0"
+    }
   }
 }
