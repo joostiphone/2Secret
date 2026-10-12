@@ -89,7 +89,7 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then 7z a "out/$name.zip" "$name"; else tar czf "out/$name.tar.gz" "$name"; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.target }}
+          name: dist-binaries-${{ matrix.target }}
           path: out/*
           if-no-files-found: error
 
@@ -147,7 +147,7 @@ jobs:
           test -n "$(ls out)"
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
+          name: dist-desktop-${{ matrix.os }}
           path: out/*
           if-no-files-found: error
 
@@ -168,7 +168,7 @@ jobs:
       - run: mkdir out && tar czf out/2secret-web-${TAG}.tar.gz -C crates/app/dist/public .
       - uses: actions/upload-artifact@v4
         with:
-          name: web
+          name: dist-web
           path: out/*
           if-no-files-found: error
 
@@ -187,7 +187,7 @@ jobs:
       - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip out/2secret-extension-${TAG}.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: extension
+          name: dist-extension
           path: out/*
           if-no-files-found: error
 
@@ -199,6 +199,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: dist-*
           path: out
           merge-multiple: true
       - name: Checksums and release notes
@@ -219,6 +220,8 @@ jobs:
     name: Docker image
     needs: tag
     runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
