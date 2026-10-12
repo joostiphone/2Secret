@@ -183,7 +183,7 @@ pub fn default_data_dir() -> std::path::PathBuf {
     }
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        return home.join("Library").join("Application Support").join("2Secret");
+        home.join("Library").join("Application Support").join("2Secret")
     }
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     {

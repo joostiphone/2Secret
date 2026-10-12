@@ -18,8 +18,8 @@
 
 use twosecret_core::crypto::SymmetricKey;
 
-// Linux, the BSDs and the web have no biometric unlock (yet).
-#[cfg_attr(not(any(target_os = "macos", target_os = "ios", windows)), allow(dead_code))]
+// Each platform offers only its own kinds; Linux, the BSDs and the web none.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     TouchId,

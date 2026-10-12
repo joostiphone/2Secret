@@ -44,6 +44,12 @@ in `crates/app/src/i18n.rs`.
 By contributing you agree that your contributions are licensed under the MIT
 or Apache-2.0 license, at the user's option.
 
+## Other platforms
+
+`scripts/cross-check.sh` lints the apps for macOS, iOS, Windows and Android
+from any machine (`pip install ziglang` first), so code for Touch ID, Face
+ID or Windows Hello is checked without a Mac or a Windows PC.
+
 ## Screenshots
 
 `scripts/screenshots.sh` regenerates `docs/screenshots`: English and Dutch,
