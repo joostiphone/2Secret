@@ -10,7 +10,7 @@ use crate::components::{
     watchtower::WatchtowerPage,
 };
 use crate::i18n::{category_name, t};
-use crate::icons::{category_icon, either, Icon, ItemAvatar};
+use crate::icons::{category_icon, either, Icon, ItemAvatar, Logo};
 use crate::platform;
 use crate::state::*;
 
@@ -429,7 +429,7 @@ fn DetailPane() -> Element {
         Some(id) if SESSION.read().as_ref().is_some_and(|s| s.item(&id).is_some()) => rsx! { ItemView { id } },
         _ => rsx! {
             div { class: "empty", style: "margin:auto",
-                div { class: "brand-logo", style: "margin:0 auto 16px;width:64px;height:64px;font-size:24px;border-radius:16px", "2S" }
+                div { class: "brand-logo large", Logo { size: 40 } }
                 p { {t("detail.nothing_selected")} }
             }
         },

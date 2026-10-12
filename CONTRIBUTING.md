@@ -49,5 +49,6 @@ or Apache-2.0 license, at the user's option.
 1. Update the version in `Cargo.toml` and add a section to `CHANGELOG.md`.
 2. Start the **Release** workflow from the Actions tab (*Run workflow*, enter
    e.g. `v1.2.3`) or push a tag `v1.2.3`.
-3. The workflow builds all installers and the Docker image and creates a
-   draft release; check it and click *Publish release*.
+3. The workflow builds all installers and the Docker image and publishes the
+   release with all downloads attached. Versions with a suffix (`v1.3.0-beta.1`)
+   become pre-releases.

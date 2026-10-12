@@ -36,7 +36,7 @@ pub fn html(name: &str, email: &str, server: Option<&str>, secret_key: &SecretKe
 <html lang="en"><head><meta charset="utf-8"><title>2Secret Emergency Kit</title>
 <style>
 body{{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 24px;color:#111}}
-h1{{font-size:28px;margin:0 0 4px}} .brand{{color:#3b5bdb}} p.lead{{color:#555;margin-top:0}}
+h1{{font-size:28px;margin:0 0 4px;display:flex;align-items:center;gap:12px}} .brand{{color:#0a8f96}} p.lead{{color:#555;margin-top:0}}
 .box{{border:2px solid #111;border-radius:12px;padding:20px 24px;margin:24px 0}}
 .row{{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #ddd}}
 .row:last-child{{border-bottom:none}} .label{{color:#555;font-size:13px;text-transform:uppercase;letter-spacing:.05em}}
@@ -46,7 +46,7 @@ h1{{font-size:28px;margin:0 0 4px}} .brand{{color:#3b5bdb}} p.lead{{color:#555;m
 ol li{{margin:6px 0}} .warn{{background:#fff4e5;border-radius:8px;padding:12px 16px}}
 @media print{{body{{margin:0}} .noprint{{display:none}}}}
 </style></head><body>
-<h1><span class="brand">2Secret</span> Emergency Kit</h1>
+<h1>{logo}<span><span class="brand">2Secret</span> Emergency Kit</span></h1>
 <p class="lead">Created for {name}</p>
 <div class="box">
 <div class="row"><span class="label">E-mail</span><span class="value">{email}</span></div>
@@ -64,6 +64,7 @@ ol li{{margin:6px 0}} .warn{{background:#fff4e5;border-radius:8px;padding:12px 1
         email = escape(email),
         server = escape(server),
         sk = escape(&secret_key.formatted()),
+        logo = crate::brand::tile_svg(44),
     )
 }
 

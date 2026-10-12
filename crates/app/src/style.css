@@ -94,8 +94,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .onboarding > .card { margin: auto; }
 .card.wide { max-width: 560px; }
 .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
-.brand-logo { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #3b5bdb, #7048e8); color: #fff; display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 18px; letter-spacing: -.5px; box-shadow: 0 6px 16px rgba(59, 91, 219, .35); }
+.brand-logo { width: 44px; height: 44px; flex: none; border-radius: 12px; background: linear-gradient(180deg, #232a3f, #10131d); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 16px rgba(16, 19, 29, .28), inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.brand-logo.large { width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 16px; }
 .brand h1 { margin: 0; font-size: 22px; }
 .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .card h2 { margin: 0 0 6px; font-size: 20px; }

@@ -25,13 +25,17 @@ fn main() {
             .with_title("2Secret")
             .with_inner_size(LogicalSize::new(1200.0, 780.0))
             .with_min_inner_size(LogicalSize::new(360.0, 520.0));
-        let config = Config::new()
+        let mut config = Config::new()
             .with_window(window)
             .with_background_color((244, 245, 248, 255))
             .with_data_directory(platform::data_dir().join("webview"))
             .with_custom_head(format!(
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{STYLE}</style>"
             ));
+        // Window and taskbar icon (macOS uses the app bundle's icon instead).
+        if let Ok(icon) = dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon-256.png")) {
+            config = config.with_icon(icon);
+        }
         dioxus::LaunchBuilder::desktop().with_cfg(config).launch(App);
     }
     #[cfg(feature = "mobile")]

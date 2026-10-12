@@ -9,6 +9,7 @@
 //! Windows, Linux, the BSDs, iOS and the web (`wasm32-unknown-unknown`).
 
 pub mod api;
+pub mod brand;
 pub mod crypto;
 pub mod emergency_kit;
 pub mod error;

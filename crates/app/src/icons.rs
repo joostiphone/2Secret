@@ -153,6 +153,17 @@ pub fn Icon(name: &'static str, #[props(default = 18)] size: u32) -> Element {
     }
 }
 
+/// The 2Secret logo (cyan "2" and shield).
+#[component]
+pub fn Logo(#[props(default = 28)] size: u32) -> Element {
+    use twosecret_core::brand::{LOGO_COLOR, LOGO_PATH, LOGO_VIEWBOX};
+    rsx! {
+        svg { class: "logo", width: "{size}", height: "{size}", view_box: LOGO_VIEWBOX, "aria-hidden": "true",
+            path { fill: LOGO_COLOR, fill_rule: "evenodd", d: LOGO_PATH }
+        }
+    }
+}
+
 /// Pick one of two icon names (keeps `rsx!` from treating the `if` as text).
 pub fn either(cond: bool, a: &'static str, b: &'static str) -> &'static str {
     if cond {

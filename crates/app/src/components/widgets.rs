@@ -6,7 +6,7 @@ use twosecret_core::strength::{estimate, StrengthLevel};
 use twosecret_core::totp::Totp;
 
 use crate::i18n::t;
-use crate::icons::{either, Icon};
+use crate::icons::{either, Icon, Logo};
 use crate::platform;
 use crate::state::*;
 
@@ -254,7 +254,7 @@ pub fn LangSwitch() -> Element {
 pub fn Brand(#[props(default)] subtitle: String) -> Element {
     rsx! {
         div { class: "brand",
-            div { class: "brand-logo", "2S" }
+            div { class: "brand-logo", Logo { size: 28 } }
             div {
                 h1 { "2Secret" }
                 if !subtitle.is_empty() {

@@ -1,9 +1,9 @@
 name: Release
 
-# Builds everything for a version and creates one draft release with all
-# downloads attached; publish it on GitHub after checking it. Start it by
-# pushing a tag like v1.2.3, or from the Actions tab ("Run workflow") with the
-# version as input, which creates the tag on the selected branch.
+# Builds everything for a version and publishes one GitHub release with all
+# downloads attached. Start it by pushing a tag like v1.2.3, or from the
+# Actions tab ("Run workflow") with the version as input, which creates the
+# tag on the selected branch.
 on:
   push:
     tags: ["v*"]
@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       replace:
-        description: "Move the tag to this commit if it exists but its release is not published yet"
+        description: "Move the tag to this commit if it exists but its release is not published (e.g. after a failed run)"
         type: boolean
         default: false
 
@@ -192,7 +192,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Draft release
+    name: Publish release
     needs: [tag, binaries, desktop, web, extension]
     runs-on: ubuntu-latest
     steps:
@@ -209,7 +209,9 @@ jobs:
           cat .github/release-notes.md >> notes.md
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
+          make_latest: ${{ !contains(env.TAG, '-') }}
+          prerelease: ${{ contains(env.TAG, '-') }}
           tag_name: ${{ env.TAG }}
           name: 2Secret ${{ env.TAG }}
           body_path: notes.md
