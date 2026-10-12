@@ -3,6 +3,7 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Subcommand;
 use serde_json::json;
+use twosecret_core::crypto::AccountPublicKeys;
 use twosecret_core::profile::Role;
 
 use crate::context::{confirm, Ctx};
@@ -124,7 +125,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                 user.name,
                 user.email,
                 r.id(),
-                twosecret_core::crypto::PublicKey::from_b64(&user.public_key)?.fingerprint()
+                AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?.fingerprint()
             );
             Ok(())
         }
@@ -143,7 +144,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                         m.name.clone(),
                         m.email.clone(),
                         m.role.id().to_string(),
-                        twosecret_core::crypto::PublicKey::from_b64(&m.public_key)
+                        AccountPublicKeys::from_b64(&m.public_key, m.pq_public_key.as_deref())
                             .map(|k| k.fingerprint())
                             .unwrap_or_default(),
                     ]

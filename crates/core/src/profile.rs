@@ -110,6 +110,9 @@ pub struct ServerLink {
     pub token: Option<EncString>,
     #[serde(default)]
     pub last_sync_at: Option<i64>,
+    /// The server has our ML-KEM public key (post-quantum sharing).
+    #[serde(default)]
+    pub pq_key_published: bool,
 }
 
 /// Access level of an account on a vault.

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use twosecret_core::api::*;
-use twosecret_core::crypto::{derive_keys, DerivedKeys, KdfParams, SecretKey};
+use twosecret_core::crypto::{derive_keys, AccountPublicKeys, DerivedKeys, KdfParams, SecretKey};
 use twosecret_core::profile::{AccountRecord, Role, ServerLink, SyncState};
 use twosecret_core::session::{PasswordChange, Session};
 use twosecret_core::sync::SyncReport;
@@ -124,8 +124,11 @@ pub async fn signin_with_keys(server_url: &str, email: &str, keys: &DerivedKeys,
         keyset: info.keyset,
         created_at: info.created_at,
     };
-    let mut session =
-        Session::from_server_account(account, keys, ServerLink { url: url.clone(), token: None, last_sync_at: None })?;
+    let mut session = Session::from_server_account(
+        account,
+        keys,
+        ServerLink { url: url.clone(), token: None, last_sync_at: None, pq_key_published: false },
+    )?;
     session.set_server(&url, &resp.token);
     sync(&mut session).await?;
     Ok(session)
@@ -298,7 +301,31 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
         }
     }
     total.needs_another_round = false;
+    post_quantum_upkeep(&client, access).await?;
     Ok(total)
+}
+
+/// Publish our ML-KEM key, and store vault keys that others shared with us
+/// wrapped with our own account key, so the server keeps nothing a future
+/// quantum computer could open. Servers from before this feature answer 404
+/// or 405; that is not an error.
+async fn post_quantum_upkeep<A: SessionAccess>(client: &Client, access: &mut A) -> Result<()> {
+    let unsupported = |e: &Error| e.is_not_found() || e.status() == Some(405);
+    if let Some(pq_public_key) = access.with_session(|s| s.pq_key_to_publish())? {
+        match client.set_pq_key(&SetPqKeyRequest { pq_public_key }).await {
+            Ok(()) => access.with_session(|s| s.mark_pq_key_published())?,
+            Err(e) if unsupported(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    for (vault_id, wrapped_key) in access.with_session(|s| s.vault_keys_to_rewrap())? {
+        match client.set_vault_key(&vault_id, &SetVaultKeyRequest { wrapped_key: wrapped_key.clone() }).await {
+            Ok(()) => access.with_session(|s| s.set_vault_wrapped_key(&vault_id, wrapped_key))?,
+            Err(e) if unsupported(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Share a vault with another account on the same server.
@@ -315,8 +342,8 @@ pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, rol
     if user.account_id == session.account().id {
         return Err(twosecret_core::Error::invalid("you already have access to this vault").into());
     }
-    let pk = twosecret_core::crypto::PublicKey::from_b64(&user.public_key)?;
-    let wrapped = session.wrap_vault_key_for(vault_id, &pk)?;
+    let keys = AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?;
+    let wrapped = session.wrap_vault_key_for(vault_id, &keys)?;
     client
         .add_member(vault_id, &AddMemberRequest { account_id: user.account_id.clone(), role, wrapped_key: wrapped })
         .await?;

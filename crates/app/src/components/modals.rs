@@ -268,9 +268,12 @@ fn ShareModal(id: String) -> Element {
                     install_session(session);
                     email.set(String::new());
                     email_rev += 1;
-                    let fp = twosecret_core::crypto::PublicKey::from_b64(&user.public_key)
-                        .map(|k| k.fingerprint())
-                        .unwrap_or_default();
+                    let fp = twosecret_core::crypto::AccountPublicKeys::from_b64(
+                        &user.public_key,
+                        user.pq_public_key.as_deref(),
+                    )
+                    .map(|k| k.fingerprint())
+                    .unwrap_or_default();
                     toast(&format!("{} {} ({fp})", t("share.shared_with"), user.name));
                     reload();
                 }
@@ -314,7 +317,9 @@ fn ShareModal(id: String) -> Element {
 #[component]
 fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, changed: EventHandler<()>) -> Element {
     let fingerprint =
-        twosecret_core::crypto::PublicKey::from_b64(&member.public_key).map(|k| k.fingerprint()).unwrap_or_default();
+        twosecret_core::crypto::AccountPublicKeys::from_b64(&member.public_key, member.pq_public_key.as_deref())
+            .map(|k| k.fingerprint())
+            .unwrap_or_default();
     let editable = can_manage && member.role != Role::Owner && member.account_id != me;
     let vid = vault_id.clone();
     let aid = member.account_id.clone();

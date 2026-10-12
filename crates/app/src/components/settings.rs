@@ -47,7 +47,7 @@ fn AccountSection() -> Element {
     let Some(s) = session.as_ref() else { return rsx! {} };
     let account = s.account().clone();
     let server = s.server().map(|l| l.url.clone());
-    let fingerprint = s.public_key().fingerprint();
+    let fingerprint = s.public_keys().fingerprint();
     drop(session);
     let sk = secret_key();
     let sk_text = sk.as_ref().map(|k| if show_sk() { k.formatted() } else { k.masked() }).unwrap_or_default();

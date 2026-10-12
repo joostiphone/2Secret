@@ -244,6 +244,16 @@ impl Client {
         self.empty(Method::DELETE, &format!("/vaults/{id}"), None::<&()>).await
     }
 
+    /// Replace our own wrapped key for a vault.
+    pub async fn set_vault_key(&self, vault_id: &str, req: &SetVaultKeyRequest) -> Result<()> {
+        self.empty(Method::PUT, &format!("/vaults/{vault_id}/key"), Some(req)).await
+    }
+
+    /// Publish our ML-KEM-768 public key.
+    pub async fn set_pq_key(&self, req: &SetPqKeyRequest) -> Result<()> {
+        self.empty(Method::PUT, "/account/pq-key", Some(req)).await
+    }
+
     pub async fn members(&self, vault_id: &str) -> Result<Vec<MemberDto>> {
         self.json(Method::GET, &format!("/vaults/{vault_id}/members"), None::<&()>).await
     }

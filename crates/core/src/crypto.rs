@@ -287,11 +287,15 @@ impl KdfParams {
 // ---------------------------------------------------------------------------
 
 const SK_ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-const SK_RANDOM_CHARS: usize = 25; // 125 bits of entropy
+/// Random characters in a new Secret Key: 26 × 5 = 130 bits of entropy.
+const SK_RANDOM_CHARS: usize = 26;
+/// Keys created by 2Secret 1.0 have 25 random characters (125 bits) and keep
+/// working.
+const SK_LEGACY_RANDOM_CHARS: usize = 25;
 const SK_PREFIX: &str = "2S";
 
-/// The account Secret Key: 125 random bits plus a check character, shown to
-/// the user as `2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX`.
+/// The account Secret Key: 130 random bits plus a check character, shown to
+/// the user as `2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXXX`.
 ///
 /// It is generated on the user's device, stored only on their devices and in
 /// their Emergency Kit, and mixed into key derivation so that the server never
@@ -320,10 +324,12 @@ impl SecretKey {
     pub fn parse(input: &str) -> Result<Self> {
         let mut cleaned: String =
             input.chars().filter(|c| !c.is_whitespace() && *c != '-').flat_map(|c| c.to_uppercase()).collect();
-        if cleaned.len() == SK_RANDOM_CHARS + 1 + SK_PREFIX.len() && cleaned.starts_with(SK_PREFIX) {
+        // With and without the prefix, the two key lengths never collide.
+        let lengths = [SK_RANDOM_CHARS + 1, SK_LEGACY_RANDOM_CHARS + 1];
+        if lengths.iter().any(|l| cleaned.len() == l + SK_PREFIX.len()) && cleaned.starts_with(SK_PREFIX) {
             cleaned.drain(..SK_PREFIX.len());
         }
-        if cleaned.len() != SK_RANDOM_CHARS + 1 {
+        if !lengths.contains(&cleaned.len()) {
             return Err(Error::InvalidSecretKey(format!(
                 "expected {} characters, got {}",
                 SK_RANDOM_CHARS + 1,
@@ -333,17 +339,18 @@ impl SecretKey {
         if let Some(bad) = cleaned.chars().find(|c| !SK_ALPHABET.contains(&(*c as u8))) {
             return Err(Error::InvalidSecretKey(format!("character '{bad}' is not allowed")));
         }
-        let (body, check) = cleaned.split_at(SK_RANDOM_CHARS);
+        let (body, check) = cleaned.split_at(cleaned.len() - 1);
         if !check.starts_with(Self::check_char(body)) {
             return Err(Error::InvalidSecretKey("checksum mismatch – please check for typos".into()));
         }
         Ok(Self { chars: cleaned })
     }
 
-    /// `2S-ABCDEF-GHJKL-MNPQR-STUVW-XYZ23`
+    /// `2S-ABCDEF-GHJKL-MNPQR-STUVW-XYZ234` (keys from 2Secret 1.0 have five
+    /// characters in the last group).
     pub fn formatted(&self) -> String {
         let c = &self.chars;
-        format!("{SK_PREFIX}-{}-{}-{}-{}-{}", &c[0..6], &c[6..11], &c[11..16], &c[16..21], &c[21..26])
+        format!("{SK_PREFIX}-{}-{}-{}-{}-{}", &c[0..6], &c[6..11], &c[11..16], &c[16..21], &c[21..])
     }
 
     /// Only the first group is shown, e.g. `2S-ABCDEF-•••••-…`.
@@ -451,8 +458,7 @@ impl PublicKey {
 
     /// Short human-verifiable fingerprint, e.g. `3F9A-77C1-0B2E-91D4`.
     pub fn fingerprint(&self) -> String {
-        let digest = sha256(&self.0);
-        digest[..8].chunks(2).map(|c| format!("{:02X}{:02X}", c[0], c[1])).collect::<Vec<_>>().join("-")
+        fingerprint_of(&sha256(&self.0))
     }
 }
 
@@ -526,6 +532,181 @@ pub fn open(private_key: &PrivateKey, sealed: &SealedBox, aad: &[u8]) -> Result<
 }
 
 // ---------------------------------------------------------------------------
+// Post-quantum key encapsulation (ML-KEM-768, FIPS 203)
+// ---------------------------------------------------------------------------
+
+/// The post-quantum half of an account's public key: an ML-KEM-768
+/// encapsulation key. Vault keys shared with an account that has one are
+/// encrypted to both this key and the X25519 key ([`seal_hybrid`]), so an
+/// attacker has to break both, including with a future quantum computer.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PqPublicKey(Vec<u8>);
+
+impl PqPublicKey {
+    pub fn from_b64(s: &str) -> Result<Self> {
+        let key = Self(unb64(s)?);
+        key.encapsulation_key()?;
+        Ok(key)
+    }
+
+    pub fn to_b64(&self) -> String {
+        b64(&self.0)
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn encapsulation_key(&self) -> Result<ml_kem::ml_kem_768::EncapsulationKey> {
+        let encoded = ml_kem::Key::<ml_kem::ml_kem_768::EncapsulationKey>::try_from(self.0.as_slice())
+            .map_err(|_| Error::invalid("post-quantum public key has the wrong length"))?;
+        ml_kem::ml_kem_768::EncapsulationKey::new(&encoded)
+            .map_err(|_| Error::invalid("invalid post-quantum public key"))
+    }
+}
+
+impl fmt::Debug for PqPublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PqPublicKey({} bytes)", self.0.len())
+    }
+}
+
+/// An ML-KEM-768 decapsulation key. It is derived from the account key, so
+/// every device of an account arrives at the same key and nothing new has to
+/// be stored or kept in sync.
+pub struct PqPrivateKey(ml_kem::ml_kem_768::DecapsulationKey);
+
+impl PqPrivateKey {
+    pub fn derive(account_key: &SymmetricKey) -> Self {
+        let mut seed = Zeroizing::new([0u8; 64]);
+        seed[..32].copy_from_slice(account_key.derive("2secret/v1/ml-kem-768/d").as_bytes());
+        seed[32..].copy_from_slice(account_key.derive("2secret/v1/ml-kem-768/z").as_bytes());
+        let seed = ml_kem::Seed::try_from(&seed[..]).expect("seed is 64 bytes");
+        Self(ml_kem::ml_kem_768::DecapsulationKey::from_seed(seed))
+    }
+
+    pub fn public_key(&self) -> PqPublicKey {
+        use ml_kem::KeyExport as _;
+        PqPublicKey(self.0.encapsulation_key().to_bytes().to_vec())
+    }
+}
+
+impl fmt::Debug for PqPrivateKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PqPrivateKey(<redacted>)")
+    }
+}
+
+/// Everything others need to share a vault with an account.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccountPublicKeys {
+    pub x25519: PublicKey,
+    /// Absent for accounts that have not used a 2Secret version with
+    /// post-quantum sharing yet.
+    pub ml_kem: Option<PqPublicKey>,
+}
+
+impl AccountPublicKeys {
+    pub fn from_b64(x25519: &str, ml_kem: Option<&str>) -> Result<Self> {
+        Ok(Self { x25519: PublicKey::from_b64(x25519)?, ml_kem: ml_kem.map(PqPublicKey::from_b64).transpose()? })
+    }
+
+    /// Short human-verifiable fingerprint over both keys, e.g.
+    /// `3F9A-77C1-0B2E-91D4`.
+    pub fn fingerprint(&self) -> String {
+        match &self.ml_kem {
+            None => self.x25519.fingerprint(),
+            Some(pq) => {
+                let mut both = self.x25519.as_bytes().to_vec();
+                both.extend_from_slice(pq.as_bytes());
+                fingerprint_of(&sha256(&both))
+            }
+        }
+    }
+}
+
+fn fingerprint_of(digest: &[u8; 32]) -> String {
+    digest[..8].chunks(2).map(|c| format!("{:02X}{:02X}", c[0], c[1])).collect::<Vec<_>>().join("-")
+}
+
+/// [`SealedBox`] with an additional ML-KEM-768 encapsulation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HybridSealedBox {
+    /// Ephemeral X25519 public key (base64).
+    pub epk: String,
+    /// ML-KEM-768 ciphertext (base64).
+    pub kem_ct: String,
+    pub ct: EncString,
+}
+
+/// Both shared secrets and everything they were derived from go into the key.
+fn hybrid_box_key(
+    x_shared: &[u8; 32],
+    pq_shared: &[u8],
+    epk: &PublicKey,
+    rpk: &PublicKey,
+    rpk_pq: &PqPublicKey,
+    kem_ct: &[u8],
+) -> SymmetricKey {
+    let mut ikm = Zeroizing::new(Vec::with_capacity(64));
+    ikm.extend_from_slice(pq_shared);
+    ikm.extend_from_slice(x_shared);
+    let mut salt = Vec::with_capacity(128);
+    salt.extend_from_slice(epk.as_bytes());
+    salt.extend_from_slice(rpk.as_bytes());
+    salt.extend_from_slice(&sha256(rpk_pq.as_bytes()));
+    salt.extend_from_slice(&sha256(kem_ct));
+    hkdf32(&ikm, Some(&salt), b"2secret/v1/hybrid-sealed-box")
+}
+
+/// Encrypt `plaintext` so that only the owner of both `recipient` keys can
+/// read it: X25519 and ML-KEM-768 combined (a "hybrid" KEM, as in Signal's
+/// PQXDH and Apple's PQ3).
+pub fn seal_hybrid(
+    recipient: &PublicKey,
+    recipient_pq: &PqPublicKey,
+    plaintext: &[u8],
+    aad: &[u8],
+) -> Result<HybridSealedBox> {
+    let ek = recipient_pq.encapsulation_key()?;
+    let m: [u8; 32] = random_bytes();
+    let (kem_ct, pq_shared) = ek.encapsulate_deterministic(&ml_kem::B32::from(m));
+    let eph = PrivateKey::generate();
+    let epk = eph.public_key();
+    let x_shared = eph.0.diffie_hellman(&x25519_dalek::PublicKey::from(recipient.0));
+    let key =
+        hybrid_box_key(x_shared.as_bytes(), pq_shared.as_slice(), &epk, recipient, recipient_pq, kem_ct.as_slice());
+    Ok(HybridSealedBox { epk: epk.to_b64(), kem_ct: b64(kem_ct.as_slice()), ct: encrypt(&key, plaintext, aad) })
+}
+
+/// Open a [`HybridSealedBox`] with both of the recipient's private keys.
+pub fn open_hybrid(
+    private_key: &PrivateKey,
+    pq_private_key: &PqPrivateKey,
+    sealed: &HybridSealedBox,
+    aad: &[u8],
+) -> Result<Zeroizing<Vec<u8>>> {
+    use ml_kem::Decapsulate as _;
+    let epk = PublicKey::from_b64(&sealed.epk).map_err(|_| Error::Decryption)?;
+    let kem_ct_bytes = unb64(&sealed.kem_ct).map_err(|_| Error::Decryption)?;
+    let kem_ct = ml_kem::ml_kem_768::Ciphertext::try_from(kem_ct_bytes.as_slice()).map_err(|_| Error::Decryption)?;
+    let pq_shared = pq_private_key.0.decapsulate(&kem_ct);
+    let x_shared = private_key.0.diffie_hellman(&x25519_dalek::PublicKey::from(epk.0));
+    if !x_shared.was_contributory() {
+        return Err(Error::Decryption);
+    }
+    let key = hybrid_box_key(
+        x_shared.as_bytes(),
+        pq_shared.as_slice(),
+        &epk,
+        &private_key.public_key(),
+        &pq_private_key.public_key(),
+        &kem_ct_bytes,
+    );
+    decrypt(&key, &sealed.ct, aad)
+}
+
+// ---------------------------------------------------------------------------
 // Account keyset
 // ---------------------------------------------------------------------------
 
@@ -542,6 +723,11 @@ pub struct EncryptedKeyset {
     pub private_key: EncString,
     /// X25519 public key (base64), used by others to share vaults with us.
     pub public_key: String,
+    /// ML-KEM-768 public key (base64); the private key is derived from the
+    /// account key ([`PqPrivateKey::derive`]). Missing in keysets created by
+    /// 2Secret 1.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_public_key: Option<String>,
 }
 
 /// The decrypted account keyset.
@@ -566,6 +752,16 @@ impl Keyset {
         self.private_key.public_key()
     }
 
+    /// The post-quantum private key (derived from the account key).
+    pub fn pq_private_key(&self) -> PqPrivateKey {
+        PqPrivateKey::derive(&self.account_key)
+    }
+
+    /// Both public keys of this account.
+    pub fn public_keys(&self) -> AccountPublicKeys {
+        AccountPublicKeys { x25519: self.public_key(), ml_kem: Some(self.pq_private_key().public_key()) }
+    }
+
     /// Encrypt the keyset under a Master Unlock Key.
     pub fn encrypt(&self, master_key: &SymmetricKey) -> EncryptedKeyset {
         EncryptedKeyset {
@@ -573,6 +769,7 @@ impl Keyset {
             account_key: encrypt(master_key, self.account_key.as_bytes(), AAD_ACCOUNT_KEY),
             private_key: encrypt(&self.account_key, &*self.private_key.to_bytes(), AAD_PRIVATE_KEY),
             public_key: self.public_key().to_b64(),
+            pq_public_key: Some(self.pq_private_key().public_key().to_b64()),
         }
     }
 
@@ -616,8 +813,11 @@ impl Keyset {
 pub enum WrappedKey {
     /// Encrypted with the member's own account key (personal vaults).
     Symmetric { ct: EncString },
-    /// Encrypted to the member's public key (vaults shared by someone else).
+    /// Encrypted to the member's X25519 public key (vaults shared by someone
+    /// else, before the member had a post-quantum key).
     Sealed { epk: String, ct: EncString },
+    /// Encrypted to the member's X25519 and ML-KEM-768 public keys.
+    HybridSealed { epk: String, kem_ct: String, ct: EncString },
 }
 
 impl WrappedKey {
@@ -630,18 +830,37 @@ impl WrappedKey {
         WrappedKey::Sealed { epk: sealed.epk, ct: sealed.ct }
     }
 
+    /// Wrap for another account: hybrid post-quantum when the recipient has
+    /// an ML-KEM key, X25519 only otherwise.
+    pub fn wrap_for(recipient: &AccountPublicKeys, key: &SymmetricKey, aad: &[u8]) -> Result<Self> {
+        Ok(match &recipient.ml_kem {
+            Some(pq) => {
+                let sealed = seal_hybrid(&recipient.x25519, pq, key.as_bytes(), aad)?;
+                WrappedKey::HybridSealed { epk: sealed.epk, kem_ct: sealed.kem_ct, ct: sealed.ct }
+            }
+            None => Self::wrap_sealed(&recipient.x25519, key, aad),
+        })
+    }
+
     pub fn unwrap(&self, keyset: &Keyset, aad: &[u8]) -> Result<SymmetricKey> {
         let raw = match self {
             WrappedKey::Symmetric { ct } => decrypt(&keyset.account_key, ct, aad)?,
             WrappedKey::Sealed { epk, ct } => {
                 open(&keyset.private_key, &SealedBox { epk: epk.clone(), ct: ct.clone() }, aad)?
             }
+            WrappedKey::HybridSealed { epk, kem_ct, ct } => open_hybrid(
+                &keyset.private_key,
+                &keyset.pq_private_key(),
+                &HybridSealedBox { epk: epk.clone(), kem_ct: kem_ct.clone(), ct: ct.clone() },
+                aad,
+            )?,
         };
         SymmetricKey::from_slice(&raw)
     }
 
+    /// Encrypted to the member's public key(s) rather than their own account key.
     pub fn is_sealed(&self) -> bool {
-        matches!(self, WrappedKey::Sealed { .. })
+        matches!(self, WrappedKey::Sealed { .. } | WrappedKey::HybridSealed { .. })
     }
 }
 
@@ -702,6 +921,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hybrid_sealed_box_roundtrip_and_tampering() {
+        let alice = Keyset::generate();
+        let bob = Keyset::generate();
+        let keys = alice.public_keys();
+        let pq = keys.ml_kem.clone().unwrap();
+        // ML-KEM-768 sizes from FIPS 203.
+        assert_eq!(pq.as_bytes().len(), 1184);
+        let sealed = seal_hybrid(&keys.x25519, &pq, b"vault key", b"aad").unwrap();
+        assert_eq!(unb64(&sealed.kem_ct).unwrap().len(), 1088);
+        let pqk = alice.pq_private_key();
+        assert_eq!(&*open_hybrid(&alice.private_key, &pqk, &sealed, b"aad").unwrap(), b"vault key");
+        // Wrong recipient, wrong AAD, tampered parts.
+        assert!(open_hybrid(&bob.private_key, &bob.pq_private_key(), &sealed, b"aad").is_err());
+        assert!(open_hybrid(&alice.private_key, &pqk, &sealed, b"other").is_err());
+        let mut bad_kem = unb64(&sealed.kem_ct).unwrap();
+        bad_kem[0] ^= 1;
+        let tampered = HybridSealedBox { kem_ct: b64(&bad_kem), ..sealed.clone() };
+        assert!(open_hybrid(&alice.private_key, &pqk, &tampered, b"aad").is_err());
+        let other_eph = HybridSealedBox { epk: PrivateKey::generate().public_key().to_b64(), ..sealed.clone() };
+        assert!(open_hybrid(&alice.private_key, &pqk, &other_eph, b"aad").is_err());
+        // Only the X25519 half is not enough: the ML-KEM secret is required.
+        let x_only = HybridSealedBox { kem_ct: b64(&[0u8; 1088]), ..sealed };
+        assert!(open_hybrid(&alice.private_key, &pqk, &x_only, b"aad").is_err());
+    }
+
+    #[test]
+    fn pq_key_is_derived_from_the_account_key() {
+        let ks = Keyset::generate();
+        assert_eq!(ks.pq_private_key().public_key(), ks.pq_private_key().public_key());
+        assert_ne!(ks.pq_private_key().public_key(), Keyset::generate().pq_private_key().public_key());
+        let enc = ks.encrypt(&SymmetricKey::generate());
+        assert_eq!(enc.pq_public_key, Some(ks.pq_private_key().public_key().to_b64()));
+        assert!(PqPublicKey::from_b64(&b64(&[1u8; 100])).is_err());
+    }
+
+    #[test]
+    fn wrap_for_uses_post_quantum_when_available() {
+        let recipient = Keyset::generate();
+        let vault_key = SymmetricKey::generate();
+        let hybrid = WrappedKey::wrap_for(&recipient.public_keys(), &vault_key, b"v").unwrap();
+        assert!(matches!(hybrid, WrappedKey::HybridSealed { .. }) && hybrid.is_sealed());
+        assert_eq!(hybrid.unwrap(&recipient, b"v").unwrap().as_bytes(), vault_key.as_bytes());
+        let classic_only = AccountPublicKeys { x25519: recipient.public_key(), ml_kem: None };
+        let classic = WrappedKey::wrap_for(&classic_only, &vault_key, b"v").unwrap();
+        assert!(matches!(classic, WrappedKey::Sealed { .. }));
+        assert_eq!(classic.unwrap(&recipient, b"v").unwrap().as_bytes(), vault_key.as_bytes());
+        // The fingerprint covers both keys once the account has an ML-KEM key.
+        assert_ne!(recipient.public_keys().fingerprint(), classic_only.fingerprint());
+        assert_eq!(classic_only.fingerprint(), recipient.public_key().fingerprint());
+    }
+
+    #[test]
     fn json_is_padded_to_size_classes() {
         let key = SymmetricKey::generate();
         let short = encrypt_json(&key, &"x", b"aad").unwrap();
@@ -748,7 +1019,7 @@ mod tests {
         let sk = SecretKey::generate();
         let f = sk.formatted();
         assert!(f.starts_with("2S-"));
-        assert_eq!(f.len(), 33);
+        assert_eq!(f.len(), 34);
         assert_eq!(SecretKey::parse(&f).unwrap(), sk);
         assert_eq!(SecretKey::parse(&f.to_lowercase().replace('-', " ")).unwrap(), sk);
         assert_eq!(SecretKey::parse(&f[3..]).unwrap(), sk);
@@ -760,6 +1031,18 @@ mod tests {
         let _ = SecretKey::parse(&typo); // may or may not be caught (1/32)
         assert!(SecretKey::parse("2S-0000").is_err());
         assert!(SecretKey::parse(&f.replace(&f[4..5], "0")).is_err());
+    }
+
+    #[test]
+    fn legacy_125_bit_secret_keys_still_work() {
+        let body: String = (0..SK_LEGACY_RANDOM_CHARS).map(|i| SK_ALPHABET[(i * 7) % 32] as char).collect();
+        let legacy = format!("{body}{}", SecretKey::check_char(&body));
+        let sk = SecretKey::parse(&legacy).unwrap();
+        assert_eq!(sk.formatted().len(), 33);
+        assert_eq!(SecretKey::parse(&sk.formatted()).unwrap(), sk);
+        assert_eq!(SecretKey::parse(&sk.formatted()[3..]).unwrap(), sk);
+        // Same derivation input as in 2Secret 1.0.
+        assert_eq!(sk.material(), legacy.as_bytes());
     }
 
     #[test]

@@ -197,7 +197,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
                     "email": acc.email,
                     "created_at": acc.created_at,
                     "server": session.server().map(|s| &s.url),
-                    "public_key_fingerprint": session.public_key().fingerprint(),
+                    "public_key_fingerprint": session.public_keys().fingerprint(),
                     "kdf": acc.kdf,
                 }));
             } else {
@@ -207,7 +207,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
                 println!("Created:      {}", format_timestamp(acc.created_at));
                 println!("Secret Key:   {}", sk.masked());
                 println!("Server:       {}", session.server().map(|s| s.url.as_str()).unwrap_or("local only"));
-                println!("Fingerprint:  {}", session.public_key().fingerprint());
+                println!("Fingerprint:  {}", session.public_keys().fingerprint());
                 println!(
                     "KDF:          Argon2id, {} MiB, {} iterations, {} lanes",
                     acc.kdf.memory_kib / 1024,

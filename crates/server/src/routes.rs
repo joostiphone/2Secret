@@ -9,7 +9,7 @@ use axum::{Json, Router};
 use rusqlite::params;
 use serde::Deserialize;
 use twosecret_core::api::*;
-use twosecret_core::crypto::{hkdf32, KdfParams, PublicKey};
+use twosecret_core::crypto::{hkdf32, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
 use twosecret_core::profile::Role;
 use twosecret_core::util::{b64, normalize_email, now};
 
@@ -27,11 +27,13 @@ pub fn api_router() -> Router<AppState> {
         .route("/logout", post(logout))
         .route("/account", get(get_account).put(update_account).delete(delete_account))
         .route("/account/password", post(change_password))
+        .route("/account/pq-key", put(set_pq_key))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", delete(revoke_device))
         .route("/users/lookup", get(lookup_user))
         .route("/vaults", get(list_vaults).post(create_vault))
         .route("/vaults/{id}", put(update_vault).delete(delete_vault))
+        .route("/vaults/{id}/key", put(set_own_vault_key))
         .route("/vaults/{id}/members", get(list_members).post(add_member))
         .route("/vaults/{id}/members/{account_id}", put(update_member).delete(remove_member))
         .route("/sync", post(sync))
@@ -40,6 +42,15 @@ pub fn api_router() -> Router<AppState> {
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
+
+fn valid_pq_key(key: Option<&str>) -> ApiResult<()> {
+    match key {
+        Some(k) => {
+            PqPublicKey::from_b64(k).map(|_| ()).map_err(|_| ApiError::bad_request("invalid post-quantum public key"))
+        }
+        None => Ok(()),
+    }
+}
 
 fn valid_id(id: &str) -> ApiResult<()> {
     let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
@@ -143,6 +154,7 @@ async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest
     valid_kdf(&req.kdf)?;
     let auth_key = decode_auth_key(&req.auth_key)?;
     PublicKey::from_b64(&req.keyset.public_key).map_err(|_| ApiError::bad_request("invalid public key"))?;
+    valid_pq_key(req.keyset.pq_public_key.as_deref())?;
     let name: String = req.name.chars().filter(|c| !c.is_control()).take(100).collect();
 
     let auth_hash = tokio::task::spawn_blocking(move || hash_auth_key(&auth_key)).await??;
@@ -304,20 +316,27 @@ async fn change_password(
     verify_current(&state, &auth.account_id, &req.current_auth_key).await?;
     valid_salt(&req.salt)?;
     valid_kdf(&req.kdf)?;
+    valid_pq_key(req.keyset.pq_public_key.as_deref())?;
     let new_key = decode_auth_key(&req.new_auth_key)?;
     let auth_hash = tokio::task::spawn_blocking(move || hash_auth_key(&new_key)).await??;
-    let keyset = serde_json::to_string(&req.keyset)?;
+    let mut new_ks = req.keyset.clone();
     let kdf = serde_json::to_string(&req.kdf)?;
     state
         .db
         .run(move |c| {
             let tx = c.transaction()?;
-            let current_pk: String =
-                tx.query_row("SELECT public_key FROM accounts WHERE id = ?1", [&auth.account_id], |r| r.get(0))?;
-            let new_ks: twosecret_core::crypto::EncryptedKeyset = serde_json::from_str(&keyset)?;
+            let (current_pk, current_ks): (String, String) =
+                tx.query_row("SELECT public_key, keyset FROM accounts WHERE id = ?1", [&auth.account_id], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?;
             if new_ks.public_key != current_pk {
                 return Err(ApiError::bad_request("the keyset's public key cannot change"));
             }
+            // Clients from before post-quantum sharing do not know the ML-KEM key: keep it.
+            if new_ks.pq_public_key.is_none() {
+                new_ks.pq_public_key = serde_json::from_str::<EncryptedKeyset>(&current_ks)?.pq_public_key;
+            }
+            let keyset = serde_json::to_string(&new_ks)?;
             tx.execute(
                 "UPDATE accounts SET salt = ?1, kdf = ?2, auth_hash = ?3, keyset = ?4, updated_at = ?5 WHERE id = ?6",
                 params![req.salt, kdf, auth_hash, keyset, now(), auth.account_id],
@@ -408,7 +427,34 @@ async fn lookup_user(
         email: account.email,
         name: account.name,
         public_key: account.public_key,
+        pq_public_key: account.keyset.pq_public_key,
     }))
+}
+
+/// Publish the caller's ML-KEM-768 public key (post-quantum sharing).
+async fn set_pq_key(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<SetPqKeyRequest>,
+) -> ApiResult<StatusCode> {
+    valid_pq_key(Some(&req.pq_public_key))?;
+    state
+        .db
+        .run(move |c| {
+            let tx = c.transaction()?;
+            let keyset: String =
+                tx.query_row("SELECT keyset FROM accounts WHERE id = ?1", [&auth.account_id], |r| r.get(0))?;
+            let mut keyset: EncryptedKeyset = serde_json::from_str(&keyset)?;
+            keyset.pq_public_key = Some(req.pq_public_key);
+            tx.execute(
+                "UPDATE accounts SET keyset = ?1, updated_at = ?2 WHERE id = ?3",
+                params![serde_json::to_string(&keyset)?, now(), auth.account_id],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---------------------------------------------------------------------------
@@ -520,17 +566,19 @@ async fn list_members(
         .run(move |c| {
             require_role(c, &id, &auth.account_id, Role::Viewer)?;
             let mut stmt = c.prepare(
-                "SELECT a.id, a.email, a.name, m.role, a.public_key FROM vault_members m
+                "SELECT a.id, a.email, a.name, m.role, a.public_key, a.keyset FROM vault_members m
                  JOIN accounts a ON a.id = m.account_id WHERE m.vault_id = ?1 ORDER BY m.created_at",
             )?;
             let rows = stmt.query_map([&id], |r| {
                 let role: String = r.get(3)?;
+                let keyset: String = r.get(5)?;
                 Ok(MemberDto {
                     account_id: r.get(0)?,
                     email: r.get(1)?,
                     name: r.get(2)?,
                     role: Role::parse(&role).unwrap_or(Role::Viewer),
                     public_key: r.get(4)?,
+                    pq_public_key: serde_json::from_str::<EncryptedKeyset>(&keyset).ok().and_then(|k| k.pq_public_key),
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -569,6 +617,34 @@ async fn add_member(
                  ON CONFLICT(vault_id, account_id) DO UPDATE SET role = excluded.role, wrapped_key = excluded.wrapped_key",
                 params![id, req.account_id, req.role.id(), serde_json::to_string(&req.wrapped_key)?, now()],
             )?;
+            Ok(())
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// A member replaces their own wrapped vault key, e.g. a key that was sealed
+/// to their public key is stored wrapped with their own account key instead.
+async fn set_own_vault_key(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<String>,
+    Json(req): Json<SetVaultKeyRequest>,
+) -> ApiResult<StatusCode> {
+    valid_id(&id)?;
+    if req.wrapped_key.is_sealed() {
+        return Err(ApiError::bad_request("a vault key can only be rewrapped with your own account key"));
+    }
+    state
+        .db
+        .run(move |c| {
+            let updated = c.execute(
+                "UPDATE vault_members SET wrapped_key = ?1 WHERE vault_id = ?2 AND account_id = ?3",
+                params![serde_json::to_string(&req.wrapped_key)?, id, auth.account_id],
+            )?;
+            if updated == 0 {
+                return Err(ApiError::not_found("vault not found"));
+            }
             Ok(())
         })
         .await?;

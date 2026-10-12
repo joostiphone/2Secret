@@ -35,8 +35,8 @@ is free, open source, and you can host the sync server yourself.
 
 | | |
 |---|---|
-| 🔐 **Two-Secret Key Derivation** | Master password (Argon2id) combined with a 125-bit Secret Key that never leaves your devices. A stolen server database is useless for guessing passwords. |
-| 🧱 **End-to-end encryption** | Every item is encrypted with 256-bit keys (XChaCha20-Poly1305), per-vault keys, X25519 public-key encryption for sharing. The server only sees ciphertext, padded to hide exact sizes. |
+| 🔐 **Two-Secret Key Derivation** | Master password (Argon2id) combined with a 130-bit Secret Key that never leaves your devices. A stolen server database is useless for guessing passwords. |
+| 🧱 **End-to-end encryption** | Every item is encrypted with 256-bit keys (XChaCha20-Poly1305), per-vault keys, quantum-resistant hybrid encryption (X25519 + ML-KEM-768) for sharing. The server only sees ciphertext, padded to hide exact sizes. |
 | 🗂️ **Vaults & sharing** | Multiple vaults; share a vault with other people on your server as *viewer*, *editor* or *manager*; leave or revoke access at any time. |
 | 🧾 **19 item types** | Logins, passwords, secure notes, credit cards, identities, bank accounts (IBAN/BIC), crypto wallets, software licenses, SSH keys, API credentials, databases, servers, Wi-Fi routers, e-mail accounts, passports, driver licenses, memberships, reward programs and documents – plus custom fields, tags, favorites and encrypted file attachments. |
 | ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. |
@@ -132,7 +132,8 @@ Compared with 1Password, these are missing today – contributions welcome:
 - **Zero knowledge.** Item contents, titles, URLs, vault names and even the
   sync token are encrypted before they leave your device.
 - **Modern primitives.** Argon2id (64 MiB, 3 passes), HKDF-SHA256,
-  XChaCha20-Poly1305 with context-bound associated data, X25519 sealed boxes.
+  XChaCha20-Poly1305 with context-bound associated data; vault sharing with
+  a post-quantum hybrid of X25519 and ML-KEM-768 (FIPS 203).
 - **Defence in depth.** Server-side Argon2id over the authentication key,
   login rate limiting, strict Content-Security-Policy for the web vault,
   owner-only file permissions, secrets zeroized in memory.
@@ -198,12 +199,13 @@ Windows, Linux, BSD, iOS, het web en je browser.
 ### Wat kan 2Secret?
 
 - **Veilig door twee geheimen:** je hoofdwachtwoord (Argon2id) gecombineerd met
-  een geheime sleutel van 125 bits die alleen op jouw apparaten staat. Zelfs
+  een geheime sleutel van 130 bits die alleen op jouw apparaten staat. Zelfs
   met een gestolen serverdatabase kan niemand je wachtwoord raden.
 - **End-to-end versleuteld:** alles wordt op je apparaat versleuteld
   (XChaCha20-Poly1305); de server ziet alleen versleutelde gegevens.
 - **Kluizen en delen:** meerdere kluizen, te delen met gezin of collega's als
-  *kijker*, *bewerker* of *beheerder*.
+  *kijker*, *bewerker* of *beheerder*. Delen is bestand tegen
+  toekomstige kwantumcomputers (X25519 + ML-KEM-768).
 - **19 soorten items:** logins, wachtwoorden, notities, creditcards,
   identiteiten, bankrekeningen (IBAN/BIC), crypto-wallets, licenties,
   SSH-sleutels, API-sleutels, databases, servers, wifi, paspoorten,

@@ -112,6 +112,22 @@ pub struct PublicKeyResponse {
     pub email: String,
     pub name: String,
     pub public_key: String,
+    /// ML-KEM-768 public key (absent for accounts that have not published one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_public_key: Option<String>,
+}
+
+/// Publish the account's ML-KEM-768 public key (`PUT /account/pq-key`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SetPqKeyRequest {
+    pub pq_public_key: String,
+}
+
+/// Replace the caller's own wrapped key for a vault (`PUT /vaults/{id}/key`);
+/// only wrappings with the caller's account key are accepted.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SetVaultKeyRequest {
+    pub wrapped_key: WrappedKey,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -145,6 +161,8 @@ pub struct MemberDto {
     pub name: String,
     pub role: Role,
     pub public_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_public_key: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

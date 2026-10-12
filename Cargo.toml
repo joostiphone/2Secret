@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -18,8 +18,8 @@ homepage = "https://github.com/joostiphone/2Secret"
 authors = ["2Secret contributors"]
 
 [workspace.dependencies]
-twosecret-core = { path = "crates/core", version = "1.0.2" }
-twosecret-client = { path = "crates/client", version = "1.0.2" }
+twosecret-core = { path = "crates/core", version = "1.1.0" }
+twosecret-client = { path = "crates/client", version = "1.1.0" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

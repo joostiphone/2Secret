@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
+
+Quantum-resistant sharing:
+
+- Vault keys shared with other people are wrapped with a hybrid of X25519 and
+  ML-KEM-768 (FIPS 203), so recorded traffic or a stolen server database
+  cannot be decrypted later with a quantum computer. The recipient's device
+  re-wraps the key with its own 256-bit account key on its next sync.
+- Accounts publish their ML-KEM public key automatically on their first sync
+  with this version; their fingerprint changes once when that happens.
+- New Secret Keys have 130 bits of entropy (26 random characters instead of
+  25). Existing Secret Keys keep working.
+- Update every device: 2Secret 1.0 cannot open a vault shared with the new
+  scheme until the recipient has synced once with 1.1.
 
 Security hardening, informed by the LastPass breaches:
 

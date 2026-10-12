@@ -256,7 +256,7 @@ pub fn SignIn() -> Element {
                 }
                 div { class: "form-group",
                     label { class: "label", {t("common.secret_key")} }
-                    input { class: "input mono", initial_value: "{sk_text}", placeholder: "2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX",
+                    input { class: "input mono", initial_value: "{sk_text}", placeholder: "2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXXX",
                         autocapitalize: "characters", spellcheck: "false", oninput: move |e| sk_text.set(e.value()) }
                 }
                 div { class: "form-group",

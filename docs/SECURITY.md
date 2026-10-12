@@ -31,20 +31,23 @@ your master password and your Secret Key.
 | Password stretching | Argon2id v1.3 (default: 64 MiB, 3 iterations, 4 lanes) |
 | Key derivation / separation | HKDF-SHA256 |
 | Symmetric encryption | XChaCha20-Poly1305 (256-bit key, random 192-bit nonce, 128-bit tag) |
-| Public-key encryption | X25519 + HKDF-SHA256 + XChaCha20-Poly1305 ("sealed box") |
+| Public-key encryption | X25519 + ML-KEM-768 (FIPS 203) hybrid + HKDF-SHA256 + XChaCha20-Poly1305 |
 | Randomness | OS CSPRNG (`getrandom`; `crypto.getRandomValues` in browsers) |
 | Unicode normalisation | NFKD for master passwords |
 
-All implementations are from the audited RustCrypto and dalek-cryptography
-projects. Ciphertexts are encoded as `2s1.` + base64url(nonce ‖ ciphertext ‖ tag).
+All implementations are from the RustCrypto and dalek-cryptography projects;
+the most important ones (`chacha20poly1305`, `curve25519-dalek`) have had
+independent audits, the ML-KEM implementation not yet. Ciphertexts are encoded as `2s1.` + base64url(nonce ‖ ciphertext ‖ tag).
 
 ## Two-Secret Key Derivation (2SKD)
 
 When an account is created, the device generates:
 
 - a random 16-byte **salt**, and
-- a **Secret Key**: 25 random characters from a 32-symbol alphabet (125 bits)
-  plus one check character, shown as `2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX`.
+- a **Secret Key**: 26 random characters from a 32-symbol alphabet (130 bits)
+  plus one check character, shown as `2S-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXXX`.
+  Secret Keys created before version 1.1 have 25 random characters (125 bits)
+  and keep working.
 
 The Secret Key is stored only on the user's devices and in their printed
 Emergency Kit. Every unlock derives two independent keys:
@@ -58,7 +61,7 @@ MUK     = HKDF(k, info = "2secret/v1/master-unlock-key")     # never leaves the 
 AUTH    = HKDF(k, info = "2secret/v1/auth-key")              # proves knowledge to the server
 ```
 
-Because `k_sk` contributes 125 bits of entropy, the authentication key the
+Because `k_sk` contributes 130 bits of entropy, the authentication key the
 server sees cannot be used to brute-force the master password, even with
 unlimited computing power — the attacker would also have to guess the Secret
 Key. A weak master password is still protected by the Secret Key against
@@ -71,7 +74,8 @@ protected by Argon2id.
 Master Unlock Key (MUK) ─┐
                          ▼
                Account key (AK, random 256-bit)  ──►  X25519 private key
-                         │                              (public key on server)
+                         │                              ML-KEM-768 private key (derived)
+                         │                              (public keys on server)
                          ▼
          Vault key (VK, random 256-bit, one per vault)
                          │
@@ -80,11 +84,14 @@ Master Unlock Key (MUK) ─┐
 ```
 
 - The **account keyset** stores AK encrypted with the MUK and the X25519
-  private key encrypted with AK. Changing the master password only re-encrypts
-  AK; vault keys and items stay untouched.
+  private key encrypted with AK. The ML-KEM-768 private key is not stored: it
+  is derived from AK (`HKDF(AK, info = "2secret/v1/ml-kem-768/d")` and
+  `".../z"` as the 64-byte FIPS 203 seed), so every device of the account has
+  it. Changing the master password only re-encrypts AK; vault keys and items
+  stay untouched.
 - Every **vault** has its own random key. For the vault owner it is wrapped
   with AK ("symmetric" wrapping). For people the vault is shared with, it is
-  wrapped to their X25519 public key ("sealed" wrapping).
+  wrapped to their public keys ("hybrid sealed" wrapping, see *Sharing*).
 - Every **item** is serialised to JSON and encrypted with its vault key.
 
 ### Associated data
@@ -112,7 +119,7 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Salt and Argon2id parameters | yes (needed to derive keys on new devices) |
 | Authentication key | only a server-side Argon2id hash of it |
 | Account keyset | encrypted (account key under MUK) |
-| Public key | yes |
+| Public keys (X25519, ML-KEM-768) | yes |
 | Vault names and descriptions | **no** (encrypted) |
 | Item titles, usernames, passwords, URLs, notes, files | **no** (encrypted) |
 | Number of vaults/items, size class of each item (padded), modification times | yes (metadata) |
@@ -137,16 +144,52 @@ profile file cannot be used to talk to the server either.
 
 ## Sharing
 
-To share a vault, the sharer fetches the recipient's public key from the
-server, wraps the vault key to it (X25519 sealed box) and uploads the wrapped
-key together with a role (`viewer`, `editor`, `manager`). The server enforces
-roles for every write.
+To share a vault, the sharer fetches the recipient's public keys from the
+server, wraps the vault key to them and uploads the wrapped key together with
+a role (`viewer`, `editor`, `manager`). The server enforces roles for every
+write.
+
+### Quantum-resistant sharing
+
+Vault keys are wrapped with a **hybrid** of X25519 and ML-KEM-768 (the NIST
+post-quantum standard, FIPS 203), the same approach as Signal's PQXDH and
+Apple's iMessage PQ3:
+
+```
+x_ss  = X25519(ephemeral private key, recipient X25519 public key)
+pq_ss, kem_ct = ML-KEM-768.Encaps(recipient ML-KEM public key)
+key   = HKDF(ikm  = pq_ss ‖ x_ss,
+             salt = epk ‖ recipient X25519 pk ‖ SHA-256(recipient ML-KEM pk) ‖ SHA-256(kem_ct),
+             info = "2secret/v1/hybrid-sealed-box")
+wrapped vault key = XChaCha20-Poly1305(key, vault key, AD = "2secret/v1/vault-key/<vault id>")
+```
+
+An attacker has to break **both** X25519 and ML-KEM-768 to recover a vault
+key, so recording shared vaults today and decrypting them with a future
+quantum computer ("harvest now, decrypt later") does not work, and a flaw in
+the young ML-KEM would still leave X25519's protection in place.
+
+The hybrid ciphertext only lives on the server until the recipient's next
+sync: their device then re-wraps the vault key with its own account key
+(256-bit symmetric) and replaces its copy on the server. Personal and shared
+vaults therefore rest on 256-bit symmetric keys only.
+
+Accounts created with 2Secret 1.0 publish their ML-KEM public key on their
+first sync with 1.1. Until a recipient has done so, vaults shared with them
+fall back to X25519 alone, and their device re-wraps the key symmetrically on
+its next sync as described above.
+
+### Fingerprints
 
 The apps show the recipient's **public key fingerprint** (e.g.
-`3F9A-77C1-0B2E-91D4`). Comparing it out of band protects against a malicious
-server substituting its own public key.
+`3F9A-77C1-0B2E-91D4`), the first 8 bytes of SHA-256 over both public keys.
+Comparing it out of band protects against a malicious server substituting
+its own keys. A fingerprint changes once, when an account created with 1.0
+publishes its ML-KEM key.
 
-**Revocation:** removing someone stops the server from sending them further
+### Revocation
+
+Removing someone stops the server from sending them further
 updates, but they may have kept copies of what they could already see — and
 the vault key. As with 1Password, change the passwords that matter after
 removing someone, or move the items to a new vault.
@@ -209,7 +252,7 @@ conflict never silently loses a password. Deletions are tombstones.
 
 | What went wrong at LastPass | How 2Secret handles it |
 |---|---|
-| Stolen vault backups could be attacked offline; weak master passwords fell first | The Secret Key adds 125 random bits to every account: the server database alone is useless for guessing passwords |
+| Stolen vault backups could be attacked offline; weak master passwords fell first | The Secret Key adds 130 random bits to every account: the server database alone is useless for guessing passwords |
 | Website URLs were stored unencrypted, revealing which sites every user has | Titles, URLs, usernames, notes and vault names are all encrypted; item sizes are padded |
 | Old accounts kept 1–5,000 PBKDF2 iterations for years | Argon2id (64 MiB, 3 passes) from day one, with an enforced minimum on client and server |
 | Short master passwords (8 characters) were allowed | At least 12 characters and a "good" strength rating |
@@ -236,8 +279,10 @@ the apps warn about this.
 - No key rotation when a vault member is removed (see *Sharing*).
 - Metadata listed above (counts, size classes, timestamps, sharing graph,
   e-mail addresses) is visible to the server operator.
-- X25519, used to share vault keys with other people, would be broken by a
-  large quantum computer; personal vaults rely only on 256-bit symmetric keys.
+- Login uses TLS from the operating system or browser; whether that
+  connection is quantum-resistant depends on the TLS stack and the reverse
+  proxy in front of the server. The data inside it is end-to-end encrypted
+  with 256-bit symmetric keys and the hybrid scheme above either way.
 - The web vault is only as trustworthy as the server that serves its code. If
   you do not trust the server operator, use the desktop/mobile apps or the
   extension, whose code does not come from the server.

@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::{
-    decrypt_json, derive_keys, encrypt, encrypt_json, DerivedKeys, EncString, EncryptedKeyset, KdfParams, Keyset,
-    PublicKey, SecretKey, SymmetricKey, WrappedKey,
+    decrypt_json, derive_keys, encrypt, encrypt_json, AccountPublicKeys, DerivedKeys, EncString, EncryptedKeyset,
+    KdfParams, Keyset, PublicKey, SecretKey, SymmetricKey, WrappedKey,
 };
 use crate::item::{Category, Item, ItemSummary};
 use crate::profile::{
@@ -313,6 +313,45 @@ impl Session {
         self.keyset.public_key()
     }
 
+    /// Both public keys (X25519 and ML-KEM-768) of this account.
+    pub fn public_keys(&self) -> AccountPublicKeys {
+        self.keyset.public_keys()
+    }
+
+    /// Our ML-KEM public key, if the sync server does not have it yet.
+    pub fn pq_key_to_publish(&self) -> Option<String> {
+        let link = self.profile.server.as_ref()?;
+        (!link.pq_key_published).then(|| self.keyset.pq_private_key().public_key().to_b64())
+    }
+
+    pub fn mark_pq_key_published(&mut self) {
+        if let Some(link) = &mut self.profile.server {
+            link.pq_key_published = true;
+        }
+    }
+
+    /// Vault keys that others shared with us by public-key encryption, wrapped
+    /// again with our own account key. Once the server stores these instead,
+    /// nothing that a future quantum computer could open stays on the server.
+    pub fn vault_keys_to_rewrap(&self) -> Vec<(String, WrappedKey)> {
+        self.profile
+            .vaults
+            .iter()
+            .filter(|v| v.wrapped_key.is_sealed() && v.sync_state == SyncState::Synced)
+            .filter_map(|v| {
+                let key = self.vaults.get(&v.id)?.key.clone();
+                Some((v.id.clone(), WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &aad::vault_key(&v.id))))
+            })
+            .collect()
+    }
+
+    /// Store a vault key wrapping that the server has accepted.
+    pub fn set_vault_wrapped_key(&mut self, vault_id: &str, wrapped: WrappedKey) {
+        if let Some(v) = self.profile.vaults.iter_mut().find(|v| v.id == vault_id) {
+            v.wrapped_key = wrapped;
+        }
+    }
+
     /// Records that failed to decrypt (should normally be empty).
     pub fn undecryptable(&self) -> &[String] {
         &self.undecryptable
@@ -457,10 +496,11 @@ impl Session {
         Ok(())
     }
 
-    /// Wrap a vault key for another account (vault sharing).
-    pub fn wrap_vault_key_for(&self, vault_id: &str, recipient: &PublicKey) -> Result<WrappedKey> {
+    /// Wrap a vault key for another account (vault sharing): hybrid
+    /// post-quantum when the recipient has an ML-KEM key.
+    pub fn wrap_vault_key_for(&self, vault_id: &str, recipient: &AccountPublicKeys) -> Result<WrappedKey> {
         let key = self.vault_key(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
-        Ok(WrappedKey::wrap_sealed(recipient, key, &aad::vault_key(vault_id)))
+        WrappedKey::wrap_for(recipient, key, &aad::vault_key(vault_id))
     }
 
     // ------------------------------------------------------------------
@@ -756,6 +796,7 @@ impl Session {
                     url: url.trim_end_matches('/').to_string(),
                     token: Some(enc),
                     last_sync_at: None,
+                    pq_key_published: false,
                 })
             }
         }
@@ -969,8 +1010,44 @@ pub(crate) mod tests {
         let (s, _) = new_session();
         let (bob, _) = new_session();
         let v = s.default_vault_id().unwrap();
-        let wrapped = s.wrap_vault_key_for(&v, &bob.public_key()).unwrap();
+        let wrapped = s.wrap_vault_key_for(&v, &bob.public_keys()).unwrap();
+        assert!(matches!(wrapped, WrappedKey::HybridSealed { .. }));
         let key = wrapped.unwrap(bob.keyset(), &aad::vault_key(&v)).unwrap();
         assert_eq!(&key, s.vault_key(&v).unwrap());
+    }
+
+    #[test]
+    fn shared_vault_keys_are_rewrapped_with_the_own_account_key() {
+        let (alice, _) = new_session();
+        let (mut bob, _) = new_session();
+        let v = alice.default_vault_id().unwrap();
+        let wrapped = alice.wrap_vault_key_for(&v, &bob.public_keys()).unwrap();
+        // Bob receives the shared vault as the sync engine would store it.
+        let mut record = alice.profile().vault(&v).unwrap().clone();
+        record.wrapped_key = wrapped;
+        record.owner_id = alice.account().id.clone();
+        record.role = Role::Editor;
+        record.sync_state = SyncState::Synced;
+        bob.profile.vaults.push(record);
+        bob.reload().unwrap();
+        let rewraps = bob.vault_keys_to_rewrap();
+        assert_eq!(rewraps.len(), 1);
+        let (id, symmetric) = rewraps.into_iter().next().unwrap();
+        assert!(!symmetric.is_sealed());
+        bob.set_vault_wrapped_key(&id, symmetric);
+        bob.reload().unwrap();
+        assert_eq!(bob.vault_key(&v), alice.vault_key(&v));
+        assert!(bob.vault_keys_to_rewrap().is_empty());
+    }
+
+    #[test]
+    fn pq_key_is_published_once_per_server() {
+        let (mut s, _) = new_session();
+        assert!(s.pq_key_to_publish().is_none());
+        s.set_server("https://vault.example.com", "tok");
+        let key = s.pq_key_to_publish().unwrap();
+        assert_eq!(Some(key), s.public_keys().ml_kem.map(|k| k.to_b64()));
+        s.mark_pq_key_published();
+        assert!(s.pq_key_to_publish().is_none());
     }
 }

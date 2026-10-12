@@ -1,7 +1,7 @@
 //! End-to-end tests: real HTTP server on localhost, real client, real crypto.
 
 use twosecret_client::{self as client, Client};
-use twosecret_core::crypto::KdfParams;
+use twosecret_core::crypto::{KdfParams, WrappedKey};
 use twosecret_core::item::{Category, Item};
 use twosecret_core::profile::Role;
 use twosecret_core::session::Session;
@@ -128,9 +128,21 @@ async fn vault_sharing_and_permissions() {
     let netflix = alice.add_item(&family, Item::login("Netflix", "family", "popcorn", None)).unwrap();
     let bob_info = client::share_vault(&mut alice, &family, "bob@example.com", Role::Viewer).await.unwrap();
     assert_eq!(bob_info.name, "Bob");
+    // Bob published an ML-KEM key, so the vault key was sealed post-quantum.
+    assert!(bob_info.pq_public_key.is_some());
+    let bob_api = client::client_for(&bob).unwrap();
+    let wrapped_for_bob = || async {
+        let vaults = bob_api.vaults().await.unwrap();
+        vaults.into_iter().find(|v| v.id == family).unwrap().wrapped_key
+    };
+    assert!(matches!(wrapped_for_bob().await, WrappedKey::HybridSealed { .. }));
 
     let r = client::sync(&mut bob).await.unwrap();
     assert_eq!(r.vaults_added, 1);
+    // After Bob's sync the server keeps only a wrapping with Bob's own account key.
+    assert!(matches!(wrapped_for_bob().await, WrappedKey::Symmetric { .. }));
+    client::sync(&mut bob).await.unwrap();
+    assert!(bob.vault_keys_to_rewrap().is_empty());
     let shared = bob.find_vault("Family").unwrap();
     assert_eq!(shared.role, Role::Viewer);
     assert!(!shared.is_owner);
