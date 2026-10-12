@@ -43,3 +43,11 @@ in `crates/app/src/i18n.rs`.
 
 By contributing you agree that your contributions are licensed under the MIT
 or Apache-2.0 license, at the user's option.
+
+## Releasing
+
+1. Update the version in `Cargo.toml` and add a section to `CHANGELOG.md`.
+2. Start the **Release** workflow from the Actions tab (*Run workflow*, enter
+   e.g. `v1.2.3`) or push a tag `v1.2.3`.
+3. The workflow builds all installers and the Docker image and creates a
+   draft release; check it and click *Publish release*.

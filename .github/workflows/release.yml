@@ -1,11 +1,18 @@
 name: Release
 
-# Pushing a tag like v1.2.3 builds everything and creates one draft release
-# with all downloads attached; publish it on GitHub after checking it.
+# Builds everything for a version and creates one draft release with all
+# downloads attached; publish it on GitHub after checking it. Start it by
+# pushing a tag like v1.2.3, or from the Actions tab ("Run workflow") with the
+# version as input, which creates the tag on the selected branch.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to release, e.g. v1.2.3 (must match Cargo.toml)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,10 +21,29 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   DX_VERSION: 0.7.10
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  tag:
+    name: Version ${{ inputs.tag || github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::Version must look like v1.2.3"; exit 1; }
+          grep -q "^version = \"${TAG#v}\"" Cargo.toml || { echo "::error::Cargo.toml has a different version than $TAG"; exit 1; }
+      - name: Create tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "2Secret $TAG"
+          git push origin "$TAG"
+
   binaries:
     name: CLI & server (${{ matrix.target }})
+    needs: tag
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +67,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name=2secret-${GITHUB_REF_NAME}-${{ matrix.target }}
+          name=2secret-${TAG}-${{ matrix.target }}
           mkdir -p "$name" out
           cp target/${{ matrix.target }}/release/2secret${{ matrix.ext }} target/${{ matrix.target }}/release/2secret-server${{ matrix.ext }} "$name/"
           cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
@@ -54,6 +80,7 @@ jobs:
 
   desktop:
     name: Desktop app (${{ matrix.os }})
+    needs: tag
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +125,7 @@ jobs:
 
   web:
     name: Web vault
+    needs: tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +137,7 @@ jobs:
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - working-directory: crates/app
         run: dx bundle --platform web --release
-      - run: mkdir out && tar czf out/2secret-web-${GITHUB_REF_NAME}.tar.gz -C crates/app/dist/public .
+      - run: mkdir out && tar czf out/2secret-web-${TAG}.tar.gz -C crates/app/dist/public .
       - uses: actions/upload-artifact@v4
         with:
           name: web
@@ -118,6 +146,7 @@ jobs:
 
   extension:
     name: Browser extension
+    needs: tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +156,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
-      - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip out/2secret-extension-${GITHUB_REF_NAME}.zip
+      - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip out/2secret-extension-${TAG}.zip
       - uses: actions/upload-artifact@v4
         with:
           name: extension
@@ -136,8 +165,7 @@ jobs:
 
   release:
     name: Draft release
-    needs: [binaries, desktop, web, extension]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [tag, binaries, desktop, web, extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,13 +181,15 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          name: 2Secret ${{ github.ref_name }}
+          tag_name: ${{ env.TAG }}
+          name: 2Secret ${{ env.TAG }}
           body_path: notes.md
           files: out/*
           fail_on_unmatched_files: true
 
   docker:
     name: Docker image
+    needs: tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -174,10 +204,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/2secret
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=ref,event=branch
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+            type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
       - uses: docker/build-push-action@v6
         with:
           context: .
