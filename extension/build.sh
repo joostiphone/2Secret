@@ -11,7 +11,7 @@ root="$(cd "$here/.." && pwd)"
 
 cd "$root/crates/app"
 # dx keeps old hashed bundles around; start clean.
-rm -rf dist "$root/target/dx/twosecret-app/release/web"
+rm -rf dist "$root"/target/dx/*/release/web
 dx bundle --platform web --release --no-default-features --features extension
 
 out="$here/dist"

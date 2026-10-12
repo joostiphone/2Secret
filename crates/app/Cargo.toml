@@ -8,8 +8,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# The bundler derives the app name ("2Secret") from the binary name, and
+# "2secret" is taken by the CLI (case-insensitive file systems).
 [[bin]]
-name = "twosecret-app"
+name = "2-secret"
 path = "src/main.rs"
 
 [features]

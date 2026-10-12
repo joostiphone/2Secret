@@ -17,8 +17,12 @@ script = []
 [bundle]
 identifier = "io.github.joostiphone.twosecret"
 publisher = "2Secret"
-icon = ["assets/icon-32.png", "assets/icon-128.png", "assets/icon-256.png", "assets/icon-512.png", "assets/icon.ico"]
+icon = ["assets/icon-1024.png", "assets/icon-512.png", "assets/icon.ico"]
 copyright = "2Secret contributors – MIT OR Apache-2.0"
 category = "Utility"
 short_description = "Free, open-source password manager"
 long_description = "2Secret keeps passwords, cards, notes and other secrets end-to-end encrypted on all your devices."
+
+# Debian/Ubuntu package names; the release workflow swaps in Fedora names for the RPM.
+[bundle.deb]
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3", "libssl3"]
