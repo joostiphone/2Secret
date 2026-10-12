@@ -5,7 +5,7 @@
 <h1 align="center">2Secret</h1>
 
 <p align="center">
-  <b>A free, open-source password manager – one Rust codebase for macOS, Windows, Linux, the BSDs, iOS, the web and your browser.</b>
+  <b>A free, open-source password manager – one Rust codebase for macOS, Windows, Linux, the BSDs, iOS, Android, the web and your browser.</b>
 </p>
 
 <p align="center">
@@ -63,6 +63,7 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 | Linux | desktop app (`.deb`, `.rpm`, AppImage) | `dx bundle --platform desktop` |
 | FreeBSD, OpenBSD, NetBSD | desktop app, CLI, server | `cargo build` (WebKitGTK) |
 | iOS / iPadOS | native app | `dx bundle --platform ios` (on macOS with Xcode) |
+| Android | native app (`.apk`, `.aab`) | `scripts/android.sh` (Android SDK + NDK) |
 | Web | web vault in any browser (WebAssembly) | served by `2secret-server` |
 | Browsers | extension for Chrome, Edge, Brave, Firefox | `extension/build.sh` |
 | Terminal | `2secret` CLI | `cargo install --path crates/cli` |
@@ -117,9 +118,9 @@ Full reference: [docs/CLI.md](docs/CLI.md).
 
 Compared with 1Password, these are missing today – contributions welcome:
 
-- Biometric unlock on Linux and in the browser (the master password is required there).
+- Biometric unlock on Linux, Android and in the browser (the master password is required there).
 - Passkeys outside the browser extension (iOS AutoFill, Android, desktop apps).
-- iOS system AutoFill and a Safari extension; an Android app.
+- A Safari extension; system autofill on Android.
 - An independent security audit.
 
 ## Security
@@ -231,8 +232,8 @@ Windows, Linux, BSD, iOS, het web en je browser.
 
 ### Nog niet aanwezig
 
-Biometrisch ontgrendelen op Linux en in de browser, passkeys buiten de
-browserextensie, automatisch invullen in iOS en Safari, een Android-app, en een onafhankelijke
+Biometrisch ontgrendelen op Linux, Android en in de browser, passkeys buiten de
+browserextensie, een Safari-extensie, automatisch invullen op Android, en een onafhankelijke
 beveiligingsaudit.
 
 ### Snel aan de slag

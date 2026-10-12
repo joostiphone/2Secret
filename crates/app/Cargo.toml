@@ -59,3 +59,8 @@ block2 = "0.6"
 # Unlocking with Windows Hello.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_System_WinRT"] }
+
+# Android: storage location, language, links and downloads through JNI.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"

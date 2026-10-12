@@ -1,5 +1,7 @@
 //! 2Secret – one Rust UI for macOS, Windows, Linux, the BSDs, iOS and the web.
 
+#[cfg(target_os = "android")]
+mod android;
 mod biometric;
 mod components;
 mod extension;

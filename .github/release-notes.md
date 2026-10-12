@@ -7,6 +7,8 @@
 | `2Secret_*_x64.dmg` | macOS app for Intel Macs |
 | `*.msi`, `*-setup.exe` | Windows app |
 | `*.deb`, `*.rpm`, `*.AppImage` | Linux app (x86_64) |
+| `2Secret_*_android-arm64.apk` | Android app (Android 7 and newer) – allow installing from your browser when asked |
+| `2Secret_*_android-arm64.aab` | Android app bundle for app stores |
 | `2secret-*-<platform>.tar.gz` / `.zip` | `2secret` CLI and `2secret-server` for Linux, macOS (Apple silicon and Intel) and Windows |
 | `2secret-web-*.tar.gz` | Web vault – serve it with `2secret-server --web-dir` |
 | `2secret-extension-*.zip` | Browser extension for Chrome, Edge, Brave and Firefox (load unpacked) |

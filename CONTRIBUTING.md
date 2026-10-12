@@ -85,3 +85,31 @@ secrets (*Settings → Secrets and variables → Actions*):
 
 Create the certificate on a Mac in Xcode (*Settings → Accounts → Manage
 Certificates → + → Developer ID Application*) or on developer.apple.com.
+
+### Signing the Android app
+
+Releases include the Android app only when a signing key is configured
+(debug builds can be read over USB and are never published). Create a key
+once and **keep a backup**: updates must be signed with the same key, or
+Android refuses to install them over the existing app.
+
+```sh
+keytool -genkeypair -v -keystore 2secret-release.jks -keyalg RSA -keysize 4096 \
+  -validity 10000 -alias 2secret
+base64 -w0 2secret-release.jks    # macOS: base64 -i 2secret-release.jks
+```
+
+Use letters and digits only for the passwords, then add these repository
+secrets:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | The base64 output above |
+| `ANDROID_KEYSTORE_PASSWORD` | The keystore password |
+| `ANDROID_KEY_ALIAS` | `2secret` (the `-alias` above) |
+| `ANDROID_KEY_PASSWORD` | The key password |
+
+The release then gets `2Secret_<version>_android-arm64.apk` (install
+directly) and `.aab` (for Google Play, where this key becomes the upload
+key). Build locally with `scripts/android.sh` and the same environment
+variables.

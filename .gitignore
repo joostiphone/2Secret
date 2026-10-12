@@ -9,3 +9,4 @@
 /extension/dist
 /extension/*.zip
 /node_modules
+/.android-release.jks

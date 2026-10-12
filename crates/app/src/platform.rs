@@ -125,6 +125,12 @@ mod imp {
     }
 
     pub fn data_dir() -> PathBuf {
+        #[cfg(target_os = "android")]
+        {
+            if let Some(dir) = crate::android::data_dir() {
+                return dir;
+            }
+        }
         #[cfg(target_os = "ios")]
         {
             if let Some(home) = std::env::var_os("HOME") {
@@ -179,6 +185,11 @@ mod imp {
 
     /// Save a file for the user. Returns a description of where it went.
     pub async fn save_file(name: &str, _mime: &str, content: &[u8]) -> Result<String, String> {
+        #[cfg(target_os = "android")]
+        {
+            return crate::android::save_file(name, _mime, content);
+        }
+        #[allow(unreachable_code)]
         let dir = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from)
@@ -207,6 +218,10 @@ mod imp {
 
     pub fn device_name() -> String {
         let os = std::env::consts::OS;
+        #[cfg(target_os = "android")]
+        if let Some(model) = crate::android::device_model() {
+            return format!("2Secret for Android ({model})");
+        }
         let host = std::env::var("HOSTNAME")
             .ok()
             .or_else(|| std::env::var("COMPUTERNAME").ok())
@@ -221,6 +236,10 @@ mod imp {
 
     /// Preferred UI language of the system ("nl", "en", …).
     pub fn system_language() -> String {
+        #[cfg(target_os = "android")]
+        if let Some(lang) = crate::android::language() {
+            return lang;
+        }
         for var in ["LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"] {
             if let Ok(v) = std::env::var(var) {
                 if !v.is_empty() && v != "C" && v != "POSIX" {
@@ -237,6 +256,11 @@ mod imp {
     }
 
     pub(super) fn open_url_impl(url: &str) {
+        #[cfg(target_os = "android")]
+        {
+            return crate::android::open_url(url);
+        }
+        #[allow(unreachable_code)]
         let js = format!(
             "window.open({}, '_blank', 'noopener,noreferrer');",
             serde_json::to_string(url).unwrap_or_default()

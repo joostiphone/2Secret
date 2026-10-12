@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Android app (Android 7 and newer), attached to releases as a signed `.apk`
+  and an `.aab` for app stores. Its data stays out of Android's cloud backups.
 - Passkeys: the browser extension offers to save new passkeys in 2Secret and
   signs in with them; you can always choose another device or security key
   instead. Passkeys are end-to-end encrypted and sync with the vault, and
