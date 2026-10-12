@@ -139,6 +139,8 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
+          # Nothing is needed back on the runner; copying target/ fills its disk.
+          copyback: false
           prepare: pkg install -y rust pkgconf
           run: |
             cargo test -p twosecret-core -p twosecret-client -p twosecret-server
