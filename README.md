@@ -19,10 +19,10 @@
 **🇳🇱 Nederlands:** [lees verder in het Nederlands](#-nederlands) ↓
 
 <p align="center">
-  <img src="docs/screenshots/item.png" width="49%" alt="Item details with live one-time code">
-  <img src="docs/screenshots/dark.png" width="49%" alt="Dark theme">
-  <img src="docs/screenshots/watchtower.png" width="49%" alt="Watchtower">
-  <img src="docs/screenshots/generator.png" width="49%" alt="Password generator">
+  <img src="docs/screenshots/en-light-item.png" width="49%" alt="Item details with live one-time code">
+  <img src="docs/screenshots/en-dark-item.png" width="49%" alt="Dark theme">
+  <img src="docs/screenshots/en-light-watchtower.png" width="49%" alt="Watchtower">
+  <img src="docs/screenshots/en-light-share.png" width="49%" alt="Sharing a vault, with key fingerprints">
 </p>
 
 2Secret keeps your passwords, credit cards, notes, identities, SSH keys and

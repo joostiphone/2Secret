@@ -44,6 +44,14 @@ in `crates/app/src/i18n.rs`.
 By contributing you agree that your contributions are licensed under the MIT
 or Apache-2.0 license, at the user's option.
 
+## Screenshots
+
+`scripts/screenshots.sh` regenerates `docs/screenshots`: English and Dutch,
+light and dark, desktop and phone, from demo data on a temporary local server.
+It also writes `docs/screenshots/manifest.json`, which the 2secret.app website
+imports. It needs Node.js with Playwright and Chromium. Run it after visible
+UI changes and commit the result.
+
 ## Releasing
 
 1. Update the version in `Cargo.toml` and add a section to `CHANGELOG.md`.

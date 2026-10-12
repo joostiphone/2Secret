@@ -1,0 +1,290 @@
+[
+  {
+    "file": "en-light-welcome.png",
+    "title_en": "Welcome screen",
+    "title_nl": "Welkomstscherm",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-secret-key.png",
+    "title_en": "Your Secret Key and Emergency Kit",
+    "title_nl": "Je geheime sleutel en noodkit",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-item.png",
+    "title_en": "Item details with a live one-time code",
+    "title_nl": "Itemdetails met een live eenmalige code",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-watchtower.png",
+    "title_en": "Watchtower finds weak, reused and unsafe passwords",
+    "title_nl": "Watchtower vindt zwakke, hergebruikte en onveilige wachtwoorden",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-generator.png",
+    "title_en": "Password generator",
+    "title_nl": "Wachtwoordgenerator",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-share.png",
+    "title_en": "Sharing a vault, with key fingerprints",
+    "title_nl": "Een kluis delen, met sleutelvingerafdrukken",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-locked.png",
+    "title_en": "Locked vault",
+    "title_nl": "Vergrendelde kluis",
+    "theme": "light",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-light-mobile-list.png",
+    "title_en": "All items on a phone",
+    "title_nl": "Alle items op een telefoon",
+    "theme": "light",
+    "locale": "en",
+    "device": "mobile"
+  },
+  {
+    "file": "en-light-mobile-item.png",
+    "title_en": "Item details on a phone",
+    "title_nl": "Itemdetails op een telefoon",
+    "theme": "light",
+    "locale": "en",
+    "device": "mobile"
+  },
+  {
+    "file": "en-dark-welcome.png",
+    "title_en": "Welcome screen",
+    "title_nl": "Welkomstscherm",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-secret-key.png",
+    "title_en": "Your Secret Key and Emergency Kit",
+    "title_nl": "Je geheime sleutel en noodkit",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-item.png",
+    "title_en": "Item details with a live one-time code",
+    "title_nl": "Itemdetails met een live eenmalige code",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-watchtower.png",
+    "title_en": "Watchtower finds weak, reused and unsafe passwords",
+    "title_nl": "Watchtower vindt zwakke, hergebruikte en onveilige wachtwoorden",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-generator.png",
+    "title_en": "Password generator",
+    "title_nl": "Wachtwoordgenerator",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-share.png",
+    "title_en": "Sharing a vault, with key fingerprints",
+    "title_nl": "Een kluis delen, met sleutelvingerafdrukken",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-locked.png",
+    "title_en": "Locked vault",
+    "title_nl": "Vergrendelde kluis",
+    "theme": "dark",
+    "locale": "en",
+    "device": "desktop"
+  },
+  {
+    "file": "en-dark-mobile-list.png",
+    "title_en": "All items on a phone",
+    "title_nl": "Alle items op een telefoon",
+    "theme": "dark",
+    "locale": "en",
+    "device": "mobile"
+  },
+  {
+    "file": "en-dark-mobile-item.png",
+    "title_en": "Item details on a phone",
+    "title_nl": "Itemdetails op een telefoon",
+    "theme": "dark",
+    "locale": "en",
+    "device": "mobile"
+  },
+  {
+    "file": "nl-light-welcome.png",
+    "title_en": "Welcome screen",
+    "title_nl": "Welkomstscherm",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-secret-key.png",
+    "title_en": "Your Secret Key and Emergency Kit",
+    "title_nl": "Je geheime sleutel en noodkit",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-item.png",
+    "title_en": "Item details with a live one-time code",
+    "title_nl": "Itemdetails met een live eenmalige code",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-watchtower.png",
+    "title_en": "Watchtower finds weak, reused and unsafe passwords",
+    "title_nl": "Watchtower vindt zwakke, hergebruikte en onveilige wachtwoorden",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-generator.png",
+    "title_en": "Password generator",
+    "title_nl": "Wachtwoordgenerator",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-share.png",
+    "title_en": "Sharing a vault, with key fingerprints",
+    "title_nl": "Een kluis delen, met sleutelvingerafdrukken",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-locked.png",
+    "title_en": "Locked vault",
+    "title_nl": "Vergrendelde kluis",
+    "theme": "light",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-light-mobile-list.png",
+    "title_en": "All items on a phone",
+    "title_nl": "Alle items op een telefoon",
+    "theme": "light",
+    "locale": "nl",
+    "device": "mobile"
+  },
+  {
+    "file": "nl-light-mobile-item.png",
+    "title_en": "Item details on a phone",
+    "title_nl": "Itemdetails op een telefoon",
+    "theme": "light",
+    "locale": "nl",
+    "device": "mobile"
+  },
+  {
+    "file": "nl-dark-welcome.png",
+    "title_en": "Welcome screen",
+    "title_nl": "Welkomstscherm",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-secret-key.png",
+    "title_en": "Your Secret Key and Emergency Kit",
+    "title_nl": "Je geheime sleutel en noodkit",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-item.png",
+    "title_en": "Item details with a live one-time code",
+    "title_nl": "Itemdetails met een live eenmalige code",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-watchtower.png",
+    "title_en": "Watchtower finds weak, reused and unsafe passwords",
+    "title_nl": "Watchtower vindt zwakke, hergebruikte en onveilige wachtwoorden",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-generator.png",
+    "title_en": "Password generator",
+    "title_nl": "Wachtwoordgenerator",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-share.png",
+    "title_en": "Sharing a vault, with key fingerprints",
+    "title_nl": "Een kluis delen, met sleutelvingerafdrukken",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-locked.png",
+    "title_en": "Locked vault",
+    "title_nl": "Vergrendelde kluis",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "desktop"
+  },
+  {
+    "file": "nl-dark-mobile-list.png",
+    "title_en": "All items on a phone",
+    "title_nl": "Alle items op een telefoon",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "mobile"
+  },
+  {
+    "file": "nl-dark-mobile-item.png",
+    "title_en": "Item details on a phone",
+    "title_nl": "Itemdetails op een telefoon",
+    "theme": "dark",
+    "locale": "nl",
+    "device": "mobile"
+  }
+]

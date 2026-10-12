@@ -361,7 +361,7 @@ fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, 
         div { class: "settings-row",
             div { class: "k",
                 div { class: "t", "{member.name}" }
-                div { class: "d", "{member.email} · " span { class: "mono", "{fingerprint}" } }
+                div { class: "d", "{member.email} · " span { class: "mono", style: "white-space:nowrap", "{fingerprint}" } }
             }
             if editable {
                 select { class: "input", style: "min-width:0",
