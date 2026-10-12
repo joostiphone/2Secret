@@ -13,6 +13,10 @@ on:
         description: "Version to release, e.g. v1.2.3 (must match Cargo.toml)"
         required: true
         type: string
+      replace:
+        description: "Move the tag to this commit if it exists but its release is not published yet"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -35,11 +39,22 @@ jobs:
           grep -q "^version = \"${TAG#v}\"" Cargo.toml || { echo "::error::Cargo.toml has a different version than $TAG"; exit 1; }
       - name: Create tag
         if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace }}
         run: |
+          existing="$(git ls-remote --tags origin "refs/tags/$TAG^{}" | cut -f1)"
+          if [ -n "$existing" ]; then
+            if [ "$existing" = "$GITHUB_SHA" ]; then echo "$TAG already points at $GITHUB_SHA"; exit 0; fi
+            if [ "$REPLACE" != "true" ]; then echo "::error::$TAG already exists; run again with 'replace' to move it"; exit 1; fi
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; then
+              echo "::error::$TAG is already published and cannot be moved"; exit 1
+            fi
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "2Secret $TAG"
-          git push origin "$TAG"
+          git tag -fa "$TAG" -m "2Secret $TAG"
+          git push -f origin "refs/tags/$TAG"
 
   binaries:
     name: CLI & server (${{ matrix.target }})
@@ -103,7 +118,20 @@ jobs:
       - name: Bundle
         working-directory: crates/app
         shell: bash
-        run: dx bundle --platform desktop --release ${{ matrix.types }} --out-dir "$GITHUB_WORKSPACE/bundles"
+        run: |
+          # dx strips the app with the toolchain's rust-objcopy, which needs
+          # libLLVM, but only tells the Linux loader where to find it.
+          if [ "$RUNNER_OS" = macOS ]; then
+            sysroot="$(rustc --print sysroot)"
+            llvm="$(find "$sysroot" -name 'libLLVM*.dylib' -print -quit)"
+            if [ -z "$llvm" ]; then
+              rustup component add llvm-tools
+              llvm="$(find "$sysroot" -name 'libLLVM*.dylib' -print -quit)"
+            fi
+            mkdir -p "$RUNNER_TEMP/llvm" && ln -sf "$llvm" "$RUNNER_TEMP/llvm/libLLVM.dylib"
+            export DYLD_LIBRARY_PATH="$RUNNER_TEMP/llvm"
+          fi
+          dx bundle --platform desktop --release ${{ matrix.types }} --out-dir "$GITHUB_WORKSPACE/bundles"
       - name: Bundle RPM (with Fedora package names)
         if: runner.os == 'Linux'
         working-directory: crates/app
