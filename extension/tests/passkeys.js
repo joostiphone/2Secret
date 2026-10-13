@@ -43,6 +43,7 @@ function check(cond, what) {
     await inputs.nth(1).fill('alex@example.com');
     await inputs.nth(2).fill(PW);
     await inputs.nth(3).fill(PW);
+    await popup.click('text=Only on this device');
     await popup.click('button:has-text("Create account")');
     await popup.waitForSelector('text=Save your Secret Key', { timeout: 60000 });
     await popup.click('.checkbox');
