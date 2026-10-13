@@ -314,32 +314,12 @@ jobs:
           if-no-files-found: error
 
   ios:
-    name: iOS app (App Store Connect)
+    name: iOS app
     needs: tag
-    runs-on: macos-latest
-    env:
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
-      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-    steps:
-      - name: App Store Connect key
-        if: env.APP_STORE_CONNECT_KEY == ''
-        run: echo "::warning::No App Store Connect API key (APP_STORE_CONNECT_KEY etc.); the iOS app is not uploaded"
-      - uses: actions/checkout@v4
-        if: env.APP_STORE_CONNECT_KEY != ''
-      - uses: dtolnay/rust-toolchain@stable
-        if: env.APP_STORE_CONNECT_KEY != ''
-        with:
-          targets: aarch64-apple-ios
-      - uses: Swatinem/rust-cache@v2
-        if: env.APP_STORE_CONNECT_KEY != ''
-      - name: Build, sign and upload to TestFlight
-        if: env.APP_STORE_CONNECT_KEY != ''
-        run: |
-          brew install xcodegen
-          # Each upload needs a higher build number.
-          scripts/ios-appstore.sh "$TAG" "$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} ))"
+    uses: ./.github/workflows/testflight.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit
 
   release:
     name: Publish release

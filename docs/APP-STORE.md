@@ -31,7 +31,10 @@ On developer.apple.com → *Certificates, Identifiers & Profiles*:
      same two capabilities.
 
 Certificates and provisioning profiles do not have to be made by hand:
-Xcode creates them with the API key below.
+`scripts/appstore-signing.py` makes them with the API key below. It creates
+one *Apple Distribution* certificate, whose private key is derived from the
+API key so that every build reuses it, and new App Store profiles
+(`2Secret-AppStore-CI`, `2Secret-AutoFill-AppStore-CI`) for every build.
 
 ## 3. The app in App Store Connect
 
@@ -74,7 +77,9 @@ Actions*):
 ## 5. Building and submitting
 
 Every release (*Actions → Release*) now uploads the iOS app to App Store
-Connect. After Apple processes it (10–30 minutes) it appears in
+Connect. To upload a version again without a new release, for example right
+after adding the secrets, start *Actions → TestFlight → Run workflow* with
+the version (`v1.3.0`). After Apple processes it (10–30 minutes) it appears in
 **TestFlight**: try it there first, on a real iPhone and iPad, including:
 
 - creating a local vault, syncing with your server, Face ID unlock;
@@ -85,9 +90,10 @@ Connect. After Apple processes it (10–30 minutes) it appears in
 Then select the build on the version page and choose *Add for Review*.
 
 To build on your own Mac instead: `brew install xcodegen`, set the four
-variables above in your shell and run `scripts/ios-appstore.sh 1.2.0 42`
-(version, build number). Without the variables the script only builds for
-the simulator.
+variables above in your shell and run `scripts/ios-appstore.sh 1.3.0`
+(the build number defaults to the date and time). Without the variables the
+script only builds for the simulator. It uses a temporary keychain and
+restores your keychain list afterwards.
 
 ## Export compliance (your decision)
 
