@@ -10,3 +10,4 @@
 /extension/*.zip
 /node_modules
 /.android-release.jks
+__pycache__/
