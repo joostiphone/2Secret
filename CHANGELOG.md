@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 - iOS AutoFill: fill passwords and sign in with passkeys in Safari and apps,
   after Face ID or Touch ID (needs *Unlock with Face ID* in the app).
