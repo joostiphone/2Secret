@@ -32,7 +32,8 @@ rustup target add "$target" > /dev/null
 touch crates/app/src/lib.rs
 flags=(-p twosecret-app --lib --crate-type staticlib --target "$target" --no-default-features --features mobile)
 [ "$profile" = release ] && flags+=(--release)
-libs="$(cargo rustc "${flags[@]}" -- --print native-static-libs 2>&1 | tee /dev/stderr | sed -n 's/.*native-static-libs: //p' | tail -1)"
+libs="$(cargo rustc --color never "${flags[@]}" -- --print native-static-libs 2>&1 | tee /dev/stderr \
+  | sed -n 's/.*native-static-libs: //p' | tail -1 | sed $'s/\x1b\\[[0-9;]*m//g')"
 [ -f "target/$target/$profile/libtwosecret_app.a" ] || { echo "libtwosecret_app.a was not built" >&2; exit 1; }
 
 cd ios
