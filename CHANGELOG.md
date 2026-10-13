@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- The 2Secret server: when creating an account, signing in or connecting,
+  choose *2Secret server* (`sync.2secret.app`, nothing to set up), *your own
+  server* or *only on this device*.
+- Backups: *Settings → Backup & export* shows when you last made a backup on
+  this device, and 2Secret reminds you now and then (every month by default,
+  adjustable) to make an encrypted backup of all vaults, so you keep your data
+  even if a device or server is lost for good.
+- Server limits for servers that are open to everyone: storage per account
+  (what does not fit stays on the device, nothing is lost), new accounts per
+  address per day, a maximum number of accounts, and the client's address
+  from a local proxy (`--account-storage-mb`, `--signups-per-ip`,
+  `--max-accounts`, `--client-ip-header`). The apps show your storage use.
+- `deploy/proxmox`: creates a Proxmox LXC container with the server, a
+  Cloudflare Tunnel, nightly database backups and signed automatic updates
+  (docs/PUBLIC-SERVER.md). Releases now also list the server and web vault in
+  the signed `update.json`.
+
 ## 1.3.0
 
 - Updates from within the app (*Settings → Updates*), off by default. On

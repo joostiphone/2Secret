@@ -70,6 +70,13 @@ pub struct AccountInfo {
     pub kdf: KdfParams,
     pub keyset: EncryptedKeyset,
     pub created_at: i64,
+    /// Bytes this account's own vaults take on the server (only in
+    /// `GET /account`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_used: Option<u64>,
+    /// The server's storage limit per account, if it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_quota: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -272,6 +279,10 @@ pub struct VaultSyncResult {
     /// Changes that were refused (e.g. read-only access).
     #[serde(default)]
     pub rejected: Vec<String>,
+    /// Changes that were not stored because the vault owner's storage limit
+    /// is reached. The client keeps them and tries again later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub over_quota: Vec<String>,
     /// Changes that were not applied because they were encrypted with a
     /// vault key that has been replaced. The client re-encrypts them with the
     /// new key and sends them again.

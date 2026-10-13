@@ -223,6 +223,23 @@ pub fn count_accounts(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get(0))
 }
 
+/// Bytes taken by the vaults an account owns (items and vault metadata).
+pub fn storage_used(conn: &Connection, account_id: &str) -> rusqlite::Result<u64> {
+    let used: i64 = conn.query_row(
+        "SELECT COALESCE((SELECT SUM(LENGTH(i.data)) FROM items i JOIN vaults v ON v.id = i.vault_id
+                          WHERE v.owner_id = ?1), 0)
+              + COALESCE((SELECT SUM(LENGTH(meta)) FROM vaults WHERE owner_id = ?1), 0)",
+        [account_id],
+        |r| r.get(0),
+    )?;
+    Ok(used.max(0) as u64)
+}
+
+pub fn owned_vaults(conn: &Connection, account_id: &str) -> rusqlite::Result<u64> {
+    let n: i64 = conn.query_row("SELECT COUNT(*) FROM vaults WHERE owner_id = ?1", [account_id], |r| r.get(0))?;
+    Ok(n.max(0) as u64)
+}
+
 pub fn insert_session(
     conn: &Connection,
     id: &str,

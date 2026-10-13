@@ -39,6 +39,9 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// The 2Secret server that anyone may use, so nobody has to run their own.
+pub const OFFICIAL_SERVER: &str = "https://sync.2secret.app";
+
 impl Error {
     pub fn status(&self) -> Option<u16> {
         match self {

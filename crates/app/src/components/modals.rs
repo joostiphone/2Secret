@@ -28,6 +28,50 @@ pub fn ModalHost() -> Element {
         Some(Modal::DeleteItem(id)) => rsx! { DeleteItemModal { id } },
         Some(Modal::Reauth) => rsx! { ReauthModal {} },
         Some(Modal::ForgetDevice) => rsx! { ForgetModal {} },
+        Some(Modal::Backup) => rsx! { BackupModal {} },
+    }
+}
+
+/// An encrypted backup of all vaults, from the reminder.
+#[component]
+fn BackupModal() -> Element {
+    let mut password = use_signal(String::new);
+    let mut confirm = use_signal(String::new);
+    let mut error = use_signal(|| None::<String>);
+    let mut submit = move || {
+        let (pw, cf) = (password(), confirm());
+        if let Err(e) = crate::components::settings::check_backup_password(&pw, &cf) {
+            error.set(Some(e));
+            return;
+        }
+        spawn(async move {
+            match save_backup("encrypted", pw).await {
+                Ok(w) => {
+                    close();
+                    toast(&format!("{} {w}", t("toast.saved_to")));
+                }
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+    rsx! {
+        ModalFrame { title: t("backup.make"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn primary", onclick: move |_| submit(), Icon { name: "download", size: 15 } {t("backup.make")} }
+            },
+            p { class: "muted", style: "margin-top:0;line-height:1.5", {t("backup.explain")} }
+            if let Some(err) = error() { div { class: "error-box", "{err}" } }
+            div { class: "form-group",
+                label { class: "label", {t("export.password")} }
+                PasswordInput { value: password(), oninput: move |v| password.set(v), autofocus: true }
+            }
+            div { class: "form-group",
+                label { class: "label", {t("create.confirm")} }
+                PasswordInput { value: confirm(), oninput: move |v| confirm.set(v), onenter: move |_| submit() }
+            }
+            div { class: "info-box small", {t("backup.password_hint")} }
+        }
     }
 }
 

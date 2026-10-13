@@ -104,6 +104,13 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .choice { display: flex; gap: 14px; align-items: center; width: 100%; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
   cursor: pointer; text-align: left; margin-bottom: 10px; color: var(--text); }
 .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
+.choice.compact { padding: 10px 14px; margin-bottom: 8px; }
+.banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--accent);
+  background: var(--accent-soft); border-radius: 10px; }
+.banner .grow { min-width: 160px; }
+.banner .t { font-weight: 600; font-size: 13px; }
+.banner .d { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.choice.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
 .choice .t { font-weight: 600; }
 .choice .d { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .secret-key { font-family: var(--mono); font-size: 19px; letter-spacing: .03em; padding: 16px; border-radius: 10px; background: var(--code); border: 1px dashed var(--accent);

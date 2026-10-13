@@ -46,9 +46,9 @@ pub fn CreateAccount() -> Element {
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut confirm = use_signal(String::new);
-    let default_server = platform::default_server();
-    let mut use_server = use_signal(|| default_server.is_some());
-    let mut server = use_signal(move || default_server.clone().unwrap_or_default());
+    let (initial, initial_url) = ServerChoice::initial();
+    let choice = use_signal(|| initial);
+    let server = use_signal(move || initial_url.clone());
     let mut invite = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
 
@@ -65,7 +65,7 @@ pub fn CreateAccount() -> Element {
             })
         } else if pw != c {
             Some(t("create.err_mismatch"))
-        } else if use_server() && server().trim().is_empty() {
+        } else if choice() == ServerChoice::Custom && server().trim().is_empty() {
             Some(t("create.err_server"))
         } else {
             None
@@ -75,8 +75,8 @@ pub fn CreateAccount() -> Element {
             return;
         }
         error.set(None);
-        let srv = if use_server() { Some(server()) } else { None };
-        let inv = invite();
+        let srv = choice().url(&server());
+        let inv = if choice() == ServerChoice::Custom { invite() } else { String::new() };
         spawn(async move {
             busy(t("busy.creating"));
             let vault_name = t("vault.personal").to_string();
@@ -146,24 +146,13 @@ pub fn CreateAccount() -> Element {
                     label { class: "label", {t("create.confirm")} }
                     PasswordInput { value: confirm(), oninput: move |v| confirm.set(v) }
                 }
-                div { class: "form-group",
-                    label { class: "checkbox",
-                        input { r#type: "checkbox", checked: use_server(), onchange: move |e| use_server.set(e.checked()) }
-                        span { {t("create.use_server")} }
-                    }
-                }
-                if use_server() {
-                    div { class: "form-group",
-                        label { class: "label", {t("common.server")} }
-                        input { class: "input", initial_value: "{server}", placeholder: "https://vault.example.com", autocapitalize: "off",
-                            oninput: move |e| server.set(e.value()) }
-                    }
+                label { class: "label", {t("create.where")} }
+                ServerPicker { choice, custom: server, allow_local: true }
+                if choice() == ServerChoice::Custom {
                     div { class: "form-group",
                         label { class: "label", {t("create.invite")} }
                         input { class: "input", initial_value: "{invite}", placeholder: t("common.optional"), oninput: move |e| invite.set(e.value()) }
                     }
-                } else {
-                    div { class: "info-box small", {t("create.local_info")} }
                 }
                 button { class: "btn primary block", onclick: submit, {t("create.submit")} }
                 div { class: "center", style: "margin-top:14px",
@@ -179,14 +168,16 @@ pub fn CreateAccount() -> Element {
 
 #[component]
 pub fn SignIn() -> Element {
-    let mut server = use_signal(|| platform::default_server().unwrap_or_default());
+    let (initial, initial_url) = ServerChoice::initial();
+    let choice = use_signal(|| initial);
+    let server = use_signal(move || initial_url.clone());
     let mut email = use_signal(String::new);
     let mut sk_text = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
 
     let mut submit = move || {
-        let (srv, mail, pw) = (server(), email(), password());
+        let (srv, mail, pw) = (choice().url(&server()).unwrap_or_default(), email(), password());
         if srv.trim().is_empty() || !mail.contains('@') || pw.is_empty() {
             error.set(Some(t("signin.err_fields").to_string()));
             return;
@@ -246,11 +237,8 @@ pub fn SignIn() -> Element {
                 if let Some(err) = error() {
                     div { class: "error-box", "{err}" }
                 }
-                div { class: "form-group",
-                    label { class: "label", {t("common.server")} }
-                    input { class: "input", initial_value: "{server}", placeholder: "https://vault.example.com", autocapitalize: "off",
-                        oninput: move |e| server.set(e.value()) }
-                }
+                label { class: "label", {t("common.server")} }
+                ServerPicker { choice, custom: server }
                 div { class: "form-group",
                     label { class: "label", {t("common.email")} }
                     input { class: "input", r#type: "email", initial_value: "{email}", autocapitalize: "off", oninput: move |e| email.set(e.value()) }

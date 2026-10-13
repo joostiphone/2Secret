@@ -1,6 +1,6 @@
 //! HTTP handlers of the `/api/v1` API.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -14,6 +14,7 @@ use twosecret_core::profile::Role;
 use twosecret_core::util::{b64, normalize_email, now};
 
 use crate::auth::{decode_auth_key, dummy_verify, hash_auth_key, new_token, verify_auth_key, Auth};
+use crate::client_ip::ClientIp;
 use crate::db::{self, AccountRow};
 use crate::error::{ApiError, ApiResult};
 use crate::{AppState, SignupMode};
@@ -105,6 +106,23 @@ fn account_info(a: &AccountRow) -> AccountInfo {
         kdf: a.kdf.clone(),
         keyset: a.keyset.clone(),
         created_at: a.created_at,
+        storage_used: None,
+        storage_quota: None,
+    }
+}
+
+/// Vaults one account may own (each vault has its own metadata row).
+const MAX_OWNED_VAULTS: u64 = 1000;
+/// Encrypted vault metadata (name, description, icon).
+const MAX_VAULT_META: usize = 64 * 1024;
+
+/// Refuse a write that would take the owner's storage over the limit.
+fn check_quota(conn: &rusqlite::Connection, quota: Option<u64>, owner: &str, growth: i64) -> ApiResult<()> {
+    match quota {
+        Some(q) if growth > 0 && db::storage_used(conn, owner)?.saturating_add(growth as u64) > q => {
+            Err(ApiError::storage_full(q))
+        }
+        _ => Ok(()),
     }
 }
 
@@ -138,7 +156,15 @@ async fn prelogin(
     }))
 }
 
-async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest>) -> ApiResult<Json<SessionResponse>> {
+async fn register(
+    State(state): State<AppState>,
+    client: ClientIp,
+    Json(req): Json<RegisterRequest>,
+) -> ApiResult<Json<SessionResponse>> {
+    let limiter_key = format!("signup:{}", client.0);
+    if !state.signup_limiter.allowed(&limiter_key, now()) {
+        return Err(ApiError::too_many_requests());
+    }
     match state.config.signups {
         SignupMode::Closed => return Err(ApiError::forbidden("sign-ups are closed on this server")),
         SignupMode::Invite => {
@@ -171,12 +197,16 @@ async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest
         created_at: now(),
     };
     let session_days = state.config.session_days;
+    let max_accounts = state.config.max_accounts;
     let device = device_name(req.device_name);
     let (token, token_hash) = new_token();
     let info = state
         .db
         .run(move |conn| {
             let tx = conn.transaction()?;
+            if max_accounts.is_some_and(|max| db::count_accounts(&tx).unwrap_or(0) as u64 >= max) {
+                return Err(ApiError::forbidden("this server has no room for new accounts"));
+            }
             if db::account_by_email(&tx, &account.email)?.is_some() {
                 return Err(ApiError::conflict("an account with this e-mail address already exists"));
             }
@@ -198,6 +228,7 @@ async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest
             Ok(account_info(&account))
         })
         .await?;
+    state.signup_limiter.record_failure(&limiter_key, now());
     tracing::info!(account = %info.account_id, "account registered");
     Ok(Json(SessionResponse { token, account: info }))
 }
@@ -268,9 +299,18 @@ async fn logout(State(state): State<AppState>, auth: Auth) -> ApiResult<StatusCo
 }
 
 async fn get_account(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<AccountInfo>> {
-    let account =
-        state.db.run(move |c| db::account_by_id(c, &auth.account_id)?.ok_or_else(ApiError::unauthorized)).await?;
-    Ok(Json(account_info(&account)))
+    let quota = state.config.account_quota_bytes;
+    let info = state
+        .db
+        .run(move |c| {
+            let account = db::account_by_id(c, &auth.account_id)?.ok_or_else(ApiError::unauthorized)?;
+            let mut info = account_info(&account);
+            info.storage_used = Some(db::storage_used(c, &auth.account_id)?);
+            info.storage_quota = quota;
+            Ok(info)
+        })
+        .await?;
+    Ok(Json(info))
 }
 
 async fn update_account(
@@ -472,9 +512,10 @@ async fn create_vault(
     Json(req): Json<CreateVaultRequest>,
 ) -> ApiResult<Json<VaultDto>> {
     valid_id(&req.id)?;
-    if req.meta.len() > 64 * 1024 {
+    if req.meta.len() > MAX_VAULT_META {
         return Err(ApiError::bad_request("vault metadata too large"));
     }
+    let quota = state.config.account_quota_bytes;
     let dto = state
         .db
         .run(move |c| {
@@ -492,6 +533,10 @@ async fn create_vault(
                 }
                 return Err(ApiError::conflict("vault id already in use"));
             }
+            if db::owned_vaults(&tx, &auth.account_id)? >= MAX_OWNED_VAULTS {
+                return Err(ApiError::forbidden("too many vaults"));
+            }
+            check_quota(&tx, quota, &auth.account_id, req.meta.len() as i64)?;
             let ts = now();
             tx.execute(
                 "INSERT INTO vaults (id, owner_id, meta, revision, created_at, updated_at) VALUES (?1, ?2, ?3, 0, ?4, ?4)",
@@ -533,11 +578,17 @@ async fn update_vault(
     Path(id): Path<String>,
     Json(req): Json<UpdateVaultRequest>,
 ) -> ApiResult<StatusCode> {
+    if req.meta.len() > MAX_VAULT_META {
+        return Err(ApiError::bad_request("vault metadata too large"));
+    }
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |c| {
-            require_role(c, &id, &auth.account_id, Role::Manager)?;
+            let m = require_role(c, &id, &auth.account_id, Role::Manager)?;
             require_key_rev(c, &id, req.key_rev)?;
+            let old: i64 = c.query_row("SELECT LENGTH(meta) FROM vaults WHERE id = ?1", [&id], |r| r.get(0))?;
+            check_quota(c, quota, &m.owner_id, req.meta.len() as i64 - old)?;
             c.execute(
                 "UPDATE vaults SET meta = ?1, updated_at = ?2 WHERE id = ?3",
                 params![req.meta.as_str(), now(), id],
@@ -796,12 +847,15 @@ async fn sync(
     Json(req): Json<SyncRequest>,
 ) -> ApiResult<Json<SyncResponse>> {
     let max_item = state.config.max_item_bytes;
+    let quota = state.config.account_quota_bytes;
     let response = state
         .db
         .run(move |conn| {
             let tx = conn.transaction()?;
             let accessible = db::vaults_for_account(&tx, &auth.account_id)?;
             let mut results = Vec::new();
+            // Storage per vault owner, counted as changes are applied.
+            let mut used: HashMap<String, u64> = HashMap::new();
             for vault in &accessible {
                 let request = req.vaults.iter().find(|v| v.vault_id == vault.id);
                 let since = request.map(|r| r.since).unwrap_or(0);
@@ -809,6 +863,7 @@ async fn sync(
                 let mut accepted = Vec::new();
                 let mut conflicts = Vec::new();
                 let mut rejected = Vec::new();
+                let mut over_quota = Vec::new();
                 let mut stale_key = Vec::new();
                 if let Some(request) = request {
                     let current_key = request.key_rev.unwrap_or(0) == vault.key_rev;
@@ -840,6 +895,21 @@ async fn sync(
                             // Deleting something the server never had.
                             accepted.push(Accepted { id: change.id.clone(), revision });
                             continue;
+                        }
+                        if let Some(q) = quota {
+                            let old = current.as_ref().and_then(|c| c.data.as_ref()).map_or(0, |d| d.len() as u64);
+                            let new = change.data.as_ref().map_or(0, |d| d.len() as u64);
+                            let owner_used = match used.get_mut(&vault.owner_id) {
+                                Some(u) => u,
+                                None => used
+                                    .entry(vault.owner_id.clone())
+                                    .or_insert(db::storage_used(&tx, &vault.owner_id)?),
+                            };
+                            if new > old && *owner_used + (new - old) > q {
+                                over_quota.push(change.id.clone());
+                                continue;
+                            }
+                            *owner_used = (*owner_used + new).saturating_sub(old);
                         }
                         revision += 1;
                         tx.execute(
@@ -875,6 +945,7 @@ async fn sync(
                     conflicts,
                     changes,
                     rejected,
+                    over_quota,
                     stale_key,
                 });
             }

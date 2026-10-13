@@ -52,7 +52,8 @@ is free, open source, and you can host the sync server yourself.
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
 | ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
-| 🏠 **Self-hostable** | One small server binary (or Docker image) that also serves the web vault. |
+| 🏠 **Sync your way** | Use the 2Secret server (`sync.2secret.app`), host your own – one small binary or Docker image that also serves the web vault – or keep a vault on one device. |
+| 💾 **Backups** | Encrypted backups of all vaults in one file, with a reminder now and then. |
 
 ## Platforms
 
@@ -72,10 +73,11 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 
 ## Quick start
 
-### 1. Run your own sync server (optional)
+### 1. Choose where to sync (optional)
 
-A local-only vault works without any server. To sync between devices and share
-vaults, run the server – it also serves the web vault:
+A local-only vault works without any server, and the apps can sync through the
+2Secret server (`sync.2secret.app`) without any setup. To run your own server
+instead – it also serves the web vault:
 
 ```sh
 docker compose -f deploy/docker-compose.yml up -d     # with automatic HTTPS via Caddy
@@ -83,7 +85,8 @@ docker compose -f deploy/docker-compose.yml up -d     # with automatic HTTPS via
 docker run -p 8743:8743 -v 2secret-data:/data ghcr.io/joostiphone/2secret:latest
 ```
 
-See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) for TLS, invite-only sign-ups, backups and systemd.
+See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) for TLS, invite-only sign-ups, backups and systemd, and
+[docs/PUBLIC-SERVER.md](docs/PUBLIC-SERVER.md) for a server for many people on Proxmox with a Cloudflare Tunnel.
 
 ### 2. Install an app
 
@@ -230,6 +233,10 @@ Windows, Linux, BSD, iOS, het web en je browser.
   KeePass, Dashlane en meer.
 - **Automatisch vergrendelen** en klembord wissen; ontgrendelen met Touch ID,
   Face ID of Windows Hello.
+- **Back-ups:** een versleutelde kopie van al je kluizen in één bestand, met af
+  en toe een herinnering.
+- **Synchroniseren zoals jij wilt:** via de 2Secret-server (`sync.2secret.app`),
+  je eigen server, of alleen op één apparaat.
 - **Updates** (als je het aanzet): de desktop-apps installeren nieuwe versies
   zelf, Android meldt ze. Alleen updates met de handtekening van 2Secret worden
   geïnstalleerd.
@@ -243,9 +250,11 @@ beveiligingsaudit.
 
 ### Snel aan de slag
 
-1. **Server (optioneel):** `docker compose -f deploy/docker-compose.yml up -d`
-   start een eigen server met automatische HTTPS. Zonder server werkt 2Secret
-   gewoon lokaal op één apparaat. Zie [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
+1. **Server (optioneel):** synchroniseer via de 2Secret-server
+   (`sync.2secret.app`, niets in te stellen), of start een eigen server met
+   `docker compose -f deploy/docker-compose.yml up -d` (automatische HTTPS).
+   Zonder server werkt 2Secret gewoon lokaal op één apparaat. Zie
+   [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 2. **App:** download een versie bij *Releases* of bouw hem zelf met
    `cargo run --release -p twosecret-app`.
 3. **Account aanmaken:** kies een sterk hoofdwachtwoord en **bewaar je noodkit**

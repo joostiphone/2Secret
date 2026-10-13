@@ -35,6 +35,25 @@ struct Args {
     /// Allowed CORS origins for web clients hosted elsewhere (comma separated, `*` for any).
     #[arg(long, env = "TWOSECRET_CORS_ORIGINS", value_delimiter = ',')]
     cors_origins: Vec<String>,
+
+    /// Accept no new accounts once there are this many.
+    #[arg(long, env = "TWOSECRET_MAX_ACCOUNTS")]
+    max_accounts: Option<u64>,
+
+    /// Storage limit per account in megabytes, for the vaults it owns
+    /// (shared vaults count for their owner).
+    #[arg(long, env = "TWOSECRET_ACCOUNT_STORAGE_MB")]
+    account_storage_mb: Option<u64>,
+
+    /// New accounts per client address per day (IPv6: per /64).
+    #[arg(long, env = "TWOSECRET_SIGNUPS_PER_IP")]
+    signups_per_ip: Option<u32>,
+
+    /// Header with the client's address, set by a reverse proxy on this
+    /// machine: `CF-Connecting-IP` (Cloudflare Tunnel), `X-Forwarded-For`
+    /// (Caddy, nginx) or `X-Real-IP`. Believed only for local connections.
+    #[arg(long, env = "TWOSECRET_CLIENT_IP_HEADER")]
+    client_ip_header: Option<String>,
 }
 
 #[tokio::main]
@@ -54,6 +73,10 @@ async fn main() -> anyhow::Result<()> {
         session_days: args.session_days.max(1),
         web_dir: args.web_dir.clone(),
         cors_origins: args.cors_origins,
+        max_accounts: args.max_accounts,
+        account_quota_bytes: args.account_storage_mb.map(|mb| mb.saturating_mul(1_000_000)),
+        signups_per_ip: args.signups_per_ip,
+        client_ip_header: args.client_ip_header.filter(|h| !h.trim().is_empty()),
         ..Config::default()
     };
     if let Some(dir) = &args.web_dir {
@@ -69,6 +92,18 @@ async fn main() -> anyhow::Result<()> {
         listener.local_addr()?,
         args.data_dir.display()
     );
+    let limits: Vec<String> = [
+        state.config.account_quota_bytes.map(|b| format!("{} MB per account", b / 1_000_000)),
+        state.config.signups_per_ip.map(|n| format!("{n} sign-ups per address per day")),
+        state.config.max_accounts.map(|n| format!("at most {n} accounts")),
+        state.config.client_ip_header.as_ref().map(|h| format!("client address from {h}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !limits.is_empty() {
+        tracing::info!("limits: {}", limits.join(", "));
+    }
     if !args.bind.ip().is_loopback() {
         tracing::warn!("serving on a public interface: put a TLS-terminating reverse proxy in front of 2Secret");
     }

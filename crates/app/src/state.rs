@@ -94,6 +94,7 @@ pub enum Modal {
     DeleteItem(String),
     Reauth,
     ForgetDevice,
+    Backup,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -128,6 +129,12 @@ pub struct Prefs {
     pub generator: GeneratorOptions,
     /// Check for (and where possible install) new versions once a day.
     pub auto_update: bool,
+    /// When a backup (export) was last made on this device.
+    pub last_backup_at: i64,
+    /// When the backup reminder was last put off ("Later").
+    pub backup_snoozed_at: i64,
+    /// Remind about a backup after this many days; 0 = never.
+    pub backup_reminder_days: u32,
 }
 
 impl Default for Prefs {
@@ -139,6 +146,9 @@ impl Default for Prefs {
             clipboard_clear_secs: 90,
             generator: GeneratorOptions::default(),
             auto_update: false,
+            last_backup_at: 0,
+            backup_snoozed_at: 0,
+            backup_reminder_days: 30,
         }
     }
 }
@@ -365,6 +375,7 @@ pub fn client_error(e: &twosecret_client::Error) -> String {
         E::Network(detail) => format!("{} ({detail})", t("err.network")),
         E::Api { status: 401, .. } => t("err.wrong_credentials").into(),
         E::Api { status: 429, .. } => t("err.rate_limited").into(),
+        E::Api { code, .. } if code == "storage_quota" => t("err.storage_quota").into(),
         E::Api { message, .. } => message.clone(),
         E::NotLinked => t("err.not_linked").into(),
         E::Protocol(m) => m.clone(),
@@ -460,6 +471,46 @@ pub fn forget_device() {
     *PHASE.write() = Phase::Welcome;
 }
 
+/// Days between "Later" and the next backup reminder.
+const BACKUP_SNOOZE_DAYS: i64 = 7;
+
+/// Whether to remind about making a backup now.
+pub fn backup_due(prefs: &Prefs, has_items: bool) -> bool {
+    let ts = now();
+    has_items
+        && prefs.backup_reminder_days > 0
+        && ts - prefs.last_backup_at >= prefs.backup_reminder_days as i64 * 86_400
+        && ts - prefs.backup_snoozed_at >= BACKUP_SNOOZE_DAYS * 86_400
+}
+
+/// Save a backup of all vaults: encrypted with `password`, or, for `json`
+/// and `csv`, readable. Returns where it went.
+pub async fn save_backup(format: &str, password: String) -> Result<String, String> {
+    let Some(data) = SESSION.peek().as_ref().map(|s| s.export(None, false)) else {
+        return Err(t("err.no_account").into());
+    };
+    busy(t("busy.exporting"));
+    let date = twosecret_core::util::format_date(now());
+    let (name, mime, content) = match format {
+        "json" => (format!("2Secret-export-{date}.json"), "application/json", Ok(data.to_json())),
+        "csv" => (format!("2Secret-export-{date}.csv"), "text/csv", data.to_csv().map_err(|e| e.to_string())),
+        _ => {
+            let r = platform::run_heavy(move || data.to_encrypted(&password).map_err(|e| e.to_string())).await;
+            (format!("2Secret-backup-{date}.json"), "application/json", r)
+        }
+    };
+    let result = match content {
+        Ok(c) => platform::save_file(&name, mime, c.as_bytes()).await,
+        Err(e) => Err(e),
+    };
+    unbusy();
+    if result.is_ok() {
+        PREFS.write().last_backup_at = now();
+        save_prefs();
+    }
+    result
+}
+
 /// Copy a value and clear the clipboard later.
 pub fn copy(value: String, what: &str) {
     let what = what.to_string();
@@ -524,7 +575,8 @@ pub async fn run_sync(show_result: bool) {
     status.running = false;
     match result {
         Ok(report) => {
-            status.error = None;
+            status.error =
+                (report.over_quota > 0).then(|| t("sync.over_quota").replace("{n}", &report.over_quota.to_string()));
             status.needs_reauth = false;
             drop(status);
             persist();
@@ -536,7 +588,9 @@ pub async fn run_sync(show_result: bool) {
             if gone && EDITING.peek().is_none() {
                 *SELECTED.write() = None;
             }
-            if show_result {
+            if show_result && report.over_quota > 0 {
+                toast_err(&t("sync.over_quota").replace("{n}", &report.over_quota.to_string()));
+            } else if show_result {
                 toast(&format!("{} ↑{} ↓{}", t("toast.synced"), report.uploaded, report.downloaded + report.deleted));
             }
         }

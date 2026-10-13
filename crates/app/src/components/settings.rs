@@ -37,6 +37,21 @@ pub fn SettingsPage() -> Element {
     }
 }
 
+/// `1.2 MB` (decimal units, like the server's limit), `1,2 MB` in Dutch.
+fn format_size(bytes: u64) -> String {
+    let (value, unit) = match bytes {
+        b if b >= 1_000_000_000 => (b as f64 / 1e9, "GB"),
+        b if b >= 1_000_000 => (b as f64 / 1e6, "MB"),
+        b => (b as f64 / 1e3, "kB"),
+    };
+    let text = format!("{value:.1} {unit}");
+    if LANG() == Lang::Nl {
+        text.replace('.', ",")
+    } else {
+        text
+    }
+}
+
 #[component]
 fn SectionTitle(text: String) -> Element {
     rsx! { div { class: "section-title", "{text}" } }
@@ -214,6 +229,18 @@ fn ChangePasswordForm(done: EventHandler<()>) -> Element {
 fn SyncSection() -> Element {
     let mut devices = use_signal(|| None::<Vec<DeviceInfo>>);
     let mut connecting = use_signal(|| false);
+    // (used, limit) on the server, when it says.
+    let mut storage = use_signal(|| None::<(u64, Option<u64>)>);
+    use_hook(move || {
+        let client = SESSION.peek().as_ref().and_then(|s| twosecret_client::client_for(s).ok());
+        if let Some(client) = client {
+            spawn(async move {
+                if let Ok(account) = client.account().await {
+                    storage.set(account.storage_used.map(|used| (used, account.storage_quota)));
+                }
+            });
+        }
+    });
     let session = SESSION.read();
     let Some(s) = session.as_ref() else { return rsx! {} };
     let link = s.server().cloned();
@@ -273,6 +300,19 @@ fn SyncSection() -> Element {
                             }
                         } else {
                             button { class: "btn small primary", onclick: move |_| *MODAL.write() = Some(Modal::Reauth), {t("settings.sign_in_again")} }
+                        }
+                    }
+                    if let Some((used, quota)) = storage() {
+                        div { class: "settings-row",
+                            div { class: "k",
+                                div { class: "t", {t("settings.storage")} }
+                                div { class: "d",
+                                    match quota {
+                                        Some(q) => t("settings.storage_of").replace("{used}", &format_size(used)).replace("{quota}", &format_size(q)),
+                                        None => format_size(used),
+                                    }
+                                }
+                            }
                         }
                     }
                     if signed_in {
@@ -342,12 +382,16 @@ fn SyncSection() -> Element {
 
 #[component]
 fn ConnectForm(done: EventHandler<()>) -> Element {
-    let mut server = use_signal(|| platform::default_server().unwrap_or_default());
+    let (initial, initial_url) = ServerChoice::initial();
+    let choice = use_signal(|| initial);
+    let server = use_signal(move || initial_url.clone());
     let mut invite = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
     let submit = move |_| {
-        let (url, inv, pw) = (server(), invite(), password());
+        let url = choice().url(&server()).unwrap_or_default();
+        let inv = if choice() == ServerChoice::Custom { invite() } else { String::new() };
+        let pw = password();
         if url.trim().is_empty() || pw.is_empty() {
             error.set(Some(t("signin.err_fields").into()));
             return;
@@ -392,13 +436,12 @@ fn ConnectForm(done: EventHandler<()>) -> Element {
     rsx! {
         div { class: "section-body", style: "padding-top:12px",
             if let Some(err) = error() { div { class: "error-box", "{err}" } }
-            div { class: "form-group",
-                label { class: "label", {t("common.server")} }
-                input { class: "input", initial_value: "{server}", placeholder: "https://vault.example.com", autocapitalize: "off", oninput: move |e| server.set(e.value()) }
-            }
-            div { class: "form-group",
-                label { class: "label", {t("create.invite")} }
-                input { class: "input", initial_value: "{invite}", placeholder: t("common.optional"), oninput: move |e| invite.set(e.value()) }
+            ServerPicker { choice, custom: server }
+            if choice() == ServerChoice::Custom {
+                div { class: "form-group",
+                    label { class: "label", {t("create.invite")} }
+                    input { class: "input", initial_value: "{invite}", placeholder: t("common.optional"), oninput: move |e| invite.set(e.value()) }
+                }
             }
             div { class: "form-group",
                 label { class: "label", {t("common.master_password")} }
@@ -709,6 +752,7 @@ fn ImportSection() -> Element {
     }
 }
 
+/// Encrypted backups (with a reminder) and readable exports.
 #[component]
 fn ExportSection() -> Element {
     let mut format = use_signal(|| "encrypted".to_string());
@@ -716,38 +760,21 @@ fn ExportSection() -> Element {
     let mut confirm = use_signal(String::new);
     let mut reset = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
+    let prefs = PREFS.read().clone();
+    let last =
+        if prefs.last_backup_at > 0 { relative_time(prefs.last_backup_at) } else { t("backup.never").to_string() };
     let run_export = move |_| {
         let fmt = format();
         let (pw, cf) = (password(), confirm());
         if fmt == "encrypted" {
-            if pw.chars().count() < 8 {
-                error.set(Some(t("create.err_short").into()));
-                return;
-            }
-            if pw != cf {
-                error.set(Some(t("create.err_mismatch").into()));
+            if let Err(e) = check_backup_password(&pw, &cf) {
+                error.set(Some(e));
                 return;
             }
         }
-        let Some(data) = SESSION.peek().as_ref().map(|s| s.export(None, false)) else { return };
         error.set(None);
         spawn(async move {
-            busy(t("busy.exporting"));
-            let date = twosecret_core::util::format_date(twosecret_core::util::now());
-            let (name, mime, content) = match fmt.as_str() {
-                "json" => (format!("2Secret-export-{date}.json"), "application/json", Ok(data.to_json())),
-                "csv" => (format!("2Secret-export-{date}.csv"), "text/csv", data.to_csv().map_err(|e| e.to_string())),
-                _ => {
-                    let r = platform::run_heavy(move || data.to_encrypted(&pw).map_err(|e| e.to_string())).await;
-                    (format!("2Secret-backup-{date}.json"), "application/json", r)
-                }
-            };
-            let result = match content {
-                Ok(c) => platform::save_file(&name, mime, c.as_bytes()).await,
-                Err(e) => Err(e),
-            };
-            unbusy();
-            match result {
+            match save_backup(&fmt, pw).await {
                 Ok(w) => {
                     toast(&format!("{} {w}", t("toast.saved_to")));
                     password.set(String::new());
@@ -761,7 +788,26 @@ fn ExportSection() -> Element {
     rsx! {
         div { class: "section",
             SectionTitle { text: t("settings.export") }
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", {t("backup.last")} }
+                    div { class: "d", "{last}" }
+                }
+            }
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", {t("backup.remind")} }
+                    div { class: "d", {t("backup.remind_desc")} }
+                }
+                select { class: "input",
+                    onchange: move |e| { if let Ok(n) = e.value().parse() { PREFS.write().backup_reminder_days = n; save_prefs(); } },
+                    for (days , label) in [(14u32, t("backup.every_2_weeks")), (30, t("backup.every_month")), (90, t("backup.every_3_months")), (0, t("settings.never"))] {
+                        option { key: "{days}", value: "{days}", selected: prefs.backup_reminder_days == days, "{label}" }
+                    }
+                }
+            }
             div { class: "section-body",
+                p { class: "small muted", style: "margin-top:0;line-height:1.5", {t("backup.explain")} }
                 if let Some(err) = error() { div { class: "error-box", "{err}" } }
                 div { class: "form-group",
                     select { class: "input", onchange: move |e| format.set(e.value()),
@@ -788,8 +834,17 @@ fn ExportSection() -> Element {
     }
 }
 
-/// Version, checking for updates and automatic updates (desktop and
-/// Android; the other apps are updated by their stores).
+/// A backup password must be at least 8 characters and typed twice the same.
+pub fn check_backup_password(password: &str, confirm: &str) -> Result<(), String> {
+    if password.chars().count() < 8 {
+        Err(t("create.err_short").into())
+    } else if password != confirm {
+        Err(t("create.err_mismatch").into())
+    } else {
+        Ok(())
+    }
+}
+
 #[component]
 fn UpdatesSection() -> Element {
     use crate::updater::{self, Mode, Status, STATUS};

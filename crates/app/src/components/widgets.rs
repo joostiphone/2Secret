@@ -264,3 +264,72 @@ pub fn Brand(#[props(default)] subtitle: String) -> Element {
         }
     }
 }
+
+/// Where an account syncs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ServerChoice {
+    /// The 2Secret server (`twosecret_client::OFFICIAL_SERVER`).
+    Official,
+    /// A server of the user's own.
+    Custom,
+    /// No server: only on this device.
+    Local,
+}
+
+impl ServerChoice {
+    /// What to start with: the server this web vault comes from, else the
+    /// 2Secret server. The custom address is pre-filled with it.
+    pub fn initial() -> (ServerChoice, String) {
+        match platform::default_server() {
+            Some(url) if twosecret_client::normalize_server_url(&url) == twosecret_client::OFFICIAL_SERVER => {
+                (ServerChoice::Official, String::new())
+            }
+            Some(url) => (ServerChoice::Custom, url),
+            None => (ServerChoice::Official, String::new()),
+        }
+    }
+
+    /// The server address, or `None` for only on this device.
+    pub fn url(self, custom: &str) -> Option<String> {
+        match self {
+            ServerChoice::Official => Some(twosecret_client::OFFICIAL_SERVER.to_string()),
+            ServerChoice::Custom => Some(custom.trim().to_string()),
+            ServerChoice::Local => None,
+        }
+    }
+}
+
+/// The 2Secret server, an own server or (when `allow_local`) none.
+#[component]
+pub fn ServerPicker(
+    choice: Signal<ServerChoice>,
+    custom: Signal<String>,
+    #[props(default)] allow_local: bool,
+) -> Element {
+    let mut options = vec![
+        (ServerChoice::Official, "cloud", t("server.official"), t("server.official_desc")),
+        (ServerChoice::Custom, "server", t("server.custom"), t("server.custom_desc")),
+    ];
+    if allow_local {
+        options.push((ServerChoice::Local, "smartphone", t("server.local"), t("server.local_desc")));
+    }
+    rsx! {
+        div { class: "form-group",
+            for (option , icon , title , desc) in options {
+                button { key: "{title}", r#type: "button",
+                    class: if choice() == option { "choice compact on" } else { "choice compact" },
+                    onclick: move |_| choice.set(option),
+                    Icon { name: icon, size: 20 }
+                    div {
+                        div { class: "t", "{title}" }
+                        div { class: "d", "{desc}" }
+                    }
+                }
+            }
+            if choice() == ServerChoice::Custom {
+                input { class: "input", initial_value: "{custom}", placeholder: "https://vault.example.com", autocapitalize: "off",
+                    oninput: move |e| custom.set(e.value()) }
+            }
+        }
+    }
+}

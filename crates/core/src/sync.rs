@@ -26,6 +26,10 @@ pub struct SyncReport {
     pub deleted: usize,
     pub conflicts: usize,
     pub rejected: usize,
+    /// Changes the server did not store because its storage limit is
+    /// reached; they stay on this device.
+    #[serde(default)]
+    pub over_quota: usize,
     pub vaults_added: usize,
     pub vaults_removed: usize,
     /// True when local changes remain that need another round trip.
@@ -39,6 +43,8 @@ impl SyncReport {
         self.deleted += other.deleted;
         self.conflicts += other.conflicts;
         self.rejected += other.rejected;
+        // Every round sends all waiting changes: the last one counts.
+        self.over_quota = other.over_quota;
         self.vaults_added += other.vaults_added;
         self.vaults_removed += other.vaults_removed;
         self.needs_another_round = other.needs_another_round;
@@ -144,6 +150,10 @@ impl Session {
                 self.profile_mut().items.retain(|i| &i.id != id);
                 refetch = true;
             }
+
+            // Not stored for lack of space: the items stay changed and are
+            // sent again with a later sync.
+            report.over_quota += result.over_quota.len();
 
             if !result.stale_key.is_empty() {
                 // Encrypted with a vault key that was replaced meanwhile. The
@@ -439,6 +449,7 @@ mod tests {
                     conflicts,
                     changes,
                     rejected: vec![],
+                    over_quota: vec![],
                     stale_key,
                 });
             }

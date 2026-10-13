@@ -38,10 +38,50 @@ fn use_background_tasks() {
     });
 }
 
+/// "Time for a backup", now and then (Settings → Backup & export).
+#[component]
+fn BackupReminder() -> Element {
+    let prefs = PREFS.read().clone();
+    let has_items = SESSION.read().as_ref().is_some_and(|s| s.item_count() > 0);
+    if crate::extension::ENABLED || !backup_due(&prefs, has_items) {
+        return rsx! {};
+    }
+    let text = if prefs.last_backup_at > 0 {
+        t("backup.reminder_since").replace("{date}", &platform::local_date(prefs.last_backup_at))
+    } else {
+        t("backup.reminder_never").to_string()
+    };
+    rsx! {
+        div { class: "banner",
+            Icon { name: "download", size: 18 }
+            div { class: "grow",
+                div { class: "t", {t("backup.reminder_title")} }
+                div { class: "d", "{text}" }
+            }
+            div { class: "row",
+                button { class: "btn small primary", onclick: move |_| *MODAL.write() = Some(Modal::Backup), {t("backup.make")} }
+                button { class: "btn small ghost",
+                    onclick: move |_| {
+                        PREFS.write().backup_snoozed_at = now();
+                        save_prefs();
+                    },
+                    {t("backup.later")}
+                }
+            }
+        }
+    }
+}
+
 #[component]
 pub fn Shell() -> Element {
     use_background_tasks();
     use_hook(|| {
+        // The first reminder comes a week after 2Secret is first used here.
+        let fresh = { PREFS.peek().last_backup_at == 0 && PREFS.peek().backup_snoozed_at == 0 };
+        if fresh {
+            PREFS.write().backup_snoozed_at = now();
+            save_prefs();
+        }
         if crate::extension::ENABLED {
             spawn(async move {
                 *TAB_URL.write() = crate::extension::tab_url().await;
@@ -322,6 +362,7 @@ fn ItemList() -> Element {
                     }
                 }
             }
+            BackupReminder {}
             div { class: "search",
                 Icon { name: "search", size: 16 }
                 for k in [SEARCH_RESET()] {

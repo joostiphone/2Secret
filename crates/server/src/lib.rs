@@ -8,11 +8,13 @@
 //! sync API and the browser vault.
 
 pub mod auth;
+pub mod client_ip;
 pub mod db;
 pub mod error;
 pub mod ratelimit;
 pub mod routes;
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -47,6 +49,17 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     pub max_item_bytes: usize,
     pub max_body_bytes: usize,
+    /// No new accounts once there are this many.
+    pub max_accounts: Option<u64>,
+    /// Storage per account for the vaults it owns (shared vaults count for
+    /// their owner).
+    pub account_quota_bytes: Option<u64>,
+    /// New accounts per client IP address (IPv6: per /64) per day.
+    pub signups_per_ip: Option<u32>,
+    /// Header with the client's address, set by a reverse proxy on this
+    /// machine (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`). Only
+    /// believed for connections from the loopback interface.
+    pub client_ip_header: Option<String>,
 }
 
 impl Default for Config {
@@ -59,6 +72,10 @@ impl Default for Config {
             cors_origins: vec![],
             max_item_bytes: 16 * 1024 * 1024,
             max_body_bytes: 64 * 1024 * 1024,
+            max_accounts: None,
+            account_quota_bytes: None,
+            signups_per_ip: None,
+            client_ip_header: None,
         }
     }
 }
@@ -72,15 +89,19 @@ pub struct AppState {
     /// unknown e-mail addresses with stable fake parameters.
     pub server_secret: Arc<SymmetricKey>,
     pub login_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts new accounts per client address.
+    pub signup_limiter: Arc<ratelimit::RateLimiter>,
 }
 
 impl AppState {
     pub fn new(db: Db, config: Config, server_secret: SymmetricKey) -> Self {
+        let signups_per_ip = config.signups_per_ip.unwrap_or(u32::MAX);
         Self {
             db,
             config: Arc::new(config),
             server_secret: Arc::new(server_secret),
             login_limiter: Arc::new(ratelimit::RateLimiter::new(10, 15 * 60)),
+            signup_limiter: Arc::new(ratelimit::RateLimiter::new(signups_per_ip, 24 * 3600)),
         }
     }
 
@@ -159,7 +180,9 @@ pub fn app(state: AppState) -> Router {
 
 /// Serve the application on an already bound listener until shutdown.
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow::Result<()> {
-    axum::serve(listener, app(state)).with_graceful_shutdown(shutdown_signal()).await?;
+    // The peer address is needed for the per-address sign-up limit.
+    let service = app(state).into_make_service_with_connect_info::<SocketAddr>();
+    axum::serve(listener, service).with_graceful_shutdown(shutdown_signal()).await?;
     Ok(())
 }
 

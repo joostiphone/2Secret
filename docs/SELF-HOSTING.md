@@ -10,6 +10,12 @@ database. A small VPS, a Raspberry Pi or a NAS is plenty for a family or team.
 The Docker image `ghcr.io/joostiphone/2secret` runs on x86_64 and ARM64
 (64-bit Raspberry Pi OS, ARM-based NAS and cloud servers).
 
+Nobody has to run a server: the apps can also use the 2Secret server
+(`sync.2secret.app`) or keep the vault on one device. For a server that
+others use, on Proxmox with a Cloudflare Tunnel, limits, backups and
+automatic updates, see [PUBLIC-SERVER.md](PUBLIC-SERVER.md); its
+`deploy/proxmox/install.sh` also sets up any Debian or Ubuntu machine.
+
 ## Option 1: Docker Compose with automatic HTTPS (recommended)
 
 1. Point a DNS name (e.g. `vault.example.com`) to your machine.
@@ -64,6 +70,10 @@ Every option can be given as a command line flag or environment variable.
 | `--invite-codes` | `TWOSECRET_INVITE_CODES` | – | Comma separated invite codes (for `invite`) |
 | `--session-days` | `TWOSECRET_SESSION_DAYS` | `30` | Sign out devices after this many idle days |
 | `--cors-origins` | `TWOSECRET_CORS_ORIGINS` | – | Extra origins allowed to call the API from a browser (`*` for any) |
+| `--account-storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | – | Storage per account for the vaults it owns; what does not fit stays on the device |
+| `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | – | New accounts per client address per day (IPv6: per /64) |
+| `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | – | Accept no new accounts beyond this number |
+| `--client-ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | – | Header with the client's address from a proxy on the same machine: `X-Forwarded-For` (Caddy, nginx), `CF-Connecting-IP` (Cloudflare Tunnel) |
 
 Logging is controlled with `RUST_LOG` (e.g. `RUST_LOG=info`).
 

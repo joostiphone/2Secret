@@ -350,6 +350,10 @@ the apps warn about this.
   connection is quantum-resistant depends on the TLS stack and the reverse
   proxy in front of the server. The data inside it is end-to-end encrypted
   with 256-bit symmetric keys and the hybrid scheme above either way.
+- Whoever runs a server, including the 2Secret server `sync.2secret.app`
+  (and Cloudflare, which it is reached through), sees the metadata above and
+  IP addresses, never vault contents. Encrypted backups (*Settings → Backup
+  & export*) keep your data independent of any server.
 - The web vault is only as trustworthy as the server that serves its code. If
   you do not trust the server operator, use the desktop/mobile apps or the
   extension, whose code does not come from the server.

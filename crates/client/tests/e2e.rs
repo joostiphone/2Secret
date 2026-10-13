@@ -315,6 +315,49 @@ async fn signup_modes() {
 }
 
 #[tokio::test]
+async fn limits_for_a_public_server() {
+    // Sign-ups per address (the test client is 127.0.0.1) and in total.
+    let url = start_server(Config { signups_per_ip: Some(2), ..Config::default() }).await;
+    client::signup(&url, "A", "a@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    client::signup(&url, "B", "b@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let err = client::signup(&url, "C", "c@example.com", PW, None, "x", "P", kdf()).await.unwrap_err();
+    assert_eq!(err.status(), Some(429));
+    let full = start_server(Config { max_accounts: Some(1), ..Config::default() }).await;
+    client::signup(&full, "A", "a@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let err = client::signup(&full, "B", "b@example.com", PW, None, "x", "P", kdf()).await.unwrap_err();
+    assert_eq!(err.status(), Some(403));
+
+    // Storage per account: what does not fit stays on the device.
+    let url = start_server(Config { account_quota_bytes: Some(40_000), ..Config::default() }).await;
+    let (mut s, sk) = client::signup(&url, "Q", "q@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let vault = s.default_vault_id().unwrap();
+    let big = |title: &str| {
+        let mut item = Item::new(Category::SecureNote, title);
+        item.notes = "x".repeat(15_000);
+        item
+    };
+    let first = s.add_item(&vault, big("First")).unwrap();
+    assert_eq!(client::sync(&mut s).await.unwrap().uploaded, 1);
+    let second = s.add_item(&vault, big("Second")).unwrap();
+    let report = client::sync(&mut s).await.unwrap();
+    assert_eq!((report.uploaded, report.over_quota), (0, 1));
+    assert!(s.item(&second).is_some(), "the item stays on the device");
+    let api = Client::new(&url).with_token(s.server_token().unwrap());
+    let account = api.account().await.unwrap();
+    assert_eq!(account.storage_quota, Some(40_000));
+    assert!(account.storage_used.unwrap() > 15_000 && account.storage_used.unwrap() <= 40_000);
+
+    // Making room lets it through on the next sync.
+    s.delete_item(&first).unwrap();
+    client::sync(&mut s).await.unwrap();
+    let report = client::sync(&mut s).await.unwrap();
+    assert_eq!(report.over_quota, 0);
+    let phone = client::signin(&url, "q@example.com", PW, &sk, "y").await.unwrap();
+    assert!(phone.item(&second).is_some() && phone.item(&first).is_none());
+    assert!(api.account().await.unwrap().storage_used.unwrap() <= 40_000);
+}
+
+#[tokio::test]
 async fn login_rate_limiting() {
     let url = start_server(Config::default()).await;
     let (_s, sk) = client::signup(&url, "F", "f@example.com", PW, None, "x", "P", kdf()).await.unwrap();

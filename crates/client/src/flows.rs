@@ -300,7 +300,9 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
             Ok((report, dirty))
         })??;
         total.merge(&report);
-        if !report.needs_another_round && !dirty && report.vaults_added == 0 {
+        // Changes over the server's storage limit stay waiting; another
+        // round now would not help.
+        if !report.needs_another_round && (!dirty || report.over_quota > 0) && report.vaults_added == 0 {
             break;
         }
     }

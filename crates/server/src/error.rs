@@ -42,6 +42,13 @@ impl ApiError {
     pub fn too_many_requests() -> Self {
         Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited", "too many attempts, please wait a few minutes")
     }
+    pub fn storage_full(quota_bytes: u64) -> Self {
+        Self::new(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "storage_quota",
+            format!("the storage limit of this server ({} MB per account) is reached", quota_bytes / 1_000_000),
+        )
+    }
     pub fn internal(err: impl std::fmt::Display) -> Self {
         tracing::error!("internal error: {err}");
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", "internal server error")

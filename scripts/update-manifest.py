@@ -20,6 +20,10 @@ PLATFORMS = {
     "macos-x64": r"_x64\.dmg",
     "linux-x64-appimage": r"_x86_64\.AppImage",
     "android-arm64": r"_android-arm64\.apk",
+    # The sync server (with the CLI) and the web vault, for
+    # deploy/proxmox/install.sh.
+    "server-linux-x64": r"-x86_64-unknown-linux-gnu\.tar\.gz",
+    "web": r"\.tar\.gz",
 }
 
 

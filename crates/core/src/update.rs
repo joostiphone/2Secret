@@ -42,6 +42,10 @@ pub mod target {
     pub const MACOS_X64: &str = "macos-x64";
     pub const LINUX_X64_APPIMAGE: &str = "linux-x64-appimage";
     pub const ANDROID_ARM64: &str = "android-arm64";
+    /// `2secret-v<version>-x86_64-unknown-linux-gnu.tar.gz` (server and CLI).
+    pub const SERVER_LINUX_X64: &str = "server-linux-x64";
+    /// `2secret-web-v<version>.tar.gz`, the web vault.
+    pub const WEB: &str = "web";
 }
 
 const KEYS: &str = include_str!("update_keys.txt");
