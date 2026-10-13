@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - The 2Secret server: when creating an account, signing in or connecting,
   choose *2Secret server* (`sync.2secret.app`, nothing to set up), *your own
