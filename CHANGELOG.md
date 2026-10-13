@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - Updates from within the app (*Settings → Updates*), off by default. On
   Windows (setup installation), macOS and the Linux AppImage, 2Secret can
