@@ -67,6 +67,14 @@ UI changes and commit the result.
    release with all downloads attached. Versions with a suffix (`v1.3.0-beta.1`)
    become pre-releases.
 
+### Signing updates
+
+The apps only update to releases with a signed `update.json`, which the
+workflow makes when the repository secret `UPDATE_SIGNING_KEY` holds the
+Ed25519 private key (PEM) belonging to a public key in
+`crates/core/src/update_keys.txt`. See [docs/UPDATES.md](docs/UPDATES.md) for
+setting it up and changing keys.
+
 ### Signing the macOS app
 
 Without further setup the macOS app is signed ad hoc, and people have to allow

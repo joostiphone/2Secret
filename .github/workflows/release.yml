@@ -352,9 +352,18 @@ jobs:
           pattern: dist-*
           path: out
           merge-multiple: true
-      - name: Checksums and release notes
+      - name: Checksums, update manifest and release notes
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           cd out && sha256sum -- * > SHA256SUMS && cat SHA256SUMS && cd ..
+          # The apps only update to a release with a valid update.json.sig
+          # (docs/UPDATES.md).
+          if [ -n "$UPDATE_SIGNING_KEY" ]; then
+            scripts/sign-update.sh out "$TAG"
+          else
+            echo "::warning::No UPDATE_SIGNING_KEY secret: the release has no signed update.json, so the apps do not offer it as an update"
+          fi
           awk '/^## /{if (seen) exit; seen=1; next} seen' CHANGELOG.md > notes.md
           cat .github/release-notes.md >> notes.md
       - uses: softprops/action-gh-release@v2

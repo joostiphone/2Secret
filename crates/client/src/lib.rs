@@ -7,8 +7,11 @@
 //! * [`flows`] – complete user-level operations: sign up, sign in, connect a
 //!   local account to a server, sync, share vaults, change the password, and
 //!   the Have I Been Pwned breach check.
+//! * [`update`] – signed app updates from the GitHub releases (native only).
 
 pub mod flows;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod update;
 
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;

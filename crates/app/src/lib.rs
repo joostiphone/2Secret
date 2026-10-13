@@ -13,6 +13,7 @@ mod icons;
 mod ios_autofill;
 mod platform;
 mod state;
+mod updater;
 
 use dioxus::prelude::*;
 
@@ -27,6 +28,8 @@ const STYLE: &str = include_str!("style.css");
 
 /// Start the app (does not return).
 pub fn run() {
+    // A downloaded update is installed before the app starts (and restarts it).
+    updater::apply_at_start();
     #[cfg(feature = "desktop")]
     {
         use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
@@ -110,6 +113,7 @@ fn App() -> Element {
             platform::prepare().await;
             init();
         });
+        spawn(updater::background());
     });
     let theme = PREFS.read().theme.id();
     let phase = PHASE.read().clone();

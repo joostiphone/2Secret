@@ -292,6 +292,16 @@ conflict never silently loses a password. Deletions are tombstones.
   `mallory.github.io`), an `https` item is never filled into an `http` page,
   and an item URL with a port only matches that port.
 
+## Updates
+
+The desktop and Android apps can check for updates; this is off by default
+and only contacts GitHub. An update is installed only if its manifest
+carries an Ed25519 signature from a key built into the app, is for a newer
+version (no downgrades), and the installer comes from that version's GitHub
+release with exactly the signed size and SHA-256. The downloaded update is
+verified again right before it is installed. Details:
+[UPDATES.md](UPDATES.md).
+
 ## Master password and key derivation policy
 
 - Master passwords need at least 12 characters and a "good" zxcvbn rating

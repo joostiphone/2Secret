@@ -126,6 +126,8 @@ pub struct Prefs {
     /// Seconds before copied secrets are cleared; 0 = never.
     pub clipboard_clear_secs: u32,
     pub generator: GeneratorOptions,
+    /// Check for (and where possible install) new versions once a day.
+    pub auto_update: bool,
 }
 
 impl Default for Prefs {
@@ -136,6 +138,7 @@ impl Default for Prefs {
             auto_lock_minutes: 10,
             clipboard_clear_secs: 90,
             generator: GeneratorOptions::default(),
+            auto_update: false,
         }
     }
 }

@@ -1,0 +1,5 @@
+# Ed25519 public keys (base64, one per line) whose signature on update.json
+# the apps accept. The Release workflow signs with the private key in the
+# UPDATE_SIGNING_KEY repository secret. To change the key, add the new one
+# here, release, and only then sign with it (see docs/UPDATES.md).
+szLMLOdfhjWs5oMdLfeXR23tZEpjEjn1D+lJFRDBWFY=

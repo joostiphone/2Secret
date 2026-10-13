@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Updates from within the app (*Settings → Updates*), off by default. On
+  Windows (setup installation), macOS and the Linux AppImage, 2Secret can
+  install new versions itself when it starts; elsewhere, including Android,
+  it says when a new version is available and opens the download. Only
+  updates signed with 2Secret's key, for a newer version and with the signed
+  SHA-256 are installed (docs/UPDATES.md).
+
 ## 1.2.0
 
 - iOS AutoFill: fill passwords and sign in with passkeys in Safari and apps,

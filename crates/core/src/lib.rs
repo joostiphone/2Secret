@@ -28,6 +28,7 @@ pub mod storage;
 pub mod strength;
 pub mod sync;
 pub mod totp;
+pub mod update;
 pub mod util;
 pub mod watchtower;
 mod wordlist;

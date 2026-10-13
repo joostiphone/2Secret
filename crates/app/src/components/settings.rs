@@ -29,6 +29,7 @@ pub fn SettingsPage() -> Element {
                 AppearanceSection {}
                 ImportSection {}
                 ExportSection {}
+                UpdatesSection {}
                 AboutSection {}
                 DangerSection {}
             }
@@ -782,6 +783,91 @@ fn ExportSection() -> Element {
                     div { class: "warn-box small", {t("export.plain_warning")} }
                 }
                 button { class: "btn", onclick: run_export, Icon { name: "download", size: 15 } {t("export.run")} }
+            }
+        }
+    }
+}
+
+/// Version, checking for updates and automatic updates (desktop and
+/// Android; the other apps are updated by their stores).
+#[component]
+fn UpdatesSection() -> Element {
+    use crate::updater::{self, Mode, Status, STATUS};
+    let mode = use_hook(updater::mode);
+    if mode == Mode::Off {
+        return rsx! {};
+    }
+    let auto = PREFS.read().auto_update;
+    let status = STATUS.read().clone();
+    let version = twosecret_core::VERSION;
+    let with_version = |key: &str, v: &str| t(key).replace("{version}", v);
+    let text = match &status {
+        Status::Idle => t("update.idle").to_string(),
+        Status::Checking => t("update.checking").to_string(),
+        Status::UpToDate => t("update.up_to_date").to_string(),
+        Status::Available { version, installable: true, .. } => with_version("update.available", version),
+        Status::Available { version, .. } => {
+            format!("{} {}", with_version("update.available", version), t("update.manual"))
+        }
+        Status::Downloading { version } => with_version("update.downloading", version),
+        Status::Ready { version, .. } => with_version("update.ready", version),
+        Status::Failed(e) => format!("{} {e}", t("update.failed")),
+    };
+    let notes = match &status {
+        Status::Available { notes, .. } | Status::Ready { notes, .. } => Some(notes.clone()),
+        _ => None,
+    };
+    let toggle = move |_| {
+        let on = !PREFS.peek().auto_update;
+        PREFS.write().auto_update = on;
+        save_prefs();
+        if on {
+            spawn(updater::check(true));
+        }
+    };
+    let (auto_title, auto_desc) = match mode {
+        Mode::Install => (t("update.auto_install"), t("update.auto_install_desc")),
+        _ => (t("update.auto_notify"), t("update.auto_notify_desc")),
+    };
+    rsx! {
+        div { class: "section",
+            SectionTitle { text: t("update.title") }
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", "2Secret {version}" }
+                    div { class: "d", "{text}" }
+                    if let Some(url) = notes {
+                        div { class: "d",
+                            a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&url); }, {t("update.whats_new")} }
+                        }
+                    }
+                }
+                match status {
+                    Status::Available { installable: true, .. } => rsx! {
+                        button { class: "btn small primary", onclick: move |_| { spawn(updater::install()); }, Icon { name: "download", size: 15 } {t("update.install")} }
+                    },
+                    Status::Available { download, .. } => rsx! {
+                        button { class: "btn small primary", onclick: move |_| platform::open_url(&download), Icon { name: "download", size: 15 } {t("update.download")} }
+                    },
+                    Status::Ready { .. } => rsx! {
+                        button { class: "btn small primary", onclick: move |_| updater::restart(), {t("update.restart")} }
+                    },
+                    Status::Checking | Status::Downloading { .. } => rsx! {
+                        button { class: "btn small", disabled: true, {t("update.check")} }
+                    },
+                    _ => rsx! {
+                        button { class: "btn small", onclick: move |_| { spawn(updater::check(false)); }, {t("update.check")} }
+                    },
+                }
+            }
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", {auto_title} }
+                    div { class: "d", {auto_desc} }
+                }
+                button { class: either(auto, "btn small", "btn small primary"), onclick: toggle,
+                    {either(auto, t("common.turn_off"), t("common.turn_on"))}
+                }
             }
         }
     }

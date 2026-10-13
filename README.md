@@ -50,6 +50,7 @@ is free, open source, and you can host the sync server yourself.
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
+| ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
 | 🏠 **Self-hostable** | One small server binary (or Docker image) that also serves the web vault. |
 
@@ -229,6 +230,9 @@ Windows, Linux, BSD, iOS, het web en je browser.
   KeePass, Dashlane en meer.
 - **Automatisch vergrendelen** en klembord wissen; ontgrendelen met Touch ID,
   Face ID of Windows Hello.
+- **Updates** (als je het aanzet): de desktop-apps installeren nieuwe versies
+  zelf, Android meldt ze. Alleen updates met de handtekening van 2Secret worden
+  geïnstalleerd.
 - **Nederlands en Engels.**
 
 ### Nog niet aanwezig
