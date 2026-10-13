@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+
+- The apps offer the 2Secret server (`sync.2secret.app`) once it runs. Until
+  then a new account is kept *only on this device* by default, and signing in
+  or connecting asks for your own server's address.
+
 ## 1.4.0
 
 - The 2Secret server: when creating an account, signing in or connecting,

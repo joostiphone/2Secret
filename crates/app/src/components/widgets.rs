@@ -276,16 +276,30 @@ pub enum ServerChoice {
     Local,
 }
 
+/// Whether the apps offer the 2Secret server. Off until `sync.2secret.app`
+/// runs; a web vault served by it always offers it.
+const OFFICIAL_SERVER_LIVE: bool = false;
+
+fn is_official(url: &str) -> bool {
+    twosecret_client::normalize_server_url(url) == twosecret_client::OFFICIAL_SERVER
+}
+
 impl ServerChoice {
+    fn official_offered() -> bool {
+        OFFICIAL_SERVER_LIVE || platform::default_server().is_some_and(|url| is_official(&url))
+    }
+
     /// What to start with: the server this web vault comes from, else the
-    /// 2Secret server. The custom address is pre-filled with it.
-    pub fn initial() -> (ServerChoice, String) {
+    /// 2Secret server when it is offered, else only on this device (when
+    /// `allow_local`) or an own server. The custom address is pre-filled
+    /// with the web vault's server.
+    pub fn initial(allow_local: bool) -> (ServerChoice, String) {
         match platform::default_server() {
-            Some(url) if twosecret_client::normalize_server_url(&url) == twosecret_client::OFFICIAL_SERVER => {
-                (ServerChoice::Official, String::new())
-            }
+            Some(url) if is_official(&url) => (ServerChoice::Official, String::new()),
             Some(url) => (ServerChoice::Custom, url),
-            None => (ServerChoice::Official, String::new()),
+            None if OFFICIAL_SERVER_LIVE => (ServerChoice::Official, String::new()),
+            None if allow_local => (ServerChoice::Local, String::new()),
+            None => (ServerChoice::Custom, String::new()),
         }
     }
 
@@ -306,16 +320,19 @@ pub fn ServerPicker(
     custom: Signal<String>,
     #[props(default)] allow_local: bool,
 ) -> Element {
-    let mut options = vec![
-        (ServerChoice::Official, "cloud", t("server.official"), t("server.official_desc")),
-        (ServerChoice::Custom, "server", t("server.custom"), t("server.custom_desc")),
-    ];
+    let mut options = Vec::new();
+    if ServerChoice::official_offered() {
+        options.push((ServerChoice::Official, "cloud", t("server.official"), t("server.official_desc")));
+    }
+    options.push((ServerChoice::Custom, "server", t("server.custom"), t("server.custom_desc")));
     if allow_local {
         options.push((ServerChoice::Local, "smartphone", t("server.local"), t("server.local_desc")));
     }
+    // With an own server as the only option, just ask for its address.
+    let single = options.len() == 1;
     rsx! {
         div { class: "form-group",
-            for (option , icon , title , desc) in options {
+            for (option , icon , title , desc) in options.into_iter().filter(|_| !single) {
                 button { key: "{title}", r#type: "button",
                     class: if choice() == option { "choice compact on" } else { "choice compact" },
                     onclick: move |_| choice.set(option),
@@ -330,6 +347,24 @@ pub fn ServerPicker(
                 input { class: "input", initial_value: "{custom}", placeholder: "https://vault.example.com", autocapitalize: "off",
                     oninput: move |e| custom.set(e.value()) }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starts_without_the_2secret_server_until_it_runs() {
+        assert!(!OFFICIAL_SERVER_LIVE || ServerChoice::official_offered());
+        let (create, _) = ServerChoice::initial(true);
+        let (sign_in, _) = ServerChoice::initial(false);
+        if OFFICIAL_SERVER_LIVE {
+            assert_eq!((create, sign_in), (ServerChoice::Official, ServerChoice::Official));
+        } else {
+            assert!(!ServerChoice::official_offered());
+            assert_eq!((create, sign_in), (ServerChoice::Local, ServerChoice::Custom));
         }
     }
 }

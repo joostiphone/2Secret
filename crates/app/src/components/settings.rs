@@ -382,7 +382,7 @@ fn SyncSection() -> Element {
 
 #[component]
 fn ConnectForm(done: EventHandler<()>) -> Element {
-    let (initial, initial_url) = ServerChoice::initial();
+    let (initial, initial_url) = ServerChoice::initial(false);
     let choice = use_signal(|| initial);
     let server = use_signal(move || initial_url.clone());
     let mut invite = use_signal(String::new);
@@ -436,6 +436,7 @@ fn ConnectForm(done: EventHandler<()>) -> Element {
     rsx! {
         div { class: "section-body", style: "padding-top:12px",
             if let Some(err) = error() { div { class: "error-box", "{err}" } }
+            label { class: "label", {t("common.server")} }
             ServerPicker { choice, custom: server }
             if choice() == ServerChoice::Custom {
                 div { class: "form-group",

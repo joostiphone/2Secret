@@ -46,7 +46,7 @@ pub fn CreateAccount() -> Element {
     let mut email = use_signal(String::new);
     let mut password = use_signal(String::new);
     let mut confirm = use_signal(String::new);
-    let (initial, initial_url) = ServerChoice::initial();
+    let (initial, initial_url) = ServerChoice::initial(true);
     let choice = use_signal(|| initial);
     let server = use_signal(move || initial_url.clone());
     let mut invite = use_signal(String::new);
@@ -168,7 +168,7 @@ pub fn CreateAccount() -> Element {
 
 #[component]
 pub fn SignIn() -> Element {
-    let (initial, initial_url) = ServerChoice::initial();
+    let (initial, initial_url) = ServerChoice::initial(false);
     let choice = use_signal(|| initial);
     let server = use_signal(move || initial_url.clone());
     let mut email = use_signal(String::new);

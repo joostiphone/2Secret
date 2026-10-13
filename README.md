@@ -52,7 +52,7 @@ is free, open source, and you can host the sync server yourself.
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
 | ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
-| 🏠 **Sync your way** | Use the 2Secret server (`sync.2secret.app`), host your own – one small binary or Docker image that also serves the web vault – or keep a vault on one device. |
+| 🏠 **Sync your way** | Use the 2Secret server (`sync.2secret.app`, coming soon), host your own – one small binary or Docker image that also serves the web vault – or keep a vault on one device. |
 | 💾 **Backups** | Encrypted backups of all vaults in one file, with a reminder now and then. |
 
 ## Platforms
@@ -75,9 +75,9 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 
 ### 1. Choose where to sync (optional)
 
-A local-only vault works without any server, and the apps can sync through the
-2Secret server (`sync.2secret.app`) without any setup. To run your own server
-instead – it also serves the web vault:
+A local-only vault works without any server. The 2Secret server
+(`sync.2secret.app`, no setup needed) is coming soon; until then, run your own
+server – it also serves the web vault:
 
 ```sh
 docker compose -f deploy/docker-compose.yml up -d     # with automatic HTTPS via Caddy
@@ -235,8 +235,8 @@ Windows, Linux, BSD, iOS, het web en je browser.
   Face ID of Windows Hello.
 - **Back-ups:** een versleutelde kopie van al je kluizen in één bestand, met af
   en toe een herinnering.
-- **Synchroniseren zoals jij wilt:** via de 2Secret-server (`sync.2secret.app`),
-  je eigen server, of alleen op één apparaat.
+- **Synchroniseren zoals jij wilt:** via de 2Secret-server (`sync.2secret.app`,
+  binnenkort beschikbaar), je eigen server, of alleen op één apparaat.
 - **Updates** (als je het aanzet): de desktop-apps installeren nieuwe versies
   zelf, Android meldt ze. Alleen updates met de handtekening van 2Secret worden
   geïnstalleerd.
@@ -250,8 +250,8 @@ beveiligingsaudit.
 
 ### Snel aan de slag
 
-1. **Server (optioneel):** synchroniseer via de 2Secret-server
-   (`sync.2secret.app`, niets in te stellen), of start een eigen server met
+1. **Server (optioneel):** synchroniseer straks via de 2Secret-server
+   (`sync.2secret.app`, binnenkort beschikbaar), of start een eigen server met
    `docker compose -f deploy/docker-compose.yml up -d` (automatische HTTPS).
    Zonder server werkt 2Secret gewoon lokaal op één apparaat. Zie
    [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).

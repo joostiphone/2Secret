@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "2Secret",
   "short_name": "2Secret",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Free, open-source password manager. Fill logins, one-time codes and passkeys from your end-to-end encrypted 2Secret vault.",
   "homepage_url": "https://github.com/joostiphone/2Secret",
   "action": {

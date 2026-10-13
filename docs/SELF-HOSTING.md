@@ -10,8 +10,8 @@ database. A small VPS, a Raspberry Pi or a NAS is plenty for a family or team.
 The Docker image `ghcr.io/joostiphone/2secret` runs on x86_64 and ARM64
 (64-bit Raspberry Pi OS, ARM-based NAS and cloud servers).
 
-Nobody has to run a server: the apps can also use the 2Secret server
-(`sync.2secret.app`) or keep the vault on one device. For a server that
+Nobody has to run a server: the apps can keep the vault on one device, and
+will offer the 2Secret server (`sync.2secret.app`) once it runs. For a server that
 others use, on Proxmox with a Cloudflare Tunnel, limits, backups and
 automatic updates, see [PUBLIC-SERVER.md](PUBLIC-SERVER.md); its
 `deploy/proxmox/install.sh` also sets up any Debian or Ubuntu machine.
