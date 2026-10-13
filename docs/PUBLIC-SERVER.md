@@ -24,10 +24,11 @@ open on your router, and your home address stays hidden.
 3. **Next**, add a **public hostname**: subdomain `sync`, domain
    `2secret.app`, service type **HTTP**, URL `localhost:8743`. Save.
 
-Then, for `sync.2secret.app` (*Rules → Configuration Rules*, or the zone
-settings): turn **Bot Fight Mode** off (it blocks the apps, which are not
-browsers), and turn **Rocket Loader** and **Email Address Obfuscation** off
-(they inject scripts the web vault's security policy refuses). The server
+Then check two things. **Bot Fight Mode** (*Security → Bots*, for the whole
+domain) must be off: it blocks the apps, which are not browsers. **Rocket
+Loader** and **Email Address Obfuscation** must be off for `sync.2secret.app`
+(a *Rules → Configuration Rule* for that hostname, or the zone settings):
+they inject scripts the web vault's security policy refuses. The server
 already tells Cloudflare not to cache anything.
 
 ## 2. The container
