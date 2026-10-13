@@ -31,7 +31,7 @@ On developer.apple.com → *Certificates, Identifiers & Profiles*:
      same two capabilities.
 
 Certificates and provisioning profiles do not have to be made by hand:
-`scripts/appstore-signing.py` makes them with the API key below. It creates
+`scripts/appstore.py signing` makes them with the API key below. It creates
 one *Apple Distribution* certificate, whose private key is derived from the
 API key so that every build reuses it, and new App Store profiles
 (`2Secret-AppStore-CI`, `2Secret-AutoFill-AppStore-CI`) for every build.

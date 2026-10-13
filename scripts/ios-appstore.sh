@@ -10,7 +10,7 @@
 #   APP_STORE_CONNECT_KEY_ID      the key's ID
 #   APP_STORE_CONNECT_ISSUER_ID   the issuer ID shown above the keys
 #   APP_STORE_CONNECT_KEY         the contents of AuthKey_<id>.p8
-# scripts/appstore-signing.py then provides the distribution certificate and
+# `scripts/appstore.py signing` then provides the distribution certificate and
 # the provisioning profiles; the bundle IDs and the app group must exist
 # (docs/APP-STORE.md). Without the key the app is only built for the
 # simulator, which checks that everything compiles.
@@ -73,7 +73,7 @@ printf '%s\n' "$APP_STORE_CONNECT_KEY" > "$key"
 python3 -c 'import cryptography' 2> /dev/null || {
   python3 -m venv build/venv && build/venv/bin/pip install --quiet cryptography && PATH="$PWD/build/venv/bin:$PATH"
 }
-python3 "$root/scripts/appstore-signing.py" "$signing"
+python3 "$root/scripts/appstore.py" signing "$signing"
 # shellcheck disable=SC1091
 . "$signing/signing.env"
 

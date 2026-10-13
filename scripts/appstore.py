@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Signing for the App Store build, through the App Store Connect API.
+"""The App Store build's dealings with the App Store Connect API.
 
-    scripts/appstore-signing.py <output folder>
+    scripts/appstore.py signing <output folder>
+    scripts/appstore.py wait <version> <build number>
 
-Makes sure there is an Apple Distribution certificate and App Store
-provisioning profiles for the app and its AutoFill extension, and writes
-them to the folder for scripts/ios-appstore.sh:
+`signing` makes sure there is an Apple Distribution certificate and App
+Store provisioning profiles for the app and its AutoFill extension, and
+writes them to the folder for scripts/ios-appstore.sh:
 
     distribution.p12          the certificate with its private key
     app.mobileprovision       profile for io.github.joostiphone.twosecret
@@ -22,6 +23,9 @@ finds the certificate an earlier run made instead of making another one:
 Apple allows only a few distribution certificates per team, and build
 machines keep nothing between runs. A new one is made when it is about to
 expire or when the API key changes. The profiles are made anew every run.
+
+`wait` waits until App Store Connect has processed an uploaded build and
+says whether it can be tested in TestFlight.
 """
 import base64
 import hashlib
@@ -46,6 +50,7 @@ from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import NameOID
 
 API = "https://api.appstoreconnect.apple.com/v1"
+APP_BUNDLE = "io.github.joostiphone.twosecret"
 BUNDLES = {
     "app": ("io.github.joostiphone.twosecret", "2Secret-AppStore-CI"),
     "autofill": ("io.github.joostiphone.twosecret.autofill", "2Secret-AutoFill-AppStore-CI"),
@@ -214,10 +219,37 @@ def profile(api: Api, identifier: str, name: str, certificate_id: str) -> tuple[
     return created["uuid"], base64.b64decode(created["profileContent"])
 
 
-def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    out = sys.argv[1]
+def wait(version: str, build: str) -> None:
+    """Wait (up to an hour) until Apple has processed the build."""
+    api = Api(api_key_der())
+    apps = api.call("GET", "/apps", query={"filter[bundleId]": APP_BUNDLE})["data"]
+    app = next((a for a in apps if a["attributes"]["bundleId"] == APP_BUNDLE), None)
+    if app is None:
+        sys.exit(f"There is no app with bundle ID {APP_BUNDLE} in App Store Connect.")
+    query = {"filter[app]": app["id"], "filter[version]": build, "filter[preReleaseVersion.version]": version}
+    deadline = time.time() + 3600
+    state = None
+    while time.time() < deadline:
+        builds = api.call("GET", "/builds", query=query)["data"]
+        state = builds[0]["attributes"]["processingState"] if builds else "NOT YET VISIBLE"
+        print(f"{time.strftime('%H:%M:%S')} build {version} ({build}): {state}", flush=True)
+        if state in ("VALID", "FAILED", "INVALID"):
+            break
+        time.sleep(30)
+    if state != "VALID":
+        sys.exit(f"Build {version} ({build}) was not processed: {state}")
+    detail = api.call("GET", f"/builds/{builds[0]['id']}/buildBetaDetail")["data"]["attributes"]
+    beta = detail.get("internalBuildState")
+    print(f"TestFlight: {beta}")
+    if beta == "MISSING_EXPORT_COMPLIANCE":
+        print("Answer the encryption questions in App Store Connect (TestFlight → the build → Manage) to start testing.")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write(f"2Secret {version} ({build}) is processed and in TestFlight: `{beta}`.\n")
+
+
+def signing(out: str) -> None:
     os.makedirs(out, exist_ok=True)
     key_der = api_key_der()
     api = Api(key_der)
@@ -245,6 +277,16 @@ def main() -> None:
         env[f"{kind.upper()}_PROFILE_UUID"] = uuid
     with open(os.path.join(out, "signing.env"), "w") as f:
         f.writelines(f"{k}={shlex.quote(v)}\n" for k, v in env.items())
+
+
+def main() -> None:
+    match sys.argv[1:]:
+        case ["signing", out]:
+            signing(out)
+        case ["wait", version, build]:
+            wait(version.removeprefix("v"), build)
+        case _:
+            sys.exit(__doc__)
 
 
 if __name__ == "__main__":
