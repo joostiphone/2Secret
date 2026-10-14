@@ -1,0 +1,28 @@
+name: Server check
+
+# Checks from outside that a 2Secret server answers: DNS, the health
+# endpoint and the web vault. Run it from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Server address
+        default: https://sync.2secret.app
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      URL: ${{ inputs.url }}
+    steps:
+      - name: DNS
+        run: |
+          host="$(echo "$URL" | sed -E 's#^https?://##; s#[/:].*$##')"
+          dig +noall +answer "$host" A "$host" AAAA
+      - name: Health
+        run: curl -sS --fail-with-body --max-time 20 -w '\nHTTP %{http_code}\n' "$URL/api/v1/health"
+      - name: Web vault and headers
+        run: curl -sS --fail --max-time 20 -o /dev/null -D - "$URL/"
