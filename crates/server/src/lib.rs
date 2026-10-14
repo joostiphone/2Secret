@@ -185,6 +185,17 @@ pub fn app(state: AppState) -> Router {
 
 /// Serve the application on an already bound listener until shutdown.
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow::Result<()> {
+    // Rate limiters hold client addresses and e-mail addresses in memory:
+    // forget them as soon as their window has passed.
+    let limiters = [state.login_limiter.clone(), state.signup_limiter.clone()];
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            tick.tick().await;
+            let now = twosecret_core::util::now();
+            limiters.iter().for_each(|l| l.prune(now));
+        }
+    });
     // The peer address is needed for the per-address sign-up limit.
     let service = app(state).into_make_service_with_connect_info::<SocketAddr>();
     axum::serve(listener, service).with_graceful_shutdown(shutdown_signal()).await?;

@@ -26,7 +26,7 @@
 # Sets up: the server as a systemd service (127.0.0.1:8743) with its data in
 # /var/lib/2secret, its settings in /etc/2secret/server.env, a database backup
 # every night in /var/backups/2secret (kept 14 days), signed automatic updates
-# every night, and optionally cloudflared.
+# every night, logs kept 14 days, and optionally cloudflared.
 set -euo pipefail
 
 REPO=joostiphone/2Secret
@@ -222,6 +222,13 @@ say "Writing $CONF"
   echo "RUST_LOG=info,tower_http=warn"
 } > "$CONF"
 chown root:2secret "$CONF" && chmod 0640 "$CONF"
+
+say "Keeping logs for 14 days"
+# The server logs no addresses, but the journal is the machine's; keep it
+# short, as the privacy statement says.
+install -d -m 0755 /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=14day\n' > /etc/systemd/journald.conf.d/2secret.conf
+systemctl restart systemd-journald || true
 
 say "Setting up services"
 cat > /etc/systemd/system/2secret-server.service << EOF

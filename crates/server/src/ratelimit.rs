@@ -45,11 +45,37 @@ impl RateLimiter {
     pub fn reset(&self, key: &str) {
         self.entries.lock().expect("rate limiter lock").remove(key);
     }
+
+    /// Forgets keys whose window has passed, so addresses and e-mail
+    /// addresses are not kept in memory longer than the window.
+    pub fn prune(&self, now: i64) {
+        let window = self.window_secs;
+        self.entries.lock().expect("rate limiter lock").retain(|_, e| now - e.window_start < window);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.lock().expect("rate limiter lock").len()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prune_forgets_expired_keys() {
+        let rl = RateLimiter::new(3, 60);
+        rl.record_failure("old", 0);
+        rl.record_failure("new", 30);
+        rl.prune(59);
+        assert_eq!(rl.len(), 2);
+        rl.prune(60);
+        assert_eq!(rl.len(), 1);
+        assert!(rl.allowed("old", 60));
+        rl.prune(90);
+        assert_eq!(rl.len(), 0);
+    }
 
     #[test]
     fn limits_and_resets() {

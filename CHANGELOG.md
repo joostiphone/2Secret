@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Server: the limits forget client addresses and e-mail addresses as soon as
+  their window has passed (a day for sign-ups, 15 minutes for failed
+  sign-ins), instead of when the server restarts.
+- `deploy/proxmox/install.sh` keeps the journal for 14 days.
+
 ## 1.4.2
 
 - The 2Secret server `sync.2secret.app` runs: the apps offer it again, and

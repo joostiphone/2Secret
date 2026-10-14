@@ -131,7 +131,9 @@ Keep Debian itself up to date as well: `apt update && apt upgrade`, or
 Watch `https://sync.2secret.app/api/v1/health` (for example with Uptime
 Kuma, keyword `"ok"`), and the container's disk space. Logs:
 `journalctl -u 2secret-server` (requests are not logged, so neither are IP
-addresses) and `journalctl -u cloudflared`.
+addresses) and `journalctl -u cloudflared`; install.sh keeps the journal for
+14 days. The server forgets the addresses and e-mail addresses its limits
+count once their window (a day, or 15 minutes for failed sign-ins) has passed.
 
 ## Responsibilities
 
