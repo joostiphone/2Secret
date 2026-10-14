@@ -143,7 +143,8 @@ fn App() -> Element {
                 Phase::Create => rsx! { CreateAccount {} },
                 Phase::SignIn => rsx! { SignIn {} },
                 Phase::NewAccount { secret_key } => rsx! { NewAccount { secret_key } },
-                Phase::Locked => rsx! { LockScreen {} },
+                // A new lock screen for each profile.
+                Phase::Locked => rsx! { LockScreen { key: "{SLOT()}" } },
                 Phase::Unlocked if PASSKEY.read().is_some() => rsx! { PasskeyPrompt {} },
                 Phase::Unlocked => rsx! { Shell {} },
             }

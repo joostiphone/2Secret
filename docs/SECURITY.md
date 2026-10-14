@@ -306,6 +306,15 @@ release with exactly the signed size and SHA-256. The downloaded update is
 verified again right before it is installed. Details:
 [UPDATES.md](UPDATES.md).
 
+## Profiles
+
+The apps can keep two accounts (profiles) on one device. They share
+nothing: each has its own encrypted storage, Secret Key, server session and
+biometric key. Switching keeps the profile you leave unlocked in memory
+until the app locks (auto-lock or *Lock*), which locks both. A sync that is
+running when you switch is bound to its account and stops instead of
+touching the other profile.
+
 ## Website icons
 
 When a login is saved, the apps fetch the icon of its website straight from

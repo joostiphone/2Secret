@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Profiles: the apps keep up to two accounts side by side, for example your
+  own and one for work on another server. Switch at the top of the sidebar
+  or on the lock screen; the profile you leave stays unlocked in the
+  background until the app locks, which locks both. Each profile has its own
+  Secret Key and its own biometric unlock. Not in the web vault or the
+  browser extension. On iOS and macOS AutoFill fills from the profile that
+  last wrote its logins with biometric unlock on.
 - Profile photo: *Settings → Account → Add photo*. The app makes a small
   square picture of it, encrypts it with your account key and syncs it to
   your other devices through the new `PUT /account/avatar` (servers from

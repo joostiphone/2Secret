@@ -10,7 +10,6 @@ use crate::i18n::t;
 use crate::icons::Icon;
 use crate::platform;
 use crate::state::*;
-use twosecret_core::profile::PROFILE_KEY;
 
 #[component]
 pub fn Welcome() -> Element {
@@ -34,6 +33,7 @@ pub fn Welcome() -> Element {
                         div { class: "d", {t("welcome.signin_desc")} }
                     }
                 }
+                BackToProfile {}
                 LangSwitch {}
             }
         }
@@ -327,6 +327,27 @@ pub fn NewAccount(secret_key: String) -> Element {
 /// lock screen after the app starts, not after every auto-lock.
 static BIOMETRIC_PROMPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// The next lock screen offers biometric unlock right away again (after a
+/// switch to another profile, which the person asked for).
+pub fn offer_biometric_again() {
+    BIOMETRIC_PROMPTED.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// On the screens for adding a profile: back to the other one.
+#[component]
+fn BackToProfile() -> Element {
+    let other = use_hook(|| profiles().into_iter().find(|p| !p.active));
+    let Some(other) = other else { return rsx! {} };
+    rsx! {
+        div { class: "lock-links",
+            button { class: "btn ghost small", onclick: move |_| switch_profile(other.slot),
+                Icon { name: "chevron-left", size: 14 }
+                {t("profiles.back_to").replace("{name}", &other.name)}
+            }
+        }
+    }
+}
+
 fn finish_unlock(session: Session) {
     *SESSION.write() = Some(session);
     *PHASE.write() = Phase::Unlocked;
@@ -339,6 +360,7 @@ fn finish_unlock(session: Session) {
 #[component]
 pub fn LockScreen() -> Element {
     let profile = use_hook(load_profile);
+    let other = use_hook(|| profiles().into_iter().find(|p| !p.active));
     let mut password = use_signal(String::new);
     let mut reset = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
@@ -400,7 +422,7 @@ pub fn LockScreen() -> Element {
                 // The password may have been changed on another device.
                 result = unlock_online(profile2, pw2).await;
                 if let Ok(session) = &result {
-                    let _ = platform::storage().write(PROFILE_KEY, &session.profile().to_json());
+                    let _ = save_profile(session.profile());
                 }
             }
             unbusy();
@@ -453,9 +475,16 @@ pub fn LockScreen() -> Element {
                     Icon { name: "lock", size: 16 }
                     {t("lock.unlock")}
                 }
-                div { style: "margin-top:16px",
+                div { class: "lock-links",
+                    if let Some(other) = other.clone() {
+                        button { class: "btn ghost small", onclick: move |_| switch_profile(other.slot),
+                            {t("profiles.switch_to").replace("{name}", &other.name)}
+                        }
+                    } else if MULTI_PROFILE {
+                        button { class: "btn ghost small", onclick: move |_| add_profile(), {t("profiles.add")} }
+                    }
                     button { class: "btn ghost small", onclick: move |_| *MODAL.write() = Some(Modal::ForgetDevice),
-                        {t("lock.other_account")}
+                        {t(if MULTI_PROFILE { "profiles.remove" } else { "lock.other_account" })}
                     }
                 }
                 LangSwitch {}

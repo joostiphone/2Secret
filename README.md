@@ -47,6 +47,7 @@ is free, open source, and you can host the sync server yourself.
 | 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
 | 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords and passkeys in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID. |
+| 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |

@@ -142,6 +142,63 @@ fn NavButton(
     }
 }
 
+/// The account at the top of the sidebar. In the apps a menu to switch to the
+/// other profile or add one.
+#[component]
+fn ProfileHead(name: String, email: String, photo: Option<String>) -> Element {
+    let mut open = use_signal(|| false);
+    let list = if open() { profiles() } else { Vec::new() };
+    let room = list.len() < MAX_PROFILES;
+    rsx! {
+        button { class: "who-btn", aria_label: t("profiles.title"), aria_expanded: open(),
+            onclick: move |_| if MULTI_PROFILE { open.toggle() },
+            AccountAvatar { name: name.clone(), photo, size: 34 }
+            div { class: "who",
+                div { class: "n", "{name}" }
+                div { class: "e", "{email}" }
+            }
+            if MULTI_PROFILE {
+                Icon { name: "chevron-down", size: 14 }
+            }
+        }
+        if open() {
+            div { class: "menu-backdrop", onclick: move |_| open.set(false) }
+            div { class: "profile-menu", role: "menu",
+                for p in list {
+                    button { key: "{p.slot}", role: "menuitem",
+                        class: either(p.active, "profile-item active", "profile-item"),
+                        onclick: move |_| {
+                            open.set(false);
+                            switch_profile(p.slot);
+                        },
+                        AccountAvatar { name: p.name.clone(), photo: p.photo.clone(), size: 28 }
+                        div { class: "who",
+                            div { class: "n", "{p.name}" }
+                            div { class: "e", "{p.email}" }
+                        }
+                        if p.active {
+                            Icon { name: "check", size: 15 }
+                        }
+                    }
+                }
+                if room {
+                    button { class: "profile-item", role: "menuitem",
+                        onclick: move |_| {
+                            open.set(false);
+                            add_profile();
+                        },
+                        div { class: "add-icon", Icon { name: "plus", size: 15 } }
+                        div { class: "who",
+                            div { class: "n", {t("profiles.add")} }
+                            div { class: "e", {t("profiles.add_desc")} }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn Sidebar() -> Element {
     let session = SESSION.read();
@@ -201,11 +258,7 @@ fn Sidebar() -> Element {
 
     rsx! {
         div { class: "sidebar-head",
-            AccountAvatar { name: account.name.clone(), photo, size: 34 }
-            div { class: "who",
-                div { class: "n", "{account.name}" }
-                div { class: "e", "{account.email}" }
-            }
+            ProfileHead { name: account.name.clone(), email: account.email.clone(), photo }
             button { class: "icon-btn", title: t("lock.lock_now"), onclick: move |_| lock(), Icon { name: "lock", size: 17 } }
         }
         div { class: "nav",

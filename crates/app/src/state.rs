@@ -137,6 +137,8 @@ pub struct Prefs {
     pub backup_reminder_days: u32,
     /// Fetch the icons of the websites of logins (from those websites).
     pub website_icons: bool,
+    /// The profile shown last ([`SLOT`]).
+    pub active_profile: usize,
 }
 
 impl Default for Prefs {
@@ -152,6 +154,7 @@ impl Default for Prefs {
             backup_snoozed_at: 0,
             backup_reminder_days: 30,
             website_icons: true,
+            active_profile: 0,
         }
     }
 }
@@ -182,6 +185,130 @@ pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>
 pub static PASSKEY: GlobalSignal<Option<extension::PasskeyRequest>> = Signal::global(|| None);
 
 /// Load preferences and decide the first screen.
+/// Profiles on this device: the apps keep up to two accounts side by side,
+/// for example a personal one and one for work on another server, each with
+/// its own storage, Secret Key and biometric unlock. Profile 0 uses the
+/// storage keys from before there were profiles.
+pub const MAX_PROFILES: usize = 2;
+/// Not in the web vault, which belongs to its server, nor in the browser
+/// extension.
+pub const MULTI_PROFILE: bool = cfg!(not(target_arch = "wasm32"));
+/// The profile shown.
+pub static SLOT: GlobalSignal<usize> = Signal::global(|| 0);
+/// The other profile while it stays unlocked in the background, so
+/// switching back is instant. Locking locks it too.
+pub static PARKED: GlobalSignal<Option<(usize, Session)>> = Signal::global(|| None);
+
+/// The storage key of a profile's `base` record ("profile", "profile-2").
+fn slot_key(base: &str, slot: usize) -> String {
+    if slot == 0 {
+        base.to_string()
+    } else {
+        format!("{base}-{}", slot + 1)
+    }
+}
+
+fn active_key(base: &str) -> String {
+    slot_key(base, *SLOT.peek())
+}
+
+pub fn load_profile_in(slot: usize) -> Option<Profile> {
+    let json = platform::storage().read(&slot_key(PROFILE_KEY, slot)).ok().flatten()?;
+    Profile::from_json(&json).ok()
+}
+
+/// Whether a profile is set up in `slot` (without reading the whole vault).
+pub fn profile_exists(slot: usize) -> bool {
+    platform::storage().read(&slot_key(DEVICE_KEY, slot)).ok().flatten().is_some()
+}
+
+/// The other profile on this device, if there is one.
+pub fn other_profile() -> Option<usize> {
+    let active = *SLOT.peek();
+    (0..MAX_PROFILES).find(|slot| *slot != active && MULTI_PROFILE && profile_exists(*slot))
+}
+
+/// A profile as the profile menu and the lock screen show it.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ProfileEntry {
+    pub slot: usize,
+    pub name: String,
+    pub email: String,
+    /// Only known while the profile is unlocked (it is encrypted).
+    pub photo: Option<String>,
+    pub active: bool,
+}
+
+pub fn profiles() -> Vec<ProfileEntry> {
+    let active = *SLOT.peek();
+    (0..MAX_PROFILES)
+        .filter(|slot| (*slot == active || MULTI_PROFILE) && profile_exists(*slot))
+        .filter_map(|slot| {
+            let (name, email, photo) = if slot == active && SESSION.peek().is_some() {
+                let session = SESSION.peek();
+                let s = session.as_ref()?;
+                (s.account().name.clone(), s.account().email.clone(), s.avatar())
+            } else if let Some((_, s)) = PARKED.peek().as_ref().filter(|(p, _)| *p == slot) {
+                (s.account().name.clone(), s.account().email.clone(), s.avatar())
+            } else {
+                let p = load_profile_in(slot)?;
+                (p.account.name, p.account.email, None)
+            };
+            Some(ProfileEntry { slot, name, email, photo, active: slot == active })
+        })
+        .collect()
+}
+
+/// Show another profile: the open one stays unlocked in the background; the
+/// other one opens unlocked if it was, else on its lock screen (or, for an
+/// empty slot, on the welcome screen to add a profile).
+pub fn switch_profile(slot: usize) {
+    let current = *SLOT.peek();
+    if !MULTI_PROFILE || slot >= MAX_PROFILES || slot == current {
+        return;
+    }
+    let open = SESSION.write().take();
+    let parked = PARKED.write().take();
+    if let Some(session) = open {
+        *PARKED.write() = Some((current, session));
+    }
+    reset_view();
+    *SLOT.write() = slot;
+    PREFS.write().active_profile = slot;
+    save_prefs();
+    match parked {
+        Some((s, session)) if s == slot => {
+            *SESSION.write() = Some(session);
+            *PHASE.write() = Phase::Unlocked;
+            touch();
+            request_sync();
+        }
+        _ => {
+            crate::components::onboarding::offer_biometric_again();
+            *PHASE.write() = if profile_exists(slot) { Phase::Locked } else { Phase::Welcome };
+        }
+    }
+}
+
+/// Start adding a second profile (create an account or sign in).
+pub fn add_profile() {
+    if let Some(free) = (0..MAX_PROFILES).find(|slot| !profile_exists(*slot)) {
+        switch_profile(free);
+    }
+}
+
+/// Forget what the screen showed of a profile.
+fn reset_view() {
+    *EDITING.write() = None;
+    *SELECTED.write() = None;
+    clear_search();
+    *MODAL.write() = None;
+    *NAV.write() = Nav::All;
+    *BREACHES.write() = None;
+    *SYNC.write() = SyncStatus::default();
+    *PANE.write() = Pane::List;
+}
+
 pub fn init() {
     let prefs: Prefs = platform::storage()
         .read(PREFS_KEY)
@@ -190,6 +317,14 @@ pub fn init() {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     *LANG.write() = prefs.lang.unwrap_or_else(|| Lang::from_code(&platform::system_language()));
+    if MULTI_PROFILE {
+        let wanted = prefs.active_profile.min(MAX_PROFILES - 1);
+        *SLOT.write() = if profile_exists(wanted) {
+            wanted
+        } else {
+            (0..MAX_PROFILES).find(|slot| profile_exists(*slot)).unwrap_or(0)
+        };
+    }
     *PREFS.write() = prefs;
     let has_account = load_profile().is_some() && device_secrets().is_some();
     if !has_account {
@@ -259,13 +394,18 @@ pub fn set_lang(lang: Lang) {
     save_prefs();
 }
 
+/// The profile shown, as stored (locked).
 pub fn load_profile() -> Option<Profile> {
-    let json = platform::storage().read(PROFILE_KEY).ok().flatten()?;
-    Profile::from_json(&json).ok()
+    load_profile_in(*SLOT.peek())
+}
+
+/// Store the profile shown.
+pub fn save_profile(profile: &Profile) -> Result<(), String> {
+    platform::storage().write(&active_key(PROFILE_KEY), &profile.to_json()).map_err(|e| e.to_string())
 }
 
 pub fn device_secrets() -> Option<DeviceSecrets> {
-    let json = platform::storage().read(DEVICE_KEY).ok().flatten()?;
+    let json = platform::storage().read(&active_key(DEVICE_KEY)).ok().flatten()?;
     DeviceSecrets::from_json(&json).ok()
 }
 
@@ -276,10 +416,14 @@ pub fn secret_key() -> Option<SecretKey> {
 /// Store a brand new account on this device and open it.
 pub fn adopt_session(session: Session, sk: &SecretKey) -> Result<(), String> {
     let acc = session.account();
+    // The same e-mail address on two servers is fine; the same account twice is not.
+    if other_profile().and_then(load_profile_in).is_some_and(|p| p.account.id == acc.id) {
+        return Err(t("profiles.already_here").to_string());
+    }
     platform::storage()
-        .write(DEVICE_KEY, &DeviceSecrets::new(&acc.id, &acc.email, sk).to_json())
+        .write(&active_key(DEVICE_KEY), &DeviceSecrets::new(&acc.id, &acc.email, sk).to_json())
         .map_err(|e| e.to_string())?;
-    platform::storage().write(PROFILE_KEY, &session.profile().to_json()).map_err(|e| e.to_string())?;
+    save_profile(session.profile())?;
     *SESSION.write() = Some(session);
     *NAV.write() = Nav::All;
     *SELECTED.write() = None;
@@ -292,7 +436,7 @@ pub fn adopt_session(session: Session, sk: &SecretKey) -> Result<(), String> {
 pub fn persist() {
     let json = SESSION.read().as_ref().map(|s| s.profile().to_json());
     if let Some(json) = json {
-        if let Err(e) = platform::storage().write(PROFILE_KEY, &json) {
+        if let Err(e) = platform::storage().write(&active_key(PROFILE_KEY), &json) {
             toast_err(&format!("{}: {e}", t("err.save")));
         }
     }
@@ -468,21 +612,16 @@ pub fn lock() {
         dioxus::core::spawn_forever(extension::forget_unlock());
     }
     *SESSION.write() = None;
-    *EDITING.write() = None;
-    *SELECTED.write() = None;
-    clear_search();
-    *MODAL.write() = None;
-    *NAV.write() = Nav::All;
-    *BREACHES.write() = None;
-    *SYNC.write() = SyncStatus::default();
-    *PANE.write() = Pane::List;
+    // Locking locks every profile.
+    *PARKED.write() = None;
+    reset_view();
     *PHASE.write() = if load_profile().is_some() { Phase::Locked } else { Phase::Welcome };
 }
 
 const BIOMETRIC_KEY: &str = "biometric";
 
 fn stored_biometric_unlock() -> Option<BiometricUnlock> {
-    let json = platform::storage().read(BIOMETRIC_KEY).ok().flatten()?;
+    let json = platform::storage().read(&active_key(BIOMETRIC_KEY)).ok().flatten()?;
     BiometricUnlock::from_json(&json).ok()
 }
 
@@ -493,7 +632,7 @@ pub fn biometric_unlock() -> Option<BiometricUnlock> {
 }
 
 pub fn save_biometric_unlock(config: &BiometricUnlock) {
-    let _ = platform::storage().write(BIOMETRIC_KEY, &config.to_json());
+    let _ = platform::storage().write(&active_key(BIOMETRIC_KEY), &config.to_json());
 }
 
 /// Turn biometric unlock off and let the operating system forget the key.
@@ -501,7 +640,7 @@ pub fn disable_biometric_unlock() {
     if let Some(config) = stored_biometric_unlock() {
         biometric::delete_device_key(&config.account_id);
     }
-    let _ = platform::storage().delete(BIOMETRIC_KEY);
+    let _ = platform::storage().delete(&active_key(BIOMETRIC_KEY));
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     crate::apple_autofill::clear();
 }
@@ -521,13 +660,33 @@ pub fn with_kind(text: &str, kind: biometric::Kind) -> String {
     text.replace("{kind}", kind.label())
 }
 
-/// Remove the account from this device.
+/// Remove the profile shown from this device; the other one, if any, stays.
 pub fn forget_device() {
     disable_biometric_unlock();
-    let _ = platform::storage().delete(PROFILE_KEY);
-    let _ = platform::storage().delete(DEVICE_KEY);
-    lock();
-    *PHASE.write() = Phase::Welcome;
+    let _ = platform::storage().delete(&active_key(PROFILE_KEY));
+    let _ = platform::storage().delete(&active_key(DEVICE_KEY));
+    *SESSION.write() = None;
+    reset_view();
+    match other_profile() {
+        Some(other) => {
+            // Keep the other profile as it was (unlocked or not).
+            let parked = PARKED.write().take();
+            *SLOT.write() = other;
+            PREFS.write().active_profile = other;
+            save_prefs();
+            match parked {
+                Some((slot, session)) if slot == other => {
+                    *SESSION.write() = Some(session);
+                    *PHASE.write() = Phase::Unlocked;
+                }
+                _ => *PHASE.write() = Phase::Locked,
+            }
+        }
+        None => {
+            lock();
+            *PHASE.write() = Phase::Welcome;
+        }
+    }
 }
 
 /// Days between "Later" and the next backup reminder.
@@ -595,14 +754,18 @@ pub fn request_sync() {
     }
 }
 
-struct GlobalSession;
+/// The open session for a sync, bound to its account: after a switch to
+/// the other profile (or locking) the sync stops instead of touching it.
+struct GlobalSession {
+    account_id: String,
+}
 
 impl SessionAccess for GlobalSession {
     fn with_session<R>(&mut self, f: impl FnOnce(&mut Session) -> R) -> twosecret_client::Result<R> {
         let mut guard = SESSION.write();
         match guard.as_mut() {
-            Some(s) => Ok(f(s)),
-            None => Err(twosecret_client::Error::Protocol("locked".into())),
+            Some(s) if s.account().id == self.account_id => Ok(f(s)),
+            _ => Err(twosecret_client::Error::Protocol("locked".into())),
         }
     }
 }
@@ -629,7 +792,16 @@ pub async fn run_sync(show_result: bool) {
         s.running = true;
         s.requested = false;
     }
-    let result = twosecret_client::sync_with(&mut GlobalSession).await;
+    let Some(account_id) = SESSION.peek().as_ref().map(|s| s.account().id.clone()) else {
+        SYNC.write().running = false;
+        return;
+    };
+    let result = twosecret_client::sync_with(&mut GlobalSession { account_id: account_id.clone() }).await;
+    // Switched to the other profile meanwhile: its status is not ours.
+    if SESSION.peek().as_ref().is_none_or(|s| s.account().id != account_id) {
+        SYNC.write().running = false;
+        return;
+    }
     let mut status = SYNC.write();
     status.running = false;
     match result {
@@ -726,6 +898,30 @@ pub fn fill_item(id: &str) {
 }
 
 pub fn install_session(session: Session) {
+    // Only over the same account (the other profile may be shown by now).
+    if SESSION.peek().as_ref().is_some_and(|s| s.account().id != session.account().id) {
+        return;
+    }
     *SESSION.write() = Some(session);
     persist();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_storage_keys() {
+        // The first profile keeps the keys from before there were profiles.
+        assert_eq!(slot_key(PROFILE_KEY, 0), PROFILE_KEY);
+        assert_eq!(slot_key(DEVICE_KEY, 1), format!("{DEVICE_KEY}-2"));
+        assert_eq!(slot_key(BIOMETRIC_KEY, 1), "biometric-2");
+        // Valid file names for the native storage.
+        let dir = std::env::temp_dir().join(format!("2secret-slots-{}", std::process::id()));
+        let storage = twosecret_core::storage::FileStorage::new(&dir).unwrap();
+        use twosecret_core::storage::Storage;
+        storage.write(&slot_key(PROFILE_KEY, 1), "{}").unwrap();
+        assert_eq!(storage.read(&slot_key(PROFILE_KEY, 1)).unwrap().as_deref(), Some("{}"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
