@@ -257,15 +257,15 @@ mod imp {
 
     pub(super) fn open_url_impl(url: &str) {
         #[cfg(target_os = "android")]
-        {
-            return crate::android::open_url(url);
+        crate::android::open_url(url);
+        // Through the operating system, like Dioxus does for links: the
+        // webview's window.open only works during a click, and this runs
+        // after the click went through Rust, so macOS and iOS (WKWebView)
+        // and Linux (WebKitGTK) silently ignored it.
+        #[cfg(not(target_os = "android"))]
+        if let Err(e) = webbrowser::open(url) {
+            eprintln!("2Secret: could not open {url}: {e}");
         }
-        #[allow(unreachable_code)]
-        let js = format!(
-            "window.open({}, '_blank', 'noopener,noreferrer');",
-            serde_json::to_string(url).unwrap_or_default()
-        );
-        let _ = dioxus::document::eval(&js);
     }
 }
 

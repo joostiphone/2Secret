@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Links in the app (an item's websites, *What's new*, the project page) open
+  in the browser on macOS, iOS and Linux; clicking them did nothing there.
 - AutoFill on the Mac: Safari and other apps fill passwords and sign in with
   passkeys from 2Secret after Touch ID, without a browser extension, like on
   iPhone and iPad. Turn on unlocking with Touch ID in 2Secret, then 2Secret
