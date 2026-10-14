@@ -52,6 +52,22 @@ run it as root with the same options.
 After a minute `https://sync.2secret.app/api/v1/health` answers, and the web
 vault opens at `https://sync.2secret.app`.
 
+### cloudflared in another container
+
+If cloudflared already runs in a container of its own, leave out
+`--tunnel-token` and let 2Secret listen on its network address, believing
+the client address only from the cloudflared container:
+
+```sh
+bash create-lxc.sh --listen 0.0.0.0:8743 --trusted-proxy <cloudflared container IP>
+```
+
+Point the public hostname at `http://<2Secret container IP>:8743` and give
+both containers a fixed address (`--ip`, or a DHCP reservation). Without
+`--trusted-proxy` every visitor counts as the cloudflared container, so
+`--signups-per-ip` would apply to everyone together. Optionally allow port
+8743 only from the cloudflared container with the Proxmox firewall.
+
 ## 3. Settings and limits
 
 `install.sh` writes `/etc/2secret/server.env`; change it and run
@@ -63,7 +79,9 @@ vault opens at `https://sync.2secret.app`.
 | `--storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | `100` | Storage per account for the vaults it owns (shared vaults count for their owner); `0` = no limit |
 | `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | `5` | New accounts per address per day (IPv6 per /64) |
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | none | No new accounts beyond this number |
-| `--ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | `CF-Connecting-IP` | Where the client's address comes from; only believed from a proxy on the machine itself |
+| `--ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | `CF-Connecting-IP` | Where the client's address comes from; only believed from a proxy on the machine itself or a `--trusted-proxy` |
+| `--listen` | `TWOSECRET_BIND` | `127.0.0.1:8743` | Address to listen on |
+| `--trusted-proxy` | `TWOSECRET_TRUSTED_PROXIES` | none | Proxies on other machines whose `--ip-header` is believed |
 | `--no-web` | `TWOSECRET_WEB_DIR` | web vault on | Serve the web vault on the same address |
 
 A sync that would exceed the storage limit stores nothing of the overflow:

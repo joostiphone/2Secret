@@ -12,15 +12,18 @@
 #   --storage-mb N        Storage per account in MB (default 100, 0 = no limit)
 #   --signups-per-ip N    New accounts per address per day (default 5, 0 = no limit)
 #   --max-accounts N      Accept no new accounts after N (default: no limit)
-#   --ip-header NAME      Header with the client's address, set by the proxy on
-#                         this machine (default CF-Connecting-IP; "none" if there
-#                         is no such proxy)
+#   --ip-header NAME      Header with the client's address, set by the proxy
+#                         (default CF-Connecting-IP; "none" if there is no proxy)
+#   --listen ADDR         Address to listen on (default 127.0.0.1:8743). With
+#                         cloudflared in another container: 0.0.0.0:8743
+#   --trusted-proxy IPS   Proxies on other machines whose --ip-header is believed,
+#                         comma separated, e.g. the cloudflared container's address
 #   --no-web              Do not serve the web vault
 #   --no-auto-update      Do not install new versions automatically
 #   --update              Only update an installed server (the daily timer)
 #   --download-only DIR   Download and verify a release into DIR, change nothing
 #
-# Sets up: the server as a systemd service on 127.0.0.1:8743 with its data in
+# Sets up: the server as a systemd service (127.0.0.1:8743) with its data in
 # /var/lib/2secret, its settings in /etc/2secret/server.env, a database backup
 # every night in /var/backups/2secret (kept 14 days), signed automatic updates
 # every night, and optionally cloudflared.
@@ -39,6 +42,7 @@ SELF=/usr/local/sbin/2secret-install
 
 tunnel_token="" version=latest signups=open invite_codes="" storage_mb=100 signups_per_ip=5
 max_accounts="" ip_header=CF-Connecting-IP web=1 auto_update=1 mode=install download_dir=""
+listen=127.0.0.1:8743 trusted_proxies=""
 
 die() {
   echo "error: $*" >&2
@@ -56,6 +60,8 @@ while [ $# -gt 0 ]; do
     --signups-per-ip) signups_per_ip="${2:?}" && shift ;;
     --max-accounts) max_accounts="${2:?}" && shift ;;
     --ip-header) ip_header="${2:?}" && shift ;;
+    --listen) listen="${2:?}" && shift ;;
+    --trusted-proxy) trusted_proxies="${2:?}" && shift ;;
     --no-web) web=0 ;;
     --no-auto-update) auto_update=0 ;;
     --update) mode=update ;;
@@ -203,7 +209,7 @@ say "Writing $CONF"
 {
   echo "# Settings of the 2Secret server (2secret-server --help). After a change:"
   echo "#   systemctl restart 2secret-server"
-  echo "TWOSECRET_BIND=127.0.0.1:8743"
+  echo "TWOSECRET_BIND=$listen"
   echo "TWOSECRET_DATA_DIR=$DATA"
   [ "$web" = 1 ] && echo "TWOSECRET_WEB_DIR=$WEB"
   echo "TWOSECRET_SIGNUPS=$signups"
@@ -212,6 +218,7 @@ say "Writing $CONF"
   [ "$signups_per_ip" = 0 ] || echo "TWOSECRET_SIGNUPS_PER_IP=$signups_per_ip"
   [ -z "$max_accounts" ] || echo "TWOSECRET_MAX_ACCOUNTS=$max_accounts"
   [ "$ip_header" = none ] || echo "TWOSECRET_CLIENT_IP_HEADER=$ip_header"
+  [ -z "$trusted_proxies" ] || echo "TWOSECRET_TRUSTED_PROXIES=$trusted_proxies"
   echo "RUST_LOG=info,tower_http=warn"
 } > "$CONF"
 chown root:2secret "$CONF" && chmod 0640 "$CONF"
@@ -324,8 +331,12 @@ if [ -n "$tunnel_token" ]; then
 fi
 
 say "Checking the server"
+# Where this machine reaches the server: 0.0.0.0 and [::] listen on every
+# address, loopback included.
+local_addr="$listen"
+case "$listen" in 0.0.0.0:*) local_addr="127.0.0.1:${listen##*:}" ;; "[::]":*) local_addr="[::1]:${listen##*:}" ;; esac
 for _ in $(seq 30); do
-  if health="$(curl -fsS http://127.0.0.1:8743/api/v1/health 2> /dev/null)"; then
+  if health="$(curl -fsS "http://$local_addr/api/v1/health" 2> /dev/null)"; then
     echo "$health"
     echo
     echo "2Secret $(installed_version) is running."

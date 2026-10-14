@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Server: `--trusted-proxies` (`TWOSECRET_TRUSTED_PROXIES`) believes the
+  client address header from reverse proxies on other machines, such as
+  cloudflared in another container, so limits per address keep working.
+  `deploy/proxmox/install.sh` has `--listen` and `--trusted-proxy` for it.
+
 ## 1.4.1
 
 - The apps offer the 2Secret server (`sync.2secret.app`) once it runs. Until

@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Parser;
+use twosecret_server::client_ip::TrustedProxy;
 use twosecret_server::{AppState, Config, SignupMode};
 
 /// 2Secret sync server – self-hosted, zero-knowledge storage for your vaults.
@@ -49,11 +50,18 @@ struct Args {
     #[arg(long, env = "TWOSECRET_SIGNUPS_PER_IP")]
     signups_per_ip: Option<u32>,
 
-    /// Header with the client's address, set by a reverse proxy on this
-    /// machine: `CF-Connecting-IP` (Cloudflare Tunnel), `X-Forwarded-For`
-    /// (Caddy, nginx) or `X-Real-IP`. Believed only for local connections.
+    /// Header with the client's address, set by a reverse proxy:
+    /// `CF-Connecting-IP` (Cloudflare Tunnel), `X-Forwarded-For` (Caddy,
+    /// nginx) or `X-Real-IP`. Believed only for connections from this
+    /// machine and from --trusted-proxies.
     #[arg(long, env = "TWOSECRET_CLIENT_IP_HEADER")]
     client_ip_header: Option<String>,
+
+    /// Reverse proxies on other machines whose client address header is
+    /// believed, e.g. cloudflared in another container (comma separated
+    /// addresses or networks: `10.0.0.5,192.168.1.0/24`).
+    #[arg(long, env = "TWOSECRET_TRUSTED_PROXIES", value_delimiter = ',')]
+    trusted_proxies: Vec<TrustedProxy>,
 }
 
 #[tokio::main]
@@ -77,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
         account_quota_bytes: args.account_storage_mb.map(|mb| mb.saturating_mul(1_000_000)),
         signups_per_ip: args.signups_per_ip,
         client_ip_header: args.client_ip_header.filter(|h| !h.trim().is_empty()),
+        trusted_proxies: args.trusted_proxies,
         ..Config::default()
     };
     if let Some(dir) = &args.web_dir {
@@ -97,6 +106,10 @@ async fn main() -> anyhow::Result<()> {
         state.config.signups_per_ip.map(|n| format!("{n} sign-ups per address per day")),
         state.config.max_accounts.map(|n| format!("at most {n} accounts")),
         state.config.client_ip_header.as_ref().map(|h| format!("client address from {h}")),
+        (!state.config.trusted_proxies.is_empty()).then(|| {
+            let list: Vec<String> = state.config.trusted_proxies.iter().map(ToString::to_string).collect();
+            format!("trusted proxies {}", list.join(", "))
+        }),
     ]
     .into_iter()
     .flatten()

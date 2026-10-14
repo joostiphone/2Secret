@@ -58,8 +58,12 @@ pub struct Config {
     pub signups_per_ip: Option<u32>,
     /// Header with the client's address, set by a reverse proxy on this
     /// machine (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`). Only
-    /// believed for connections from the loopback interface.
+    /// believed for connections from the loopback interface and from
+    /// `trusted_proxies`.
     pub client_ip_header: Option<String>,
+    /// Reverse proxies on other machines (cloudflared in another container)
+    /// whose `client_ip_header` is believed.
+    pub trusted_proxies: Vec<client_ip::TrustedProxy>,
 }
 
 impl Default for Config {
@@ -76,6 +80,7 @@ impl Default for Config {
             account_quota_bytes: None,
             signups_per_ip: None,
             client_ip_header: None,
+            trusted_proxies: vec![],
         }
     }
 }

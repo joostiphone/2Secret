@@ -73,7 +73,8 @@ Every option can be given as a command line flag or environment variable.
 | `--account-storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | – | Storage per account for the vaults it owns; what does not fit stays on the device |
 | `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | – | New accounts per client address per day (IPv6: per /64) |
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | – | Accept no new accounts beyond this number |
-| `--client-ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | – | Header with the client's address from a proxy on the same machine: `X-Forwarded-For` (Caddy, nginx), `CF-Connecting-IP` (Cloudflare Tunnel) |
+| `--client-ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | – | Header with the client's address from a proxy on the same machine or a trusted one: `X-Forwarded-For` (Caddy, nginx), `CF-Connecting-IP` (Cloudflare Tunnel) |
+| `--trusted-proxies` | `TWOSECRET_TRUSTED_PROXIES` | – | Proxies on other machines whose header is believed, e.g. cloudflared in another container: `10.0.0.5` or `192.168.1.0/24`, comma separated |
 
 Logging is controlled with `RUST_LOG` (e.g. `RUST_LOG=info`).
 

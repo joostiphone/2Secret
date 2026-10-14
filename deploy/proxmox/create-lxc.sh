@@ -97,5 +97,9 @@ pct exec "$id" -- /root/2secret-install.sh "${install_args[@]}"
 
 address="$(pct exec "$id" -- hostname -I | awk '{ print $1 }')"
 echo
-echo "Container $id ($hostname, $address) runs 2Secret on port 8743 (only inside the container)."
+case " ${install_args[*]} " in
+  *" --listen "*) where="on $address:8743" ;;
+  *) where="on port 8743 (only inside the container)" ;;
+esac
+echo "Container $id ($hostname, $address) runs 2Secret $where."
 echo "Shell: pct enter $id"
