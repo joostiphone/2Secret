@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.4.2
 
+- The 2Secret server `sync.2secret.app` runs: the apps offer it again, and
+  it is the default when creating an account, signing in or connecting.
 - Server: `--trusted-proxies` (`TWOSECRET_TRUSTED_PROXIES`) believes the
   client address header from reverse proxies on other machines, such as
   cloudflared in another container, so limits per address keep working.

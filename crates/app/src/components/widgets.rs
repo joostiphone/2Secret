@@ -276,9 +276,9 @@ pub enum ServerChoice {
     Local,
 }
 
-/// Whether the apps offer the 2Secret server. Off until `sync.2secret.app`
-/// runs; a web vault served by it always offers it.
-const OFFICIAL_SERVER_LIVE: bool = false;
+/// Whether the apps offer the 2Secret server (`sync.2secret.app`). When off,
+/// only a web vault served by it offers it.
+const OFFICIAL_SERVER_LIVE: bool = true;
 
 fn is_official(url: &str) -> bool {
     twosecret_client::normalize_server_url(url) == twosecret_client::OFFICIAL_SERVER
