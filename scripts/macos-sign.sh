@@ -217,13 +217,14 @@ fi
 [ "$autofill" = 1 ] || sign --deep "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
-# Notarize the app, then the disk image, which also has a ticket for the app
-# inside. When Apple is still busy with the app, the disk image only gets
-# submitted.
+# Notarize the app (the first submissions of a new team took Apple 45
+# minutes), then the disk image. The app inside it is what needs its ticket
+# stapled, for a first launch offline: the disk image only gets a short wait,
+# and when Apple is still busy with the app it only gets submitted.
 notarized=0
 if { [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ]; } || have_key; then
   ditto -c -k --keepParent "$app" "$work/app.zip"
-  if notarize "$work/app.zip" 1200; then
+  if notarize "$work/app.zip" 3600; then
     xcrun stapler staple "$app"
     notarized=1
   else
@@ -234,7 +235,7 @@ fi
 package
 codesign --force --timestamp --sign "$sha1" "$dmg"
 if [ "$notarized" = 1 ]; then
-  if notarize "$dmg" 1200; then
+  if notarize "$dmg" 600; then
     xcrun stapler staple "$dmg"
     spctl --assess --type open --context context:primary-signature --verbose "$dmg"
   fi
