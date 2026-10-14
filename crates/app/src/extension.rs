@@ -305,6 +305,9 @@ pub async fn answer_passkey(rid: &str, answer: PasskeyAnswer) {
         PasskeyAnswer::Fallback => serde_json::json!({ "fallback": true }),
         PasskeyAnswer::Error(name) => serde_json::json!({ "error": name }),
     };
+    // A new passkey must be stored before the window closes: the website
+    // keeps the public key either way.
+    crate::platform::flush().await;
     imp::answer(rid, payload.to_string()).await;
 }
 

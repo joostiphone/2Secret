@@ -143,6 +143,9 @@ mod imp {
     /// Nothing to prepare on native platforms.
     pub async fn prepare() {}
 
+    /// Writes are stored before `write` returns.
+    pub async fn flush() {}
+
     pub async fn sleep_ms(ms: u64) {
         tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
     }
@@ -394,6 +397,21 @@ mod imp {
         let keys: js_sys::Array = keys_future.await?.unchecked_into();
         let values: js_sys::Array = values_future.await?.unchecked_into();
         Ok(keys.iter().zip(values.iter()).filter_map(|(k, v)| Some((k.as_string()?, v.as_string()?))).collect())
+    }
+
+    /// Wait until earlier writes are stored: a read-only transaction starts
+    /// only after the read/write transactions created before it have
+    /// finished. A page that closes itself must wait, or the browser aborts
+    /// them.
+    pub async fn flush() {
+        let req = DB.with(|db| {
+            let db = db.borrow();
+            let tx = db.as_ref()?.transaction_with_str(STORE).ok()?;
+            tx.object_store(STORE).ok()?.count().ok()
+        });
+        if let Some(req) = req {
+            let _ = request(&req).await;
+        }
     }
 
     /// Load storage before the app starts (IndexedDB is asynchronous).
