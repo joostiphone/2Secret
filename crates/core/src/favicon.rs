@@ -42,10 +42,16 @@ impl WebsiteIcon {
     /// The image if it is a data URL of an image type the apps show; icons
     /// come from other people's items too, so this is checked on display.
     pub fn safe_image(&self) -> Option<&str> {
-        let rest = self.image.strip_prefix("data:")?;
-        let (mime, _) = rest.split_once(";base64,")?;
-        IMAGE_TYPES.contains(&mime).then_some(self.image.as_str())
+        is_image_data_url(&self.image).then_some(self.image.as_str())
     }
+}
+
+/// Whether a string is a `data:` URL of an image type the apps show (icons,
+/// profile photos).
+pub fn is_image_data_url(url: &str) -> bool {
+    url.strip_prefix("data:")
+        .and_then(|rest| rest.split_once(";base64,"))
+        .is_some_and(|(mime, data)| IMAGE_TYPES.contains(&mime) && !data.is_empty())
 }
 
 const IMAGE_TYPES: [&str; 6] = ["image/png", "image/x-icon", "image/gif", "image/jpeg", "image/webp", "image/svg+xml"];

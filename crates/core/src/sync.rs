@@ -34,6 +34,9 @@ pub struct SyncReport {
     pub vaults_removed: usize,
     /// True when local changes remain that need another round trip.
     pub needs_another_round: bool,
+    /// The profile photo was changed on another device.
+    #[serde(default)]
+    pub avatar_changed: bool,
 }
 
 impl SyncReport {
@@ -48,6 +51,7 @@ impl SyncReport {
         self.vaults_added += other.vaults_added;
         self.vaults_removed += other.vaults_removed;
         self.needs_another_round = other.needs_another_round;
+        self.avatar_changed |= other.avatar_changed;
     }
 }
 

@@ -79,6 +79,7 @@ bridge; `components/` the UI; `i18n.rs` English and Dutch strings.
 | `POST /logout` | ✓ | End this session |
 | `GET/PUT/DELETE /account` | ✓ | Account info, rename, delete |
 | `POST /account/password` | ✓ | Change master password (new salt, auth key, keyset) |
+| `PUT /account/avatar` | ✓ | Set or remove the profile photo (encrypted with the account key; returned by `GET /account` and at sign-in) |
 | `GET /devices`, `DELETE /devices/{id}` | ✓ | List and revoke sessions |
 | `GET /users/lookup?email=` | ✓ | Public key of another user (for sharing) |
 | `GET/POST /vaults` | ✓ | List vaults, create a vault |

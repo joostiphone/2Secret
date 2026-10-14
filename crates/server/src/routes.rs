@@ -9,7 +9,7 @@ use axum::{Json, Router};
 use rusqlite::params;
 use serde::Deserialize;
 use twosecret_core::api::*;
-use twosecret_core::crypto::{hkdf32, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
+use twosecret_core::crypto::{hkdf32, EncString, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
 use twosecret_core::profile::Role;
 use twosecret_core::util::{b64, normalize_email, now};
 
@@ -29,6 +29,7 @@ pub fn api_router() -> Router<AppState> {
         .route("/account", get(get_account).put(update_account).delete(delete_account))
         .route("/account/password", post(change_password))
         .route("/account/pq-key", put(set_pq_key))
+        .route("/account/avatar", put(set_avatar))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", delete(revoke_device))
         .route("/users/lookup", get(lookup_user))
@@ -108,8 +109,12 @@ fn account_info(a: &AccountRow) -> AccountInfo {
         created_at: a.created_at,
         storage_used: None,
         storage_quota: None,
+        avatar: None,
     }
 }
+
+/// Largest encrypted profile photo (the apps send a few KB).
+const MAX_AVATAR_LEN: usize = 96 * 1024;
 
 /// Vaults one account may own (each vault has its own metadata row).
 const MAX_OWNED_VAULTS: u64 = 1000;
@@ -263,7 +268,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
     let session_days = state.config.session_days;
     let device = device_name(req.device_name);
     let account_id = account.id.clone();
-    state
+    let avatar = state
         .db
         .run(move |conn| {
             let ts = now();
@@ -277,10 +282,13 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
                 ts,
                 ts + session_days * 86_400,
             )?;
-            Ok(())
+            Ok(db::avatar(conn, &account_id)?)
         })
         .await?;
-    Ok(Json(SessionResponse { token, account: account_info(&account) }))
+    // A new device gets the profile photo right away.
+    let mut info = account_info(&account);
+    info.avatar = avatar.and_then(|a| EncString::parse(&a).ok());
+    Ok(Json(SessionResponse { token, account: info }))
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +315,7 @@ async fn get_account(State(state): State<AppState>, auth: Auth) -> ApiResult<Jso
             let mut info = account_info(&account);
             info.storage_used = Some(db::storage_used(c, &auth.account_id)?);
             info.storage_quota = quota;
+            info.avatar = db::avatar(c, &auth.account_id)?.and_then(|a| EncString::parse(&a).ok());
             Ok(info)
         })
         .await?;
@@ -473,6 +482,21 @@ async fn lookup_user(
 }
 
 /// Publish the caller's ML-KEM-768 public key (post-quantum sharing).
+/// Set or remove the profile photo. It is encrypted with the account key;
+/// the server only keeps it for the account's other devices.
+async fn set_avatar(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<SetAvatarRequest>,
+) -> ApiResult<StatusCode> {
+    if req.avatar.as_ref().is_some_and(|a| a.len() > MAX_AVATAR_LEN) {
+        return Err(ApiError::bad_request("the photo is too large"));
+    }
+    let avatar = req.avatar.map(|a| a.to_string());
+    state.db.run(move |c| Ok(db::set_avatar(c, &auth.account_id, avatar.as_deref(), now())?)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn set_pq_key(
     State(state): State<AppState>,
     auth: Auth,

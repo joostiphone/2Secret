@@ -6,6 +6,7 @@
 mod android;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple_autofill;
+mod avatar;
 mod biometric;
 mod components;
 mod extension;

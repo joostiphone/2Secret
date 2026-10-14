@@ -77,6 +77,9 @@ pub struct AccountInfo {
     /// The server's storage limit per account, if it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage_quota: Option<u64>,
+    /// The profile photo, encrypted with the account key (servers from 1.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<EncString>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -97,6 +100,12 @@ pub struct ChangePasswordRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UpdateAccountRequest {
     pub name: String,
+}
+
+/// `PUT /account/avatar`: set (or with `None` remove) the profile photo.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SetAvatarRequest {
+    pub avatar: Option<EncString>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -32,6 +32,9 @@ pub mod aad {
     pub fn server_token(account_id: &str) -> Vec<u8> {
         format!("2secret/v1/server-token/{account_id}").into_bytes()
     }
+    pub fn avatar(account_id: &str) -> Vec<u8> {
+        format!("2secret/v1/avatar/{account_id}").into_bytes()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -103,6 +106,16 @@ pub struct AccountRecord {
     pub kdf: KdfParams,
     pub keyset: EncryptedKeyset,
     pub created_at: i64,
+    /// Profile photo: a `data:image/…` URL encrypted with the account key
+    /// (see [`crate::session::Session::avatar`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<EncString>,
+    /// The photo was changed on this device and not yet sent to the server.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub avatar_dirty: bool,
+    /// When this device last asked the server for the photo (not stored).
+    #[serde(skip)]
+    pub avatar_checked_at: i64,
 }
 
 /// Link to a 2Secret sync server.

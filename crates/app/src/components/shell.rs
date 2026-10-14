@@ -10,7 +10,7 @@ use crate::components::{
     watchtower::WatchtowerPage,
 };
 use crate::i18n::{category_name, t};
-use crate::icons::{category_icon, either, Icon, ItemAvatar, Logo};
+use crate::icons::{category_icon, either, vault_icon, AccountAvatar, Icon, ItemAvatar, Logo};
 use crate::platform;
 use crate::state::*;
 
@@ -147,7 +147,7 @@ fn Sidebar() -> Element {
     let session = SESSION.read();
     let Some(s) = session.as_ref() else { return rsx! {} };
     let account = s.account().clone();
-    let initial: String = account.name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    let photo = s.avatar();
     let all = s.item_count();
     let favorites = s.list(&ItemFilter { favorites_only: true, ..Default::default() }).len();
     let trash = s.list(&ItemFilter { trashed: true, ..Default::default() }).len();
@@ -201,7 +201,7 @@ fn Sidebar() -> Element {
 
     rsx! {
         div { class: "sidebar-head",
-            div { class: "lock-avatar", style: "width:34px;height:34px;font-size:15px;margin:0", "{initial}" }
+            AccountAvatar { name: account.name.clone(), photo, size: 34 }
             div { class: "who",
                 div { class: "n", "{account.name}" }
                 div { class: "e", "{account.email}" }
@@ -226,7 +226,7 @@ fn Sidebar() -> Element {
                 }
             }
             for v in vaults {
-                NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: either(v.is_shared(), "users", "vault"), label: v.name.clone(), count: v.item_count }
+                NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: vault_icon(&v.icon, v.is_shared()), label: v.name.clone(), count: v.item_count }
             }
             if !tags.is_empty() {
                 div { class: "nav-section", {t("nav.tags")} }

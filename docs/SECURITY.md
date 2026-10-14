@@ -120,7 +120,8 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Authentication key | only a server-side Argon2id hash of it |
 | Account keyset | encrypted (account key under MUK) |
 | Public keys (X25519, ML-KEM-768) | yes |
-| Vault names and descriptions | **no** (encrypted) |
+| Vault names, descriptions and icons | **no** (encrypted) |
+| Profile photo | **no** (encrypted with the account key) |
 | Item titles, usernames, passwords, URLs, notes, files | **no** (encrypted) |
 | Number of vaults/items, size class of each item (padded), modification times | yes (metadata) |
 | Who shares which vault with whom, and with which role | yes |

@@ -6662,12 +6662,14 @@ name = "twosecret-app"
 version = "1.4.2"
 dependencies = [
  "arboard",
+ "base64 0.22.1",
  "block2",
  "chrono",
  "core-foundation",
  "dioxus",
  "futures-channel",
  "gloo-timers",
+ "image",
  "jni 0.21.1",
  "js-sys",
  "ndk-context",

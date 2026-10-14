@@ -9,7 +9,7 @@ use crate::biometric;
 use crate::components::shell::relative_time;
 use crate::components::widgets::*;
 use crate::i18n::{t, Lang, LANG};
-use crate::icons::{either, Icon};
+use crate::icons::{either, vault_icon, AccountAvatar, Icon};
 use crate::platform;
 use crate::state::*;
 
@@ -64,6 +64,7 @@ fn AccountSection() -> Element {
     let session = SESSION.read();
     let Some(s) = session.as_ref() else { return rsx! {} };
     let account = s.account().clone();
+    let photo = s.avatar();
     let server = s.server().map(|l| l.url.clone());
     let fingerprint = s.public_keys().fingerprint();
     drop(session);
@@ -93,9 +94,36 @@ fn AccountSection() -> Element {
         div { class: "section",
             SectionTitle { text: t("settings.account") }
             div { class: "settings-row",
+                AccountAvatar { name: account.name.clone(), photo: photo.clone(), size: 44 }
                 div { class: "k",
                     div { class: "t", "{account.name}" }
                     div { class: "d", "{account.email}" }
+                }
+                label { class: "btn small", title: t("settings.photo_desc"),
+                    {either(photo.is_some(), t("settings.photo_change"), t("settings.photo_add"))}
+                    input { r#type: "file", accept: "image/*", class: "file-input",
+                        onchange: move |e| {
+                            let files = e.files();
+                            spawn(async move {
+                                let Some(f) = files.into_iter().next() else { return };
+                                let bytes = match f.read_bytes().await {
+                                    Ok(b) => b.to_vec(),
+                                    Err(err) => return toast_err(&err.to_string()),
+                                };
+                                match platform::run_heavy(move || crate::avatar::prepare(&bytes)).await {
+                                    Ok(url) => {
+                                        if mutate(|s| s.set_avatar(Some(&url))).is_some() {
+                                            toast(t("settings.photo_saved"));
+                                        }
+                                    }
+                                    Err(_) => toast_err(t("settings.photo_invalid")),
+                                }
+                            });
+                        }
+                    }
+                }
+                if photo.is_some() {
+                    button { class: "btn small", onclick: move |_| { mutate(|s| s.set_avatar(None)); }, {t("common.remove")} }
                 }
             }
             div { class: "settings-row",
@@ -465,7 +493,7 @@ fn VaultsSection() -> Element {
             SectionTitle { text: t("nav.vaults") }
             for v in vaults {
                 div { class: "settings-row", key: "{v.id}",
-                    Icon { name: either(v.is_shared(), "users", "vault"), size: 18 }
+                    Icon { name: vault_icon(&v.icon, v.is_shared()), size: 18 }
                     div { class: "k",
                         div { class: "t", "{v.name}" }
                         div { class: "d",

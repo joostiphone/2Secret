@@ -35,6 +35,9 @@ zeroize.workspace = true
 dioxus = { version = "0.7", default-features = false, features = ["lib", "launch", "logger"] }
 futures-channel = "0.3"
 chrono = "0.4"
+base64.workspace = true
+# Profile photos: read what people pick, write a small JPEG.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 arboard = { version = "3", optional = true, default-features = false }
 tokio = { version = "1", features = ["time", "rt"], optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Window", "Storage", "Navigator", "Document", "Element", "HtmlElement", "HtmlAnchorElement", "Location", "Clipboard", "Blob", "BlobPropertyBag", "Url", "Event", "EventTarget", "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "DomException"] }

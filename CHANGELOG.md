@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Profile photo: *Settings → Account → Add photo*. The app makes a small
+  square picture of it, encrypts it with your account key and syncs it to
+  your other devices through the new `PUT /account/avatar` (servers from
+  this version; with an older server it stays on the device).
+- Vault icons: choose an icon when creating or editing a vault. It is part
+  of the vault's encrypted details, so everyone with access sees it.
 - Website icons: logins show the icon of their website. The apps fetch it
   straight from the website when you save a login (over HTTPS, public host
   names only, no icon service) and keep it encrypted with the login, so

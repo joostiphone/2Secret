@@ -141,6 +141,14 @@ impl Db {
         if !has_key_rev {
             conn.execute("ALTER TABLE vaults ADD COLUMN key_rev INTEGER NOT NULL DEFAULT 0", [])?;
         }
+        // Added in 1.5: the encrypted profile photo.
+        let has_avatar: bool =
+            conn.query_row("SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'avatar'", [], |r| {
+                r.get::<_, i64>(0).map(|n| n > 0)
+            })?;
+        if !has_avatar {
+            conn.execute("ALTER TABLE accounts ADD COLUMN avatar TEXT", [])?;
+        }
         conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')", [])?;
         Ok(Self { conn: Arc::new(Mutex::new(conn)) })
     }
@@ -198,6 +206,18 @@ pub fn account_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Opti
 
 pub fn account_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<AccountRow>> {
     conn.query_row(&format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"), [id], map_account).optional()
+}
+
+/// An account's encrypted profile photo.
+pub fn avatar(conn: &Connection, account_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT avatar FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))
+        .optional()
+        .map(Option::flatten)
+}
+
+pub fn set_avatar(conn: &Connection, account_id: &str, avatar: Option<&str>, now: i64) -> rusqlite::Result<()> {
+    conn.execute("UPDATE accounts SET avatar = ?1, updated_at = ?2 WHERE id = ?3", params![avatar, now, account_id])?;
+    Ok(())
 }
 
 pub fn insert_account(conn: &Connection, a: &AccountRow, now: i64) -> rusqlite::Result<()> {

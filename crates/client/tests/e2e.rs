@@ -87,6 +87,34 @@ async fn signup_signin_sync_between_devices() {
 }
 
 #[tokio::test]
+async fn profile_photo_follows_the_account() {
+    let url = start_server(Config::default()).await;
+    let (mut laptop, sk) =
+        client::signup(&url, "Alice", "alice@example.com", PW, None, "laptop", "Personal", kdf()).await.unwrap();
+    let photo = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+    laptop.set_avatar(Some(photo)).unwrap();
+    client::sync(&mut laptop).await.unwrap();
+    assert_eq!(laptop.avatar_to_upload(), None, "sent");
+    // The server keeps only ciphertext.
+    let stored = laptop.profile().account.avatar.clone().unwrap();
+    assert!(!stored.as_str().contains("/9j/"));
+
+    // A new device has it right after signing in.
+    let mut phone = client::signin(&url, "alice@example.com", PW, &sk, "phone").await.unwrap();
+    assert_eq!(phone.avatar().as_deref(), Some(photo));
+
+    // Removed on the phone, gone on the laptop.
+    phone.set_avatar(None).unwrap();
+    client::sync(&mut phone).await.unwrap();
+    laptop.recheck_avatar();
+    let report = client::sync(&mut laptop).await.unwrap();
+    assert!(report.avatar_changed);
+    assert_eq!(laptop.avatar(), None);
+    // Not asked again within the hour.
+    assert!(!laptop.avatar_check_due());
+}
+
+#[tokio::test]
 async fn concurrent_edits_resolve() {
     let url = start_server(Config::default()).await;
     let (mut a, sk) = client::signup(&url, "Bob", "bob@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();

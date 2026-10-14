@@ -123,6 +123,9 @@ pub async fn signin_with_keys(server_url: &str, email: &str, keys: &DerivedKeys,
         kdf: info.kdf,
         keyset: info.keyset,
         created_at: info.created_at,
+        avatar: info.avatar,
+        avatar_dirty: false,
+        avatar_checked_at: twosecret_core::util::now(),
     };
     let mut session = Session::from_server_account(
         account,
@@ -308,7 +311,28 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     }
     total.needs_another_round = false;
     post_quantum_upkeep(&client, access).await?;
+    total.avatar_changed = avatar_upkeep(&client, access).await?;
     Ok(total)
+}
+
+/// Send a profile photo changed here, or (at most hourly) take one changed on
+/// another device. Servers from before 1.5 answer 404 or 405: the photo then
+/// stays on this device.
+async fn avatar_upkeep<A: SessionAccess>(client: &Client, access: &mut A) -> Result<bool> {
+    let unsupported = |e: &Error| e.is_not_found() || e.status() == Some(405);
+    if let Some(avatar) = access.with_session(|s| s.avatar_to_upload())? {
+        match client.set_avatar(&SetAvatarRequest { avatar: avatar.clone() }).await {
+            Ok(()) => access.with_session(|s| s.mark_avatar_uploaded(&avatar))?,
+            Err(e) if unsupported(&e) => {}
+            Err(e) => return Err(e),
+        }
+        return Ok(false);
+    }
+    if !access.with_session(|s| s.avatar_check_due())? {
+        return Ok(false);
+    }
+    let account = client.account().await?;
+    access.with_session(|s| s.apply_server_avatar(account.avatar))
 }
 
 /// Publish our ML-KEM key, and store vault keys that others shared with us

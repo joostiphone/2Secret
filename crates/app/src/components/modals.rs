@@ -7,7 +7,7 @@ use twosecret_core::profile::Role;
 
 use crate::components::widgets::*;
 use crate::i18n::{category_name, role_name, t};
-use crate::icons::{category_icon, either, Icon};
+use crate::icons::{category_icon, either, vault_icon, Icon, VAULT_ICONS};
 use crate::state::*;
 
 fn close() {
@@ -127,22 +127,26 @@ fn VaultFormModal(id: Option<String>) -> Element {
     let existing = id.as_ref().and_then(|id| SESSION.peek().as_ref().and_then(|s| s.vault(id)));
     let mut name = use_signal(|| existing.as_ref().map(|v| v.name.clone()).unwrap_or_default());
     let mut description = use_signal(|| existing.as_ref().map(|v| v.description.clone()).unwrap_or_default());
+    let shared = existing.as_ref().is_some_and(|v| v.is_shared());
+    let mut icon = use_signal(|| existing.as_ref().map(|v| vault_icon(&v.icon, v.is_shared())).unwrap_or("vault"));
     let title = if id.is_some() { t("vault.edit") } else { t("vault.new") };
     let id2 = id.clone();
     let save = move |_| {
-        let (n, d) = (name(), description());
+        let (n, d, i) = (name(), description(), icon());
         if n.trim().is_empty() {
             return;
         }
         match &id2 {
             Some(id) => {
                 let id = id.clone();
-                if mutate(|s| s.update_vault(&id, &n, &d, None)).is_some() {
+                if mutate(|s| s.update_vault(&id, &n, &d, Some(i))).is_some() {
                     close();
                 }
             }
             None => {
-                if let Some(new_id) = mutate(|s| s.create_vault(&n, &d)) {
+                let created =
+                    mutate(|s| s.create_vault(&n, &d).and_then(|id| s.update_vault(&id, &n, &d, Some(i)).map(|_| id)));
+                if let Some(new_id) = created {
                     *NAV.write() = Nav::Vault(new_id);
                     *SELECTED.write() = None;
                     *PANE.write() = Pane::List;
@@ -164,6 +168,22 @@ fn VaultFormModal(id: Option<String>) -> Element {
             div { class: "form-group",
                 label { class: "label", {t("vault.description")} }
                 input { class: "input", initial_value: "{description}", placeholder: t("common.optional"), oninput: move |e| description.set(e.value()) }
+            }
+            div { class: "form-group",
+                label { class: "label", {t("vault.icon")} }
+                div { class: "icon-grid", role: "radiogroup",
+                    for name in VAULT_ICONS {
+                        button { key: "{name}", r#type: "button", role: "radio",
+                            class: either(icon() == name, "icon-choice selected", "icon-choice"),
+                            aria_checked: icon() == name,
+                            onclick: move |_| icon.set(name),
+                            Icon { name, size: 18 }
+                        }
+                    }
+                }
+                if shared {
+                    div { class: "muted small", style: "margin-top:6px", {t("vault.icon_shared")} }
+                }
             }
         }
     }
@@ -221,7 +241,7 @@ fn MoveItemModal(id: String) -> Element {
                             }
                         }
                     },
-                    Icon { name: either(v.is_shared(), "users", "vault"), size: 20 }
+                    Icon { name: vault_icon(&v.icon, v.is_shared()), size: 20 }
                     div { div { class: "t", "{v.name}" } div { class: "d", "{v.item_count} {t(\"vault.items\")}" } }
                 }
             }

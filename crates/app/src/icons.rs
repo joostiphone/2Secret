@@ -173,6 +173,36 @@ pub fn either(cond: bool, a: &'static str, b: &'static str) -> &'static str {
     }
 }
 
+/// The icons people can give a vault (stored in the vault's encrypted
+/// metadata, so every member sees the same).
+pub const VAULT_ICONS: [&str; 20] = [
+    "vault",
+    "user",
+    "users",
+    "key",
+    "shield",
+    "star",
+    "globe",
+    "code",
+    "terminal",
+    "server",
+    "database",
+    "cloud",
+    "credit-card",
+    "bank",
+    "mail",
+    "smartphone",
+    "book",
+    "gift",
+    "award",
+    "folder",
+];
+
+/// A vault's icon: the one chosen for it, else a vault or, when shared, people.
+pub fn vault_icon(icon: &str, shared: bool) -> &'static str {
+    VAULT_ICONS.into_iter().find(|i| *i == icon).unwrap_or(if shared { "users" } else { "vault" })
+}
+
 pub fn category_icon(c: Category) -> &'static str {
     match c {
         Category::Login => "globe",
@@ -219,6 +249,27 @@ pub fn category_color(c: Category) -> &'static str {
         Category::Membership => "#d9480f",
         Category::RewardProgram => "#e8590c",
         Category::Document => "#868e96",
+    }
+}
+
+/// The account's profile photo, else the first letter of its name.
+#[component]
+pub fn AccountAvatar(
+    name: String,
+    #[props(default)] photo: Option<String>,
+    #[props(default = 34)] size: u32,
+) -> Element {
+    let style = format!("width:{size}px;height:{size}px;font-size:{}px;margin:0", size * 44 / 100);
+    match photo {
+        Some(photo) => rsx! {
+            img { class: "lock-avatar photo", src: "{photo}", alt: "", style, draggable: "false" }
+        },
+        None => {
+            let initial: String = name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+            rsx! {
+                div { class: "lock-avatar", style, "{initial}" }
+            }
+        }
     }
 }
 

@@ -268,6 +268,10 @@ impl Client {
         self.empty(Method::PUT, "/account/pq-key", Some(req)).await
     }
 
+    pub async fn set_avatar(&self, req: &SetAvatarRequest) -> Result<()> {
+        self.empty(Method::PUT, "/account/avatar", Some(req)).await
+    }
+
     pub async fn members(&self, vault_id: &str) -> Result<Vec<MemberDto>> {
         self.json(Method::GET, &format!("/vaults/{vault_id}/members"), None::<&()>).await
     }

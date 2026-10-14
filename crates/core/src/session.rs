@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{MemberDto, MemberKey, RotateVaultKeyRequest, RotatedItem};
 use crate::crypto::{
-    decrypt_json, derive_keys, encrypt, encrypt_json, AccountPublicKeys, DerivedKeys, EncString, EncryptedKeyset,
-    KdfParams, Keyset, PublicKey, SecretKey, SymmetricKey, WrappedKey,
+    decrypt, decrypt_json, derive_keys, encrypt, encrypt_json, AccountPublicKeys, DerivedKeys, EncString,
+    EncryptedKeyset, KdfParams, Keyset, PublicKey, SecretKey, SymmetricKey, WrappedKey,
 };
 use crate::item::{Category, Item, ItemSummary};
 use crate::passkey::Passkey;
@@ -26,6 +26,10 @@ use crate::{Error, Result};
 /// Minimum length of a master password (LastPass allowed 8 characters for
 /// years; 12 is today's common minimum).
 pub const MIN_PASSWORD_LEN: usize = 12;
+
+/// Largest profile photo (its `data:` URL); the apps make 128-pixel JPEGs of
+/// a few KB.
+pub const MAX_AVATAR_BYTES: usize = 48 * 1024;
 
 /// Minimum strength of a master password: "good" (3 of 4) on the zxcvbn scale.
 pub const MIN_PASSWORD_LEVEL: crate::strength::StrengthLevel = crate::strength::StrengthLevel::Good;
@@ -182,6 +186,9 @@ impl Session {
             kdf,
             keyset: keyset.encrypt(&keys.master_key),
             created_at: now(),
+            avatar: None,
+            avatar_dirty: false,
+            avatar_checked_at: 0,
         };
         let profile = Profile {
             format: PROFILE_FORMAT.into(),
@@ -917,6 +924,73 @@ impl Session {
         self.profile.account.name = name.trim().to_string();
     }
 
+    /// The profile photo, as a checked `data:image/…` URL.
+    pub fn avatar(&self) -> Option<String> {
+        let account = &self.profile.account;
+        let plain = decrypt(&self.keyset.account_key, account.avatar.as_ref()?, &aad::avatar(&account.id)).ok()?;
+        let url = String::from_utf8(plain.to_vec()).ok()?;
+        crate::favicon::is_image_data_url(&url).then_some(url)
+    }
+
+    /// Set (a `data:image/…` URL of at most [`MAX_AVATAR_BYTES`]) or remove
+    /// the profile photo. It is encrypted with the account key and goes to
+    /// the server with the next sync.
+    pub fn set_avatar(&mut self, image: Option<&str>) -> Result<()> {
+        let avatar = match image {
+            Some(url) if url.len() > MAX_AVATAR_BYTES || !crate::favicon::is_image_data_url(url) => {
+                return Err(Error::invalid("the photo is too large or not an image"));
+            }
+            Some(url) => {
+                Some(encrypt(&self.keyset.account_key, url.as_bytes(), &aad::avatar(&self.profile.account.id)))
+            }
+            None => None,
+        };
+        self.profile.account.avatar = avatar;
+        self.profile.account.avatar_dirty = true;
+        Ok(())
+    }
+
+    /// A photo change for the server: `Some(photo)` while one waits.
+    pub fn avatar_to_upload(&self) -> Option<Option<EncString>> {
+        let account = &self.profile.account;
+        account.avatar_dirty.then(|| account.avatar.clone())
+    }
+
+    /// The server has `sent`; done unless the photo changed again meanwhile.
+    pub fn mark_avatar_uploaded(&mut self, sent: &Option<EncString>) {
+        if &self.profile.account.avatar == sent {
+            self.profile.account.avatar_dirty = false;
+        }
+    }
+
+    /// Ask the server for the photo with the next sync.
+    pub fn recheck_avatar(&mut self) {
+        self.profile.account.avatar_checked_at = 0;
+    }
+
+    /// Whether to ask the server for the photo again (at most hourly).
+    pub fn avatar_check_due(&self) -> bool {
+        !self.profile.account.avatar_dirty && now() - self.profile.account.avatar_checked_at >= 3600
+    }
+
+    /// Take the server's photo (another device changed it), unless this
+    /// device has a change of its own waiting or it does not open with our
+    /// key. Returns whether the photo changed.
+    pub fn apply_server_avatar(&mut self, avatar: Option<EncString>) -> bool {
+        let account = &mut self.profile.account;
+        account.avatar_checked_at = now();
+        if account.avatar_dirty || account.avatar == avatar {
+            return false;
+        }
+        if let Some(enc) = &avatar {
+            if decrypt(&self.keyset.account_key, enc, &aad::avatar(&account.id)).is_err() {
+                return false;
+            }
+        }
+        account.avatar = avatar;
+        true
+    }
+
     /// Compute a master password change without applying it. Apply it with
     /// [`Session::commit_password_change`] (after the server accepted it).
     pub fn prepare_password_change(
@@ -1080,6 +1154,36 @@ pub(crate) mod tests {
         item.urls = vec!["https://gitlab.com".into()];
         s.update_item(item).unwrap();
         assert_eq!(s.item(&id).unwrap().icon, None);
+    }
+
+    #[test]
+    fn profile_photo() {
+        let (mut s, _) = new_session();
+        let photo = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+        assert_eq!(s.avatar(), None);
+        assert!(s.set_avatar(Some("data:text/html;base64,PGI+")).is_err());
+        assert!(s.set_avatar(Some(&format!("data:image/png;base64,{}", "A".repeat(MAX_AVATAR_BYTES)))).is_err());
+        s.set_avatar(Some(photo)).unwrap();
+        assert_eq!(s.avatar().as_deref(), Some(photo));
+        assert!(!s.profile().to_json().contains("/9j/4AAQ"), "the photo is encrypted");
+
+        // Waiting to be sent: the server's (older) photo does not replace it.
+        let sent = s.avatar_to_upload().unwrap();
+        assert!(sent.is_some());
+        assert!(!s.avatar_check_due());
+        assert!(!s.apply_server_avatar(None));
+        s.mark_avatar_uploaded(&sent);
+        assert_eq!(s.avatar_to_upload(), None);
+
+        // Another device removed it.
+        assert!(s.apply_server_avatar(None));
+        assert_eq!(s.avatar(), None);
+        // Something that does not open with our key is ignored.
+        let (other, _) = new_session();
+        let foreign = encrypt(&other.keyset.account_key, photo.as_bytes(), &aad::avatar(&s.account().id));
+        assert!(!s.apply_server_avatar(Some(foreign)));
+        assert!(s.apply_server_avatar(sent));
+        assert_eq!(s.avatar().as_deref(), Some(photo));
     }
 
     #[test]
