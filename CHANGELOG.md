@@ -1,28 +1,7 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
-- Profiles: the apps keep up to two accounts side by side, for example your
-  own and one for work on another server. Switch at the top of the sidebar
-  or on the lock screen; the profile you leave stays unlocked in the
-  background until the app locks, which locks both. Each profile has its own
-  Secret Key and its own biometric unlock. Not in the web vault or the
-  browser extension. On iOS and macOS AutoFill fills from the profile that
-  last wrote its logins with biometric unlock on.
-- Profile photo: *Settings → Account → Add photo*. The app makes a small
-  square picture of it, encrypts it with your account key and syncs it to
-  your other devices through the new `PUT /account/avatar` (servers from
-  this version; with an older server it stays on the device).
-- Vault icons: choose an icon when creating or editing a vault. It is part
-  of the vault's encrypted details, so everyone with access sees it.
-- Website icons: logins show the icon of their website. The apps fetch it
-  straight from the website when you save a login (over HTTPS, public host
-  names only, no icon service) and keep it encrypted with the login, so
-  other devices, the web vault and the browser extension show it too.
-  *Settings → Appearance → Website icons* turns it off and fetches icons for
-  the logins you already have.
-- Links in the app (an item's websites, *What's new*, the project page) open
-  in the browser on macOS, iOS and Linux; clicking them did nothing there.
 - AutoFill on the Mac: Safari and other apps fill passwords and sign in with
   passkeys from 2Secret after Touch ID, without a browser extension, like on
   iPhone and iPad. Turn on unlocking with Touch ID in 2Secret, then 2Secret
@@ -31,6 +10,31 @@
   extension (`macos/`) with Developer ID provisioning profiles from the App
   Store Connect API, and can notarize with that API key instead of an Apple
   ID. *Settings → Security* says where to turn AutoFill on (also on iOS).
+- The macOS app is signed with a Developer ID and notarized by Apple, so it
+  opens without allowing it under *Privacy & Security* first. macOS may ask
+  once for your login password to let the new version use its keychain item
+  for Touch ID unlock; choose *Always Allow*.
+- Profiles: the apps keep up to two accounts side by side, for example your
+  own and one for work on another server. Switch at the top of the sidebar
+  or on the lock screen; the profile you leave stays unlocked in the
+  background until the app locks, which locks both. Each profile has its own
+  Secret Key and its own biometric unlock. Not in the web vault or the
+  browser extension. On iOS and macOS AutoFill fills from the profile that
+  last wrote its logins with biometric unlock on.
+- Website icons: logins show the icon of their website. The apps fetch it
+  straight from the website when you save a login (over HTTPS, public host
+  names only, no icon service) and keep it encrypted with the login, so
+  other devices, the web vault and the browser extension show it too.
+  *Settings → Appearance → Website icons* turns it off and fetches icons for
+  the logins you already have.
+- Profile photo: *Settings → Account → Add photo*. The app makes a small
+  square picture of it, encrypts it with your account key and syncs it to
+  your other devices through the new `PUT /account/avatar` (servers from
+  this version; with an older server it stays on the device).
+- Vault icons: choose an icon when creating or editing a vault. It is part
+  of the vault's encrypted details, so everyone with access sees it.
+- Links in the app (an item's websites, *What's new*, the project page) open
+  in the browser on macOS, iOS and Linux; clicking them did nothing there.
 - Server: the limits forget client addresses and e-mail addresses as soon as
   their window has passed (a day for sign-ups, 15 minutes for failed
   sign-ins), instead of when the server restarts.
