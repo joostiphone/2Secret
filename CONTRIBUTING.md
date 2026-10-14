@@ -109,6 +109,11 @@ signed without AutoFill and only notarized with these two secrets:
 | `APPLE_ID` | The Apple ID of the developer account |
 | `APPLE_PASSWORD` | An app-specific password for that Apple ID (account.apple.com → *Sign-In and Security*) |
 
+Apple can take days to notarize the first submissions of a new team. The
+release waits at most 20 minutes for the app, then publishes it signed but
+not stapled; macOS finds the ticket online once Apple has accepted it, and
+until then asks to allow the app once under *Privacy & Security*.
+
 ### Signing the Android app
 
 Releases include the Android app only when a signing key is configured

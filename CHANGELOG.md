@@ -11,9 +11,11 @@
   Store Connect API, and can notarize with that API key instead of an Apple
   ID. *Settings → Security* says where to turn AutoFill on (also on iOS).
 - The macOS app is signed with a Developer ID and notarized by Apple, so it
-  opens without allowing it under *Privacy & Security* first. macOS may ask
-  once for your login password to let the new version use its keychain item
-  for Touch ID unlock; choose *Always Allow*.
+  opens without allowing it under *Privacy & Security* first (once Apple has
+  notarized it: the first submissions of a new developer account can take
+  Apple days, and the release no longer waits for that). macOS may ask once
+  for your login password to let the new version use its keychain item for
+  Touch ID unlock; choose *Always Allow*.
 - Profiles: the apps keep up to two accounts side by side, for example your
   own and one for work on another server. Switch at the top of the sidebar
   or on the lock screen; the profile you leave stays unlocked in the
@@ -35,6 +37,9 @@
   of the vault's encrypted details, so everyone with access sees it.
 - Links in the app (an item's websites, *What's new*, the project page) open
   in the browser on macOS, iOS and Linux; clicking them did nothing there.
+- Browser extension: a new passkey is stored before its window closes. The
+  window could close first, and then the website had the passkey but 2Secret
+  did not.
 - Server: the limits forget client addresses and e-mail addresses as soon as
   their window has passed (a day for sign-ups, 15 minutes for failed
   sign-ins), instead of when the server restarts.

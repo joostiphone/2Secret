@@ -37,6 +37,14 @@ have_key() {
   [ -n "${APP_STORE_CONNECT_KEY:-}" ] && [ -n "${APP_STORE_CONNECT_KEY_ID:-}" ] && [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]
 }
 
+json_field() {
+  python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1" 2> /dev/null || true
+}
+
+# Has Apple notarize a file, waiting at most $2 seconds. Returns 0 when Apple
+# accepted it, 1 while it is still in progress: the first submissions of a new
+# team can take Apple days. Gatekeeper then finds the ticket online once Apple
+# accepts it, only not stapled. Stops the build when Apple rejects the file.
 notarize() {
   local auth
   if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ]; then
@@ -44,16 +52,34 @@ notarize() {
   else
     auth=(--key "$work/AuthKey.p8" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID")
   fi
-  local out status id
-  out="$(xcrun notarytool submit "$1" "${auth[@]}" --wait --output-format json)" || true
+  local name out id status deadline=$((SECONDS + $2))
+  name="$(basename "$1")"
+  out="$(xcrun notarytool submit "$1" "${auth[@]}" --output-format json)" || true
   echo "$out"
-  status="$(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))' 2> /dev/null || true)"
-  if [ "$status" != "Accepted" ]; then
-    id="$(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))' 2> /dev/null || true)"
-    [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
-    echo "::error::Notarization of $(basename "$1") failed: $status"
+  id="$(echo "$out" | json_field id)"
+  if [ -z "$id" ]; then
+    echo "::error::$name could not be submitted for notarization"
     exit 1
   fi
+  while :; do
+    status="$(xcrun notarytool info "$id" "${auth[@]}" --output-format json 2> /dev/null | json_field status)"
+    case "$status" in
+      Accepted)
+        echo "Notarized: $name"
+        return 0
+        ;;
+      Invalid | Rejected)
+        xcrun notarytool log "$id" "${auth[@]}" || true
+        echo "::error::Notarization of $name failed: $status"
+        exit 1
+        ;;
+    esac
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "::warning::Apple has not finished notarizing $name (submission $id: ${status:-no answer}). It is not stapled; Gatekeeper finds the ticket online once Apple accepts it"
+      return 1
+    fi
+    sleep 30
+  done
 }
 
 package() {
@@ -191,18 +217,27 @@ fi
 [ "$autofill" = 1 ] || sign --deep "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
+# Notarize the app, then the disk image, which also has a ticket for the app
+# inside. When Apple is still busy with the app, the disk image only gets
+# submitted.
 notarized=0
 if { [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ]; } || have_key; then
   ditto -c -k --keepParent "$app" "$work/app.zip"
-  notarize "$work/app.zip"
-  xcrun stapler staple "$app"
-  notarized=1
+  if notarize "$work/app.zip" 1200; then
+    xcrun stapler staple "$app"
+    notarized=1
+  else
+    notarized=pending
+  fi
 fi
 
 package
 codesign --force --timestamp --sign "$sha1" "$dmg"
 if [ "$notarized" = 1 ]; then
-  notarize "$dmg"
-  xcrun stapler staple "$dmg"
-  spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+  if notarize "$dmg" 1200; then
+    xcrun stapler staple "$dmg"
+    spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+  fi
+elif [ "$notarized" = pending ]; then
+  notarize "$dmg" 0 || true
 fi
