@@ -296,16 +296,17 @@ pub fn persist() {
     refresh_autofill();
 }
 
-/// iOS: give the AutoFill extension the current logins and passkeys. Only
-/// while biometric unlock is on: the extension opens them with Face ID or
-/// Touch ID, and stops after the same 14 days without the master password.
+/// iOS and macOS: give the AutoFill extension the current logins and
+/// passkeys. Only while biometric unlock is on: the extension opens them with
+/// Face ID or Touch ID, and stops after the same 14 days without the master
+/// password.
 pub fn refresh_autofill() {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
         let Some(config) = biometric_unlock() else { return };
         let cache = SESSION.peek().as_ref().map(|s| s.autofill_cache(config.password_entered_at));
         if let Some(cache) = cache {
-            crate::ios_autofill::write(&cache);
+            crate::apple_autofill::write(&cache);
         }
     }
 }
@@ -443,8 +444,8 @@ pub fn disable_biometric_unlock() {
         biometric::delete_device_key(&config.account_id);
     }
     let _ = platform::storage().delete(BIOMETRIC_KEY);
-    #[cfg(target_os = "ios")]
-    crate::ios_autofill::clear();
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    crate::apple_autofill::clear();
 }
 
 /// The master password was just entered: biometric unlock keeps working for

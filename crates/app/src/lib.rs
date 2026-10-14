@@ -4,13 +4,13 @@
 
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+mod apple_autofill;
 mod biometric;
 mod components;
 mod extension;
 mod i18n;
 mod icons;
-#[cfg(target_os = "ios")]
-mod ios_autofill;
 mod platform;
 mod state;
 mod updater;

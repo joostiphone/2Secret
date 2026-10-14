@@ -129,3 +129,11 @@ app. iOS also gets the websites, user names and passkey IDs (never
 passwords or keys) for its suggestions above the keyboard. Turning Face ID
 unlock off removes all of it. AutoFill cannot save new passkeys; those are
 created with the browser extension and sync to the phone.
+
+The Mac works the same way (`macos/`, sharing `ios/AutoFill/Vault.swift`)
+with *Unlock with Touch ID*: the app group is
+`<Team ID>.io.github.joostiphone.twosecret` (on macOS app groups start with
+the Team ID), the key is in the data protection keychain under that access
+group, and the extension needs macOS 14. `scripts/macos-sign.sh` builds the
+extension into the Developer ID release; see CONTRIBUTING.md, *Signing the
+macOS app*.

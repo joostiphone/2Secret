@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- AutoFill on the Mac: Safari and other apps fill passwords and sign in with
+  passkeys from 2Secret after Touch ID, without a browser extension, like on
+  iPhone and iPad. Turn on unlocking with Touch ID in 2Secret, then 2Secret
+  in *System Settings → General → AutoFill & Passwords*. Needs macOS 14 and a
+  release signed with a Developer ID: the release workflow then adds the
+  extension (`macos/`) with Developer ID provisioning profiles from the App
+  Store Connect API, and can notarize with that API key instead of an Apple
+  ID. *Settings → Security* says where to turn AutoFill on (also on iOS).
 - Server: the limits forget client addresses and e-mail addresses as soon as
   their window has passed (a day for sign-ups, 15 minutes for failed
   sign-ins), instead of when the server restarts.

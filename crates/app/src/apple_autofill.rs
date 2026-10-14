@@ -1,9 +1,11 @@
-//! iOS: keeps the AutoFill extension's cache (`twosecret_core::autofill`) up
-//! to date while the vault is unlocked and Face ID / Touch ID unlock is on.
+//! iOS and macOS: keeps the AutoFill extension's cache
+//! (`twosecret_core::autofill`) up to date while the vault is unlocked and
+//! Face ID / Touch ID unlock is on. The extension (`ios/AutoFill`,
+//! `macos/AutoFill`) fills passwords and passkeys in Safari and other apps.
 //!
 //! The sealed cache goes into the app group container, its key into the
-//! keychain (shared with the extension through the app group), readable only
-//! after Face ID or Touch ID with the current enrolment, on this device.
+//! keychain (shared with the extension through the access group), readable
+//! only after Face ID or Touch ID with the current enrolment, on this device.
 
 use std::path::PathBuf;
 
@@ -21,36 +23,67 @@ use security_framework::passwords::{
 };
 use twosecret_core::autofill::AutofillCache;
 
-/// Shared with the extension (ios/project.yml declares it for both).
-const GROUP: &str = "group.io.github.joostiphone.twosecret";
 const SERVICE: &str = "2Secret AutoFill";
 const ACCOUNT: &str = "cache-key";
 const FILE: &str = "autofill.cache";
 
-fn container() -> Option<PathBuf> {
+/// The app group (also the keychain access group) shared with the extension.
+/// ios/project.yml declares it for both.
+#[cfg(target_os = "ios")]
+fn group() -> Option<String> {
+    Some("group.io.github.joostiphone.twosecret".into())
+}
+
+/// The app group shared with the extension: "<Team ID>.io.github.joostiphone
+/// .twosecret", which scripts/macos-sign.sh writes into Info.plist when it
+/// adds the extension. `None` without one (builds without a Developer ID,
+/// `dx serve`) and before macOS 14, which the extension needs.
+#[cfg(target_os = "macos")]
+fn group() -> Option<String> {
+    use objc2_foundation::{NSBundle, NSOperatingSystemVersion, NSProcessInfo};
+    let sonoma = NSOperatingSystemVersion { majorVersion: 14, minorVersion: 0, patchVersion: 0 };
+    if !NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(sonoma) {
+        return None;
+    }
+    let value = NSBundle::mainBundle().objectForInfoDictionaryKey(&NSString::from_str("TwoSecretAppGroup"))?;
+    let group = value.downcast::<NSString>().ok()?.to_string();
+    (!group.is_empty()).then_some(group)
+}
+
+/// Whether this build has the AutoFill extension.
+pub fn available() -> bool {
+    group().is_some()
+}
+
+fn container(group: &str) -> Option<PathBuf> {
     let url = NSFileManager::defaultManager()
-        .containerURLForSecurityApplicationGroupIdentifier(&NSString::from_str(GROUP))?;
+        .containerURLForSecurityApplicationGroupIdentifier(&NSString::from_str(group))?;
     Some(PathBuf::from(url.path()?.to_string()))
 }
 
-fn key_options() -> PasswordOptions {
+fn key_options(group: &str) -> PasswordOptions {
     let mut options = PasswordOptions::new_generic_password(SERVICE, ACCOUNT);
-    options.set_access_group(GROUP);
+    options.set_access_group(group);
+    // Access groups and Touch ID protection need the data protection
+    // keychain, which macOS only uses when asked (iOS has no other).
+    #[cfg(target_os = "macos")]
+    options.use_protected_keychain();
     options
 }
 
 /// Write a new cache. Fails quietly in builds without the app group (e.g.
 /// `dx serve`).
 pub fn write(cache: &AutofillCache) {
-    match try_write(cache) {
+    let Some(group) = group() else { return };
+    match try_write(&group, cache) {
         Ok(()) => publish_identities(cache),
         Err(e) => eprintln!("2Secret: AutoFill is not available: {e}"),
     }
 }
 
-/// Tell iOS which websites and accounts 2Secret can fill, for the
-/// suggestions above the keyboard and the passkey sheet. Only websites, user
-/// names and passkey ids; never passwords or keys.
+/// Tell the system which websites and accounts 2Secret can fill, for the
+/// suggestions above the keyboard or in the password menu and the passkey
+/// sheet. Only websites, user names and passkey ids; never passwords or keys.
 fn publish_identities(cache: &AutofillCache) {
     let s = |text: &str| NSString::from_str(text);
     let mut entries: Vec<Retained<ProtocolObject<dyn ASCredentialIdentity>>> = Vec::new();
@@ -99,14 +132,16 @@ fn publish_identities(cache: &AutofillCache) {
     unsafe { ASCredentialIdentityStore::sharedStore().replaceCredentialIdentityEntries_completion(&array, None) };
 }
 
-fn try_write(cache: &AutofillCache) -> Result<(), String> {
-    let dir = container().ok_or("no app group container")?;
+fn try_write(group: &str, cache: &AutofillCache) -> Result<(), String> {
+    let dir = container(group).ok_or("no app group container")?;
+    // macOS gives the folder's path before anything created it.
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let (sealed, key) = cache.seal().map_err(|e| e.to_string())?;
     let tmp = dir.join(format!("{FILE}.tmp"));
     std::fs::write(&tmp, &sealed).map_err(|e| e.to_string())?;
 
-    let _ = delete_generic_password_options(key_options());
-    let mut options = key_options();
+    let _ = delete_generic_password_options(key_options(group));
+    let mut options = key_options(group);
     let acl = SecAccessControl::create_with_protection(
         Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
         AccessControlOptions::BIOMETRY_CURRENT_SET.bits(),
@@ -119,9 +154,10 @@ fn try_write(cache: &AutofillCache) -> Result<(), String> {
 
 /// Remove the cache and its key (AutoFill stops working).
 pub fn clear() {
+    let Some(group) = group() else { return };
     unsafe { ASCredentialIdentityStore::sharedStore().removeAllCredentialIdentitiesWithCompletion(None) };
-    let _ = delete_generic_password_options(key_options());
-    if let Some(dir) = container() {
+    let _ = delete_generic_password_options(key_options(&group));
+    if let Some(dir) = container(&group) {
         let _ = std::fs::remove_file(dir.join(FILE));
     }
 }

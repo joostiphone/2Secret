@@ -1,0 +1,49 @@
+# Xcode project for the macOS AutoFill extension, generated with XcodeGen
+# (`xcodegen generate`). The app itself is the Rust desktop app that
+# `dx bundle` makes; scripts/macos-sign.sh builds this extension, puts it
+# into 2Secret.app/Contents/PlugIns and signs both with a Developer ID.
+# Vault.swift is shared with the iOS extension.
+name: TwoSecretMac
+options:
+  bundleIdPrefix: io.github.joostiphone
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    # Set by scripts/macos-sign.sh.
+    MARKETING_VERSION: "1.4.2"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    # scripts/macos-sign.sh signs the extension with its entitlements and
+    # provisioning profile.
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  AutoFill:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: AutoFill
+      - path: ../ios/AutoFill/Vault.swift
+    info:
+      path: AutoFill/Info.plist
+      properties:
+        CFBundleDisplayName: 2Secret
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: en
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
+          NSExtensionPrincipalClass: CredentialProviderViewController
+          NSExtensionAttributes:
+            ASCredentialProviderExtensionCapabilities:
+              ProvidesPasswords: true
+              ProvidesPasskeys: true
+              ShowsConfigurationUI: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.joostiphone.twosecret.autofill
+        PRODUCT_NAME: AutoFill
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_HARDENED_RUNTIME: YES

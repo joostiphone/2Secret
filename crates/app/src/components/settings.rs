@@ -566,6 +566,26 @@ fn BiometricRow() -> Element {
     }
 }
 
+/// Where to turn on AutoFill in Safari and other apps (iOS, and macOS builds
+/// that include the extension).
+#[component]
+fn AutofillRow() -> Element {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    if crate::apple_autofill::available() {
+        let desc =
+            t(if cfg!(target_os = "macos") { "settings.autofill_desc_macos" } else { "settings.autofill_desc_ios" });
+        return rsx! {
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", {t("settings.autofill")} }
+                    div { class: "d", {desc} }
+                }
+            }
+        };
+    }
+    rsx! {}
+}
+
 #[component]
 fn SecuritySection() -> Element {
     let prefs = PREFS.read().clone();
@@ -585,6 +605,7 @@ fn SecuritySection() -> Element {
                 }
             }
             BiometricRow {}
+            AutofillRow {}
             if crate::extension::ENABLED {
                 PasskeysRow {}
             }

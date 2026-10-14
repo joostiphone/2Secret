@@ -2,6 +2,7 @@
 """The App Store build's dealings with the App Store Connect API.
 
     scripts/appstore.py signing <output folder>
+    scripts/appstore.py developer-id <output folder> <certificate SHA-1> [name suffix]
     scripts/appstore.py wait <version> <build number>
 
 `signing` makes sure there is an Apple Distribution certificate and App
@@ -23,6 +24,18 @@ finds the certificate an earlier run made instead of making another one:
 Apple allows only a few distribution certificates per team, and build
 machines keep nothing between runs. A new one is made when it is about to
 expire or when the API key changes. The profiles are made anew every run.
+
+`developer-id` writes Developer ID provisioning profiles for the macOS app
+and its AutoFill extension, for scripts/macos-sign.sh:
+
+    app.provisionprofile       profile for io.github.joostiphone.twosecret
+    autofill.provisionprofile  profile for io.github.joostiphone.twosecret.autofill
+
+The Developer ID Application certificate (its SHA-1 as `security
+find-identity` shows it) must exist in the team's account; Apple does not
+let API keys create one, so it comes from the APPLE_CERTIFICATE secret. The
+suffix keeps the profile names of builds that run at the same time (one per
+architecture) apart.
 
 `wait` waits until App Store Connect has processed an uploaded build and
 says whether it can be tested in TestFlight.
@@ -54,6 +67,10 @@ APP_BUNDLE = "io.github.joostiphone.twosecret"
 BUNDLES = {
     "app": ("io.github.joostiphone.twosecret", "2Secret-AppStore-CI"),
     "autofill": ("io.github.joostiphone.twosecret.autofill", "2Secret-AutoFill-AppStore-CI"),
+}
+MAC_BUNDLES = {
+    "app": ("io.github.joostiphone.twosecret", "2Secret-DeveloperID-CI"),
+    "autofill": ("io.github.joostiphone.twosecret.autofill", "2Secret-AutoFill-DeveloperID-CI"),
 }
 
 
@@ -193,8 +210,10 @@ def certificate(api: Api, key: rsa.RSAPrivateKey) -> tuple[str, x509.Certificate
     return created["id"], x509.load_der_x509_certificate(base64.b64decode(created["attributes"]["certificateContent"]))
 
 
-def profile(api: Api, identifier: str, name: str, certificate_id: str) -> tuple[str, bytes]:
-    """A new App Store provisioning profile for a bundle ID."""
+def profile(
+    api: Api, identifier: str, name: str, certificate_id: str, profile_type: str = "IOS_APP_STORE"
+) -> tuple[str, bytes]:
+    """A new provisioning profile (App Store, or Developer ID for macOS) for a bundle ID."""
     found = api.call("GET", "/bundleIds", query={"filter[identifier]": identifier, "limit": "200"})
     bundle = next((b for b in found["data"] if b["attributes"]["identifier"] == identifier), None)
     if bundle is None:
@@ -207,7 +226,7 @@ def profile(api: Api, identifier: str, name: str, certificate_id: str) -> tuple[
         {
             "data": {
                 "type": "profiles",
-                "attributes": {"name": name, "profileType": "IOS_APP_STORE"},
+                "attributes": {"name": name, "profileType": profile_type},
                 "relationships": {
                     "bundleId": {"data": {"type": "bundleIds", "id": bundle["id"]}},
                     "certificates": {"data": [{"type": "certificates", "id": certificate_id}]},
@@ -279,10 +298,34 @@ def signing(out: str) -> None:
         f.writelines(f"{k}={shlex.quote(v)}\n" for k, v in env.items())
 
 
+def developer_id(out: str, sha1: str, suffix: str = "") -> None:
+    os.makedirs(out, exist_ok=True)
+    api = Api(api_key_der())
+    # Not filtered by type: Developer ID certificates come in two kinds (G2).
+    certificate_id = None
+    for item in api.call("GET", "/certificates", query={"limit": "200"})["data"]:
+        content = item["attributes"].get("certificateContent")
+        if content and hashlib.sha1(base64.b64decode(content)).hexdigest() == sha1.strip().lower():
+            certificate_id = item["id"]
+            print(f"Using Developer ID certificate {item['id']} ({item['attributes'].get('name', '')})")
+            break
+    if certificate_id is None:
+        sys.exit(f"The signing certificate (SHA-1 {sha1}) is not in this team's account; check APPLE_CERTIFICATE.")
+    for kind, (identifier, name) in MAC_BUNDLES.items():
+        name = f"{name}-{suffix}" if suffix else name
+        _, content = profile(api, identifier, name, certificate_id, "MAC_APP_DIRECT")
+        with open(os.path.join(out, f"{kind}.provisionprofile"), "wb") as f:
+            f.write(content)
+
+
 def main() -> None:
     match sys.argv[1:]:
         case ["signing", out]:
             signing(out)
+        case ["developer-id", out, sha1]:
+            developer_id(out, sha1)
+        case ["developer-id", out, sha1, suffix]:
+            developer_id(out, sha1, suffix)
         case ["wait", version, build]:
             wait(version.removeprefix("v"), build)
         case _:

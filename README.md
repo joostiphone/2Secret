@@ -44,8 +44,8 @@ is free, open source, and you can host the sync server yourself.
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
-| 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and iOS AutoFill; end-to-end encrypted and synced. Import from Bitwarden. |
-| 📲 **iOS AutoFill** | Fill passwords and passkeys in Safari and apps after Face ID or Touch ID. |
+| 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
+| 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords and passkeys in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
@@ -125,7 +125,7 @@ Compared with 1Password, these are missing today – contributions welcome:
 
 - Biometric unlock on Linux, Android and in the browser (the master password is required there).
 - Creating passkeys outside the browser extension; using them on Android and in the desktop apps.
-- A Safari extension; system autofill on Android.
+- System autofill on Android. (Safari fills through AutoFill on iPhone, iPad and Mac.)
 - An independent security audit.
 
 ## Security

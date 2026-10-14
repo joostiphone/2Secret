@@ -79,20 +79,35 @@ setting it up and changing keys.
 
 Without further setup the macOS app is signed ad hoc, and people have to allow
 it once under *System Settings → Privacy & Security*. With an Apple Developer
-Program membership the release workflow signs it with your Developer ID and
-has Apple notarize it, so it opens without warnings. Add these repository
-secrets (*Settings → Secrets and variables → Actions*):
+Program membership the release workflow (`scripts/macos-sign.sh`) signs it
+with your Developer ID, adds the AutoFill extension (Safari and other apps
+fill from 2Secret, see `macos/`) and has Apple notarize it, so it opens
+without warnings. Add these repository secrets (*Settings → Secrets and
+variables → Actions*):
 
 | Secret | Value |
 |---|---|
 | `APPLE_CERTIFICATE` | Your *Developer ID Application* certificate with its private key, exported from Keychain Access as `.p12` and base64 encoded (`base64 -i certificate.p12 \| pbcopy`) |
 | `APPLE_CERTIFICATE_PASSWORD` | The password you chose when exporting the `.p12` |
-| `APPLE_ID` | The Apple ID of the developer account |
-| `APPLE_PASSWORD` | An app-specific password for that Apple ID (account.apple.com → *Sign-In and Security*) |
 | `APPLE_TEAM_ID` | Your 10-character Team ID (developer.apple.com → *Account → Membership details*) |
 
 Create the certificate on a Mac in Xcode (*Settings → Accounts → Manage
 Certificates → + → Developer ID Application*) or on developer.apple.com.
+Only the Account Holder can; Apple does not let API keys create one.
+
+The App Store Connect API key of the iOS build (`APP_STORE_CONNECT_KEY`,
+`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, see
+[docs/APP-STORE.md](docs/APP-STORE.md)) is used too: `scripts/appstore.py
+developer-id` makes Developer ID provisioning profiles for
+`io.github.joostiphone.twosecret` and `.autofill` (named
+`2Secret-DeveloperID-CI` and `2Secret-AutoFill-DeveloperID-CI`), which allow
+the AutoFill entitlement, and the key notarizes. Without the key the app is
+signed without AutoFill and only notarized with these two secrets:
+
+| Secret | Value |
+|---|---|
+| `APPLE_ID` | The Apple ID of the developer account |
+| `APPLE_PASSWORD` | An app-specific password for that Apple ID (account.apple.com → *Sign-In and Security*) |
 
 ### Signing the Android app
 

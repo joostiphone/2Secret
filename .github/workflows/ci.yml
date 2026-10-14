@@ -162,6 +162,11 @@ jobs:
         run: |
           brew install xcodegen
           scripts/ios-appstore.sh
+      - name: macOS AutoFill extension (Xcode)
+        working-directory: macos
+        run: |
+          xcodegen generate --quiet
+          xcodebuild build -project TwoSecretMac.xcodeproj -target AutoFill -configuration Release ARCHS=arm64
 
   freebsd:
     name: FreeBSD

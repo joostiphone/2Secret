@@ -40,28 +40,43 @@ enum VaultError: Error {
     case failed(String)
 }
 
+/// Shared by the iOS (ios/AutoFill) and macOS (macos/AutoFill) extensions.
 enum Vault {
+    #if os(macOS)
+    /// "<Team ID>.io.github.joostiphone.twosecret" (app groups on macOS start
+    /// with the Team ID), written into Info.plist by scripts/macos-sign.sh.
+    static let appGroup = Bundle.main.object(forInfoDictionaryKey: "TwoSecretAppGroup") as? String ?? ""
+    #else
     static let appGroup = "group.io.github.joostiphone.twosecret"
+    #endif
     static let maxAge: Int64 = 14 * 86_400
 
     /// Read the cache. The key is in the keychain and only released after
     /// Face ID / Touch ID, so this shows the system prompt; call it off the
     /// main thread.
     static func load(reason: String) throws -> AutofillCache {
-        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup),
+        guard !appGroup.isEmpty,
+              let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup),
               let sealed = try? Data(contentsOf: dir.appendingPathComponent("autofill.cache"))
         else { throw VaultError.notSetUp }
 
         let context = LAContext()
         context.localizedReason = reason
-        let query: [CFString: Any] = [
+        #if os(macOS)
+        // Where the app keeps the key: access groups and Touch ID protection
+        // need the data protection keychain, which macOS only uses when asked.
+        let keychain: [CFString: Any] = [kSecUseDataProtectionKeychain: true]
+        #else
+        let keychain: [CFString: Any] = [:]
+        #endif
+        let query = keychain.merging([
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: "2Secret AutoFill",
             kSecAttrAccount: "cache-key",
             kSecAttrAccessGroup: appGroup,
             kSecReturnData: true,
             kSecUseAuthenticationContext: context,
-        ]
+        ]) { _, new in new }
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         switch status {
@@ -152,14 +167,31 @@ enum L {
     static let all = t("All logins", "Alle logins")
     static let passkeys = t("Passkeys", "Passkeys")
     static let nothing = t("No logins found.", "Geen logins gevonden.")
+    #if os(macOS)
+    static let notSetUp = t(
+        "Open 2Secret and turn on unlocking with Touch ID (Settings → Security) to use AutoFill.",
+        "Open 2Secret en zet ontgrendelen met Touch ID aan (Instellingen → Beveiliging) om automatisch invullen te gebruiken."
+    )
+    #else
     static let notSetUp = t(
         "Open 2Secret and turn on unlocking with Face ID or Touch ID (Settings → Security) to use AutoFill.",
         "Open 2Secret en zet ontgrendelen met Face ID of Touch ID aan (Instellingen → Beveiliging) om automatisch invullen te gebruiken."
     )
+    #endif
     static let passwordNeeded = t(
         "Open 2Secret and enter your master password. 2Secret asks for it every 14 days, so you will not forget it.",
         "Open 2Secret en vul je hoofdwachtwoord in. 2Secret vraagt er elke 14 dagen om, zodat je het niet vergeet."
     )
+    #if os(macOS)
+    static let configured = t(
+        "2Secret can now fill passwords and passkeys. Turn on unlocking with Touch ID in the 2Secret app (Settings → Security), then open 2Secret once.",
+        "2Secret kan nu wachtwoorden en passkeys invullen. Zet ontgrendelen met Touch ID aan in de 2Secret-app (Instellingen → Beveiliging) en open 2Secret één keer."
+    )
+    static let registerElsewhere = t(
+        "Save new passkeys with the 2Secret browser extension in Chrome, Edge, Brave or Firefox. They then sync to this Mac and your other devices.",
+        "Bewaar nieuwe passkeys met de 2Secret-browserextensie in Chrome, Edge, Brave of Firefox. Ze synchroniseren dan naar deze Mac en je andere apparaten."
+    )
+    #else
     static let configured = t(
         "2Secret can now fill passwords and passkeys. Turn on unlocking with Face ID or Touch ID in the 2Secret app (Settings → Security), then open 2Secret once.",
         "2Secret kan nu wachtwoorden en passkeys invullen. Zet ontgrendelen met Face ID of Touch ID aan in de 2Secret-app (Instellingen → Beveiliging) en open 2Secret één keer."
@@ -168,4 +200,5 @@ enum L {
         "Save new passkeys with the 2Secret browser extension on your computer. They then sync to this device.",
         "Bewaar nieuwe passkeys met de 2Secret-browserextensie op je computer. Ze synchroniseren dan naar dit apparaat."
     )
+    #endif
 }
