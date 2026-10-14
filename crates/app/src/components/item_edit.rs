@@ -67,8 +67,9 @@ pub fn ItemEditor() -> Element {
         };
         if let Some(id) = result {
             *EDITING.write() = None;
-            *SELECTED.write() = Some(id);
+            *SELECTED.write() = Some(id.clone());
             toast(t("toast.saved"));
+            fetch_icons(vec![id]);
         }
     };
 
@@ -94,7 +95,7 @@ pub fn ItemEditor() -> Element {
                     div { class: "error-box", "{err}" }
                 }
                 div { class: "detail-head",
-                    ItemAvatar { category: item.category, title: item.title.clone(), size: 56 }
+                    ItemAvatar { category: item.category, title: item.title.clone(), size: 56, icon: item.icon.as_ref().and_then(|i| i.safe_image()).map(str::to_string) }
                     div { class: "grow",
                         input { class: "title-input", initial_value: "{item.title}", placeholder: "{title_placeholder}", autofocus: draft.is_new,
                             onmounted: move |e: MountedEvent| async move { if draft_is_new { let _ = e.set_focus(true).await; } },

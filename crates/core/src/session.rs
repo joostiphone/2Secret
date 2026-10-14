@@ -823,6 +823,16 @@ impl Session {
         self.update_item(item)
     }
 
+    /// Give an item the icon fetched for its website, unless its website
+    /// changed in the meantime.
+    pub fn set_icon(&mut self, id: &str, icon: crate::favicon::WebsiteIcon) -> Result<()> {
+        let item = self.item(id).ok_or_else(|| Error::not_found(format!("item {id}")))?;
+        if crate::favicon::icon_host(item).as_deref() != Some(icon.host.as_str()) || item.icon.as_ref() == Some(&icon) {
+            return Ok(());
+        }
+        self.modify_item(id, |i| i.icon = Some(icon))
+    }
+
     pub fn set_favorite(&mut self, id: &str, favorite: bool) -> Result<()> {
         self.modify_item(id, |i| i.favorite = favorite)
     }
@@ -1051,6 +1061,25 @@ pub(crate) mod tests {
             Session::unlock(profile, "correct horse battery staple", &SecretKey::generate()),
             Err(Error::WrongPassword)
         ));
+    }
+
+    #[test]
+    fn website_icons() {
+        let (mut s, _) = new_session();
+        let vault = s.default_vault_id().unwrap();
+        let id = s.add_item(&vault, Item::login("GitHub", "octo", "pw1", Some("https://github.com/login"))).unwrap();
+        let icon = |host: &str| crate::favicon::WebsiteIcon::from_bytes(host, b"\x89PNG\r\n\x1a\n").unwrap();
+        // Fetched for a website the item no longer has: ignored.
+        s.set_icon(&id, icon("gitlab.com")).unwrap();
+        assert_eq!(s.item(&id).unwrap().icon, None);
+        s.set_icon(&id, icon("github.com")).unwrap();
+        assert_eq!(s.item(&id).unwrap().icon, Some(icon("github.com")));
+        assert!(!s.profile().to_json().contains("github.com"), "the icon is encrypted with the item");
+        // Another website: the old icon goes.
+        let mut item = s.item(&id).unwrap().clone();
+        item.urls = vec!["https://gitlab.com".into()];
+        s.update_item(item).unwrap();
+        assert_eq!(s.item(&id).unwrap().icon, None);
     }
 
     #[test]

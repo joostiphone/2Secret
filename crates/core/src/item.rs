@@ -450,6 +450,9 @@ pub struct Item {
     /// Passkeys for the item's website.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub passkeys: Vec<Passkey>,
+    /// The icon of the item's website (see [`crate::favicon`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<crate::favicon::WebsiteIcon>,
 }
 
 impl Item {
@@ -472,6 +475,7 @@ impl Item {
             password_history: Vec::new(),
             attachments: Vec::new(),
             passkeys: Vec::new(),
+            icon: None,
         }
     }
 
@@ -649,6 +653,11 @@ impl Item {
         tags.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         self.tags = tags;
         self.fields.retain(|f| !(f.is_custom() && f.value.is_empty() && f.label.trim().is_empty()));
+        // An icon belongs to the website it was fetched for.
+        if self.icon.as_ref().is_some_and(|icon| crate::favicon::icon_host(self).as_deref() != Some(icon.host.as_str()))
+        {
+            self.icon = None;
+        }
     }
 
     /// Check limits before saving.
@@ -680,6 +689,7 @@ impl Item {
             trashed: self.is_trashed(),
             has_totp: self.totp_secret().is_some(),
             has_password: self.password().is_some(),
+            icon: self.icon.as_ref().and_then(|icon| icon.safe_image()).map(str::to_string),
         }
     }
 }
@@ -701,6 +711,9 @@ pub struct ItemSummary {
     pub trashed: bool,
     pub has_totp: bool,
     pub has_password: bool,
+    /// The website icon as a checked `data:image/…` URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[cfg(test)]

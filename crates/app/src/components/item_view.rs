@@ -147,7 +147,7 @@ pub fn ItemView(id: String) -> Element {
         div { class: "detail-scroll",
             div { class: "detail-inner",
                 div { class: "detail-head",
-                    ItemAvatar { category: item.category, title: item.title.clone(), size: 56 }
+                    ItemAvatar { category: item.category, title: item.title.clone(), size: 56, icon: item.icon.as_ref().and_then(|i| i.safe_image()).map(str::to_string) }
                     div { class: "grow",
                         h1 { "{item.title}" }
                         div { class: "sub", "{cat_name} · {vault_name}" }

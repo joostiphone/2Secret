@@ -222,9 +222,25 @@ pub fn category_color(c: Category) -> &'static str {
     }
 }
 
-/// A coloured avatar: the first letter of the title on the category colour.
+/// A coloured avatar: the website's icon, else the first letter of the title
+/// on the category colour.
 #[component]
-pub fn ItemAvatar(category: Category, title: String, #[props(default = 36)] size: u32) -> Element {
+pub fn ItemAvatar(
+    category: Category,
+    title: String,
+    #[props(default = 36)] size: u32,
+    /// A checked `data:image/…` URL (`ItemSummary::icon`, `WebsiteIcon::safe_image`).
+    #[props(default)]
+    icon: Option<String>,
+) -> Element {
+    if let Some(icon) = icon {
+        let inner = size * 70 / 100;
+        return rsx! {
+            div { class: "avatar website", style: "width:{size}px;height:{size}px",
+                img { src: "{icon}", alt: "", width: "{inner}", height: "{inner}", draggable: "false" }
+            }
+        };
+    }
     let color = category_color(category);
     let letter: String =
         title.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_default();

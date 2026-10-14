@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Website icons: logins show the icon of their website. The apps fetch it
+  straight from the website when you save a login (over HTTPS, public host
+  names only, no icon service) and keep it encrypted with the login, so
+  other devices, the web vault and the browser extension show it too.
+  *Settings → Appearance → Website icons* turns it off and fetches icons for
+  the logins you already have.
 - Links in the app (an item's websites, *What's new*, the project page) open
   in the browser on macOS, iOS and Linux; clicking them did nothing there.
 - AutoFill on the Mac: Safari and other apps fill passwords and sign in with

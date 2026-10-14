@@ -9,6 +9,9 @@
 //!   the Have I Been Pwned breach check.
 //! * [`update`] – signed app updates from the GitHub releases (native only).
 
+// Websites do not let browsers read their icons (CORS), so only the apps fetch them.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod favicon;
 pub mod flows;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod update;

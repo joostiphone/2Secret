@@ -44,6 +44,7 @@ is free, open source, and you can host the sync server yourself.
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
+| 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
 | 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords and passkeys in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |

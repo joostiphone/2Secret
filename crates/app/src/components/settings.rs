@@ -661,6 +661,42 @@ fn AppearanceSection() -> Element {
                     }
                 }
             }
+            if FETCHES_ICONS {
+                WebsiteIconsRow {}
+            }
+        }
+    }
+}
+
+/// Fetch website icons (on by default), also for the logins already there.
+#[component]
+fn WebsiteIconsRow() -> Element {
+    let on = PREFS.read().website_icons;
+    let fetch_all = move |_| {
+        let ids: Vec<String> = SESSION
+            .peek()
+            .as_ref()
+            .map(|s| s.all_items().map(|(_, item)| item.id.clone()).collect())
+            .unwrap_or_default();
+        fetch_icons(ids);
+        toast(t("settings.website_icons_started"));
+    };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.website_icons")} }
+                div { class: "d", {t("settings.website_icons_desc")} }
+            }
+            if on {
+                button { class: "btn small", onclick: fetch_all, {t("settings.website_icons_all")} }
+            }
+            button { class: either(on, "btn small", "btn small primary"),
+                onclick: move |_| {
+                    PREFS.write().website_icons = !on;
+                    save_prefs();
+                },
+                {either(on, t("common.turn_off"), t("common.turn_on"))}
+            }
         }
     }
 }

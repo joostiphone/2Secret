@@ -135,6 +135,8 @@ pub struct Prefs {
     pub backup_snoozed_at: i64,
     /// Remind about a backup after this many days; 0 = never.
     pub backup_reminder_days: u32,
+    /// Fetch the icons of the websites of logins (from those websites).
+    pub website_icons: bool,
 }
 
 impl Default for Prefs {
@@ -149,6 +151,7 @@ impl Default for Prefs {
             last_backup_at: 0,
             backup_snoozed_at: 0,
             backup_reminder_days: 30,
+            website_icons: true,
         }
     }
 }
@@ -309,6 +312,61 @@ pub fn refresh_autofill() {
             crate::apple_autofill::write(&cache);
         }
     }
+}
+
+/// Whether this app fetches website icons: not in the browser, where websites
+/// do not let other pages read their icons.
+pub const FETCHES_ICONS: bool = cfg!(not(target_arch = "wasm32"));
+
+/// Fetch website icons for these items, one website after the other, if they
+/// have a public website without an icon for it (and the setting is on).
+/// Each icon is saved, encrypted, with its item; other devices get it
+/// through sync.
+pub fn fetch_icons(ids: Vec<String>) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if !PREFS.peek().website_icons {
+            return;
+        }
+        let wanted: Vec<(String, String)> = {
+            let session = SESSION.peek();
+            let Some(session) = session.as_ref() else { return };
+            ids.into_iter()
+                .filter_map(|id| {
+                    let item = session.item(&id)?;
+                    let writable =
+                        session.item_vault(&id).and_then(|v| session.vault(v)).is_some_and(|v| v.role.can_write());
+                    if !writable || item.is_trashed() || !twosecret_core::favicon::wants_icon(item) {
+                        return None;
+                    }
+                    Some((id, twosecret_core::favicon::icon_host(item)?))
+                })
+                .collect()
+        };
+        if wanted.is_empty() {
+            return;
+        }
+        spawn(async move {
+            let mut unsaved = 0;
+            let total = wanted.len();
+            for (i, (id, host)) in wanted.into_iter().enumerate() {
+                if let Some(icon) = twosecret_client::favicon::fetch(&host).await {
+                    let saved = SESSION.write().as_mut().map(|s| s.set_icon(&id, icon));
+                    if matches!(saved, Some(Ok(()))) {
+                        unsaved += 1;
+                    }
+                }
+                // Save now and then, not after every icon of a long list.
+                if unsaved > 0 && (unsaved >= 20 || i + 1 == total) {
+                    unsaved = 0;
+                    persist();
+                    request_sync();
+                }
+            }
+        });
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = ids;
 }
 
 pub fn clear_search() {

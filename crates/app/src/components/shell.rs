@@ -397,7 +397,7 @@ fn ItemList() -> Element {
                                     *EDITING.write() = None;
                                     *PANE.write() = Pane::Detail;
                                 },
-                                ItemAvatar { category: item.category, title: item.title.clone() }
+                                ItemAvatar { category: item.category, title: item.title.clone(), icon: item.icon.clone() }
                                 div { class: "grow",
                                     div { class: "t", "{item.title}" }
                                     div { class: "s", "{item.subtitle}" }
@@ -443,7 +443,7 @@ fn ItemList() -> Element {
                                 *EDITING.write() = None;
                                 *PANE.write() = Pane::Detail;
                             },
-                            ItemAvatar { category: item.category, title: item.title.clone() }
+                            ItemAvatar { category: item.category, title: item.title.clone(), icon: item.icon.clone() }
                             div { class: "grow",
                                 div { class: "t", "{item.title}" }
                                 div { class: "s", "{item.subtitle}" }
