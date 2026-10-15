@@ -53,8 +53,11 @@ pub fn run() {
     }
     #[cfg(feature = "mobile")]
     {
+        // maximum-scale: iOS zooms in on a text field with small text when it
+        // gets the focus, and an app does not zoom.
         let config = dioxus::mobile::Config::new().with_custom_head(
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">".to_string(),
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\">"
+                .to_string(),
         );
         dioxus::LaunchBuilder::mobile().with_cfg(config).launch(App);
     }
@@ -107,6 +110,65 @@ fn shortcut(e: KeyboardEvent) {
     }
 }
 
+/// Phones and tablets: iOS keeps a text field above the keyboard by scrolling
+/// the whole page, and does not always scroll it back, for instance when the
+/// field disappears because the vault unlocked. The app was then shifted up
+/// under the status bar. The page itself never scrolls (panes inside it do),
+/// so this keeps it at the top and fits the app into the visible part of the
+/// screen, above the keyboard (`.kb` in style.css).
+#[cfg(feature = "mobile")]
+const KEYBOARD_JS: &str = r#"
+(function () {
+  var vv = window.visualViewport;
+  if (!vv || window.twosecretKeyboard) return;
+  window.twosecretKeyboard = true;
+  var html = document.documentElement;
+  var queued = false, wanted = false;
+  function field() {
+    var a = document.activeElement;
+    var typing = !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable);
+    return typing ? a : null;
+  }
+  // Scroll the pane around the field (not the page) so the field shows.
+  function reveal(el) {
+    for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      var o = getComputedStyle(p).overflowY;
+      if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight) {
+        var a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
+        if (a.bottom > b.bottom) p.scrollTop += a.bottom - b.bottom + 12;
+        else if (a.top < b.top) p.scrollTop -= b.top - a.top + 12;
+        return;
+      }
+    }
+  }
+  function fit() {
+    var show = wanted;
+    queued = false;
+    wanted = false;
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    var top = Math.max(0, Math.round(vv.offsetTop));
+    html.style.setProperty("--app-height", Math.round(vv.height) + "px");
+    html.style.setProperty("--app-top", top + "px");
+    html.classList.toggle("kb-open", vv.height < window.innerHeight - 80);
+    html.classList.toggle("kb-shift", top > 0);
+    var el = field();
+    if (show && el) reveal(el);
+  }
+  function later(show) {
+    wanted = wanted || show;
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(fit);
+  }
+  html.classList.add("kb");
+  fit();
+  vv.addEventListener("resize", function () { later(true); });
+  vv.addEventListener("scroll", function () { later(false); });
+  window.addEventListener("scroll", function () { later(false); }, { passive: true });
+  document.addEventListener("focusout", function () { setTimeout(function () { later(false); }, 50); });
+})();
+"#;
+
 #[component]
 fn App() -> Element {
     use_hook(|| {
@@ -115,6 +177,10 @@ fn App() -> Element {
             init();
         });
         spawn(updater::background());
+    });
+    #[cfg(feature = "mobile")]
+    use_effect(|| {
+        let _ = dioxus::document::eval(KEYBOARD_JS);
     });
     let theme = PREFS.read().theme.id();
     let phase = PHASE.read().clone();

@@ -41,6 +41,7 @@ is free, open source, and you can host the sync server yourself.
 | 🧾 **19 item types** | Logins, passwords, secure notes, credit cards, identities, bank accounts (IBAN/BIC), crypto wallets, software licenses, SSH keys, API credentials, databases, servers, Wi-Fi routers, e-mail accounts, passports, driver licenses, memberships, reward programs and documents – plus custom fields, tags, favorites and encrypted file attachments. |
 | ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. |
 | 🛡️ **Watchtower** | Finds weak, reused and old passwords, unencrypted (`http://`) sites, expired and expiring cards/documents, and – opt-in – passwords from data breaches via Have I Been Pwned (k-anonymity: only 5 hash characters leave your device). |
+| 📊 **Dashboard** | After unlocking: your favourites, recent changes, vaults and security score at a glance, without showing any secrets. Or start with all items, favourites or Watchtower. |
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |

@@ -35,6 +35,8 @@ pub enum Phase {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Nav {
+    /// The dashboard: an overview of the vaults.
+    Home,
     All,
     Favorites,
     Category(Category),
@@ -48,7 +50,51 @@ pub enum Nav {
 
 impl Nav {
     pub fn is_page(&self) -> bool {
-        matches!(self, Nav::Watchtower(_) | Nav::Generator | Nav::Settings)
+        matches!(self, Nav::Home | Nav::Watchtower(_) | Nav::Generator | Nav::Settings)
+    }
+}
+
+/// What the apps show after unlocking (Settings → Appearance).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartScreen {
+    #[default]
+    Dashboard,
+    All,
+    Favorites,
+    Watchtower,
+}
+
+impl StartScreen {
+    pub const ALL: [StartScreen; 4] =
+        [StartScreen::Dashboard, StartScreen::All, StartScreen::Favorites, StartScreen::Watchtower];
+
+    pub fn id(&self) -> &'static str {
+        match self {
+            StartScreen::Dashboard => "dashboard",
+            StartScreen::All => "all",
+            StartScreen::Favorites => "favorites",
+            StartScreen::Watchtower => "watchtower",
+        }
+    }
+
+    pub fn nav(&self) -> Nav {
+        match self {
+            StartScreen::Dashboard => Nav::Home,
+            StartScreen::All => Nav::All,
+            StartScreen::Favorites => Nav::Favorites,
+            StartScreen::Watchtower => Nav::Watchtower(None),
+        }
+    }
+}
+
+/// The first screen after unlocking. The browser extension always starts
+/// with the list, which suggests the logins for the open website.
+pub fn start_nav() -> Nav {
+    if extension::ENABLED {
+        Nav::All
+    } else {
+        PREFS.peek().start_screen.nav()
     }
 }
 
@@ -139,6 +185,7 @@ pub struct Prefs {
     pub website_icons: bool,
     /// The profile shown last ([`SLOT`]).
     pub active_profile: usize,
+    pub start_screen: StartScreen,
 }
 
 impl Default for Prefs {
@@ -155,6 +202,7 @@ impl Default for Prefs {
             backup_reminder_days: 30,
             website_icons: true,
             active_profile: 0,
+            start_screen: StartScreen::default(),
         }
     }
 }
@@ -303,7 +351,7 @@ fn reset_view() {
     *SELECTED.write() = None;
     clear_search();
     *MODAL.write() = None;
-    *NAV.write() = Nav::All;
+    *NAV.write() = start_nav();
     *BREACHES.write() = None;
     *SYNC.write() = SyncStatus::default();
     *PANE.write() = Pane::List;
@@ -326,6 +374,7 @@ pub fn init() {
         };
     }
     *PREFS.write() = prefs;
+    *NAV.write() = start_nav();
     let has_account = load_profile().is_some() && device_secrets().is_some();
     if !has_account {
         *PHASE.write() = Phase::Welcome;
@@ -425,7 +474,7 @@ pub fn adopt_session(session: Session, sk: &SecretKey) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     save_profile(session.profile())?;
     *SESSION.write() = Some(session);
-    *NAV.write() = Nav::All;
+    *NAV.write() = start_nav();
     *SELECTED.write() = None;
     touch();
     remember_unlock();
@@ -909,6 +958,19 @@ pub fn install_session(session: Session) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_screen_preference() {
+        // Preferences from before the dashboard open it.
+        let old: Prefs = serde_json::from_str(r#"{"theme":"dark","auto_lock_minutes":5}"#).unwrap();
+        assert_eq!(old.start_screen, StartScreen::Dashboard);
+        assert_eq!(old.start_screen.nav(), Nav::Home);
+        for start in StartScreen::ALL {
+            let json = serde_json::to_string(&Prefs { start_screen: start, ..Prefs::default() }).unwrap();
+            assert!(json.contains(&format!("\"start_screen\":\"{}\"", start.id())));
+            assert_eq!(serde_json::from_str::<Prefs>(&json).unwrap().start_screen, start);
+        }
+    }
 
     #[test]
     fn profile_storage_keys() {

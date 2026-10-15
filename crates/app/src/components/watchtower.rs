@@ -1,11 +1,29 @@
 //! Watchtower: security dashboard.
 
 use dioxus::prelude::*;
-use twosecret_core::watchtower::{analyze, IssueKind};
+use twosecret_core::watchtower::{analyze, IssueKind, Report};
 
 use crate::i18n::{issue_desc, issue_title, t};
 use crate::icons::{either, Icon};
 use crate::state::*;
+
+/// The security score in words and its colour.
+pub fn rating(report: &Report) -> (&'static str, &'static str) {
+    let words = match report.rating() {
+        "fantastic" => t("wt.fantastic"),
+        "very_good" => t("wt.very_good"),
+        "good" => t("wt.good"),
+        "fair" => t("wt.fair"),
+        _ => t("wt.poor"),
+    };
+    let color = match report.score {
+        900.. => "#1c7ed6",
+        750..=899 => "#37b24d",
+        600..=749 => "#f59f00",
+        _ => "#e03131",
+    };
+    (words, color)
+}
 
 #[component]
 pub fn WatchtowerPage(kind: Option<IssueKind>) -> Element {
@@ -16,19 +34,7 @@ pub fn WatchtowerPage(kind: Option<IssueKind>) -> Element {
     let report = analyze(s.all_items(), &breaches.clone().unwrap_or_default(), None);
     drop(session);
     let score = report.score;
-    let rating = match report.rating() {
-        "fantastic" => t("wt.fantastic"),
-        "very_good" => t("wt.very_good"),
-        "good" => t("wt.good"),
-        "fair" => t("wt.fair"),
-        _ => t("wt.poor"),
-    };
-    let color = match score {
-        900.. => "#1c7ed6",
-        750..=899 => "#37b24d",
-        600..=749 => "#f59f00",
-        _ => "#e03131",
-    };
+    let (words, color) = rating(&report);
     let circumference = 2.0 * std::f64::consts::PI * 52.0;
     let dash = circumference * score as f64 / 1000.0;
 
@@ -75,7 +81,7 @@ pub fn WatchtowerPage(kind: Option<IssueKind>) -> Element {
                                     text { x: "60", y: "66", text_anchor: "middle", font_size: "26", font_weight: "800", fill: "currentColor", "{score}" }
                                 }
                                 div {
-                                    div { class: "score-num", style: "color:{color}", "{rating}" }
+                                    div { class: "score-num", style: "color:{color}", "{words}" }
                                     div { class: "muted", "{report.items_checked} {t(\"wt.items_checked\")}" }
                                     div { class: "muted small", style: "margin-top:6px;max-width:420px", {t("wt.explain")} }
                                 }

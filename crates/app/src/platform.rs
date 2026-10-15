@@ -99,6 +99,12 @@ pub fn local_date(ts: i64) -> String {
     }
 }
 
+/// The hour of the day (0–23) in the user's time zone.
+pub fn local_hour() -> u32 {
+    use chrono::Timelike;
+    chrono::Local::now().hour()
+}
+
 /// Open a URL in the system browser / a new tab.
 pub fn open_url(url: &str) {
     let url = if url.contains("://") { url.to_string() } else { format!("https://{url}") };

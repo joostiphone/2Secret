@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Dashboard: the apps open with an overview after unlocking: a greeting,
+  search, the number of items, favourites and vaults, the Watchtower score
+  with breached, weak and reused passwords, your favourites, recent changes,
+  the vaults and the categories. It shows no passwords or other secrets.
+  *Settings → Appearance → Start screen* chooses what you see after
+  unlocking: the dashboard, all items, favourites or Watchtower. The browser
+  extension keeps opening with the list, which suggests logins for the open
+  website.
+- iPhone and iPad: after typing the master password the app no longer stays
+  shifted up under the status bar (iOS left the page scrolled when the
+  keyboard closed), the app fits above the keyboard while you type, and text
+  fields no longer zoom in when you tap them.
+
 ## 1.5.0
 
 - AutoFill on the Mac: Safari and other apps fill passwords and sign in with

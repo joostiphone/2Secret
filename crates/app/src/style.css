@@ -161,10 +161,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .nav-item .count { font-size: 12px; color: var(--sidebar-muted); }
 .nav-item .badge { font-size: 11px; background: var(--danger); color: #fff; border-radius: 10px; padding: 1px 7px; }
 .sidebar-foot { padding: 10px 12px; border-top: 1px solid var(--sidebar-2); font-size: 12px; color: var(--sidebar-muted); display: flex; align-items: center; gap: 8px; }
-.sidebar-foot .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.sync-dot.off { background: var(--muted); }
 .sidebar-foot .sync-dot.off { background: var(--sidebar-muted); }
-.sidebar-foot .sync-dot.err { background: var(--danger); }
-.sidebar-foot .sync-dot.busy { background: var(--warn); animation: pulse 1s infinite; }
+.sync-dot.err { background: var(--danger); }
+.sync-dot.busy { background: var(--warn); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
 .list-pane { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
@@ -247,6 +248,50 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .issue-card:last-child { border-bottom: none; }
 .issue-count { font-size: 20px; font-weight: 700; min-width: 34px; text-align: right; }
 
+/* Dashboard */
+.dash { max-width: 1040px; margin: 0 auto; }
+.dash-hello { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.dash-hello h1 { margin: 0; font-size: 24px; line-height: 1.2; word-break: break-word; }
+.dash-hello .sub { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.dash-search { background: var(--panel); margin-bottom: 16px; }
+.dash-search input { padding: 11px 0; }
+.dash-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel);
+  color: var(--text); font: inherit; text-align: left; min-width: 0; }
+button.tile { cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20, 24, 40, .06); }
+.tile-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); flex-shrink: 0; }
+.tile-icon.fav { background: #fff4d6; color: #f59f00; }
+.root[data-theme="dark"] .tile-icon.fav { background: #3a2f12; }
+@media (prefers-color-scheme: dark) { .root[data-theme="system"] .tile-icon.fav { background: #3a2f12; } }
+.tile .num { font-size: 22px; font-weight: 800; line-height: 1.15; }
+.tile .lbl { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.dash-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.dash-col .section, .dash .section { margin-bottom: 0; }
+.dash > .section, .dash > .banner { margin-bottom: 16px; }
+.card-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 8px; }
+.card-head .section-title { padding: 0; flex: 1; }
+.link-btn { display: inline-flex; align-items: center; gap: 2px; border: none; background: none; color: var(--accent); cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
+.dash .item-row { border-bottom: none; border-top: 1px solid var(--border); }
+.dash .section > .item-row:first-child { border-top: none; }
+.dash-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); cursor: pointer; }
+.dash-row:hover { background: var(--hover); }
+.dash-row .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-row .count { font-weight: 700; min-width: 24px; text-align: right; }
+.mini-score { display: flex; align-items: center; gap: 14px; padding: 2px 16px 14px; }
+.mini-score svg { width: 64px; height: 64px; flex-shrink: 0; }
+.vault-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 16px 16px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--text); cursor: pointer; font: inherit; font-size: 13px; }
+.chip:hover { border-color: var(--accent); }
+.chip .n { color: var(--muted); }
+.card-empty { padding: 2px 16px 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+@media (max-width: 1100px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .dash-cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .dash-hello h1 { font-size: 21px; } .tile { padding: 12px; gap: 10px; } .tile-icon { width: 36px; height: 36px; } }
+
 /* Settings */
 .settings-row { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .settings-row:last-child { border-bottom: none; }
@@ -297,6 +342,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .field .actions { opacity: 1; }
   .root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* The apps on phones and tablets (KEYBOARD_JS in lib.rs): the app covers the
+   part of the screen the keyboard leaves visible. */
+.kb .root { height: var(--app-height); }
+.kb-open .root { padding-bottom: 0; }
+.kb-shift .root { transform: translateY(var(--app-top)); }
 
 /* The extension popup is always narrow, whatever the window size. */
 .root.ext .shell { grid-template-columns: 1fr !important; }

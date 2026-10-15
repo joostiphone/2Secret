@@ -1,3 +1,4 @@
+pub mod dashboard;
 pub mod generator;
 pub mod item_edit;
 pub mod item_view;

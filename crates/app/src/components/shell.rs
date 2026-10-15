@@ -6,8 +6,8 @@ use twosecret_core::session::ItemFilter;
 use twosecret_core::util::now;
 
 use crate::components::{
-    generator::GeneratorPage, item_edit::ItemEditor, item_view::ItemView, settings::SettingsPage,
-    watchtower::WatchtowerPage,
+    dashboard::DashboardPage, generator::GeneratorPage, item_edit::ItemEditor, item_view::ItemView,
+    settings::SettingsPage, watchtower::WatchtowerPage,
 };
 use crate::i18n::{category_name, t};
 use crate::icons::{category_icon, either, vault_icon, AccountAvatar, Icon, ItemAvatar, Logo};
@@ -40,7 +40,7 @@ fn use_background_tasks() {
 
 /// "Time for a backup", now and then (Settings → Backup & export).
 #[component]
-fn BackupReminder() -> Element {
+pub fn BackupReminder() -> Element {
     let prefs = PREFS.read().clone();
     let has_items = SESSION.read().as_ref().is_some_and(|s| s.item_count() > 0);
     if crate::extension::ENABLED || !backup_due(&prefs, has_items) {
@@ -98,6 +98,7 @@ pub fn Shell() -> Element {
             if page {
                 main { class: if pane == Pane::Nav { "detail-pane pane-hidden" } else { "detail-pane" },
                     match nav {
+                        Nav::Home => rsx! { DashboardPage {} },
                         Nav::Generator => rsx! { GeneratorPage {} },
                         Nav::Settings => rsx! { SettingsPage {} },
                         Nav::Watchtower(kind) => rsx! { WatchtowerPage { kind } },
@@ -112,7 +113,7 @@ pub fn Shell() -> Element {
     }
 }
 
-fn go(nav: Nav) {
+pub fn go(nav: Nav) {
     *NAV.write() = nav;
     *SELECTED.write() = None;
     *EDITING.write() = None;
@@ -237,24 +238,7 @@ fn Sidebar() -> Element {
     };
     drop(session);
 
-    let sync = SYNC.read().clone();
-    let (dot, sync_text) = if !linked {
-        ("off", t("sync.local").to_string())
-    } else if sync.running {
-        ("busy", t("sync.syncing").to_string())
-    } else if sync.needs_reauth {
-        ("err", t("sync.signed_out").to_string())
-    } else if sync.error.is_some() {
-        ("err", t("sync.error").to_string())
-    } else {
-        (
-            "",
-            match last_sync {
-                Some(ts) => format!("{} {}", t("sync.synced"), relative_time(ts)),
-                None => t("sync.never").to_string(),
-            },
-        )
-    };
+    let (dot, sync_text) = sync_summary(linked, last_sync);
 
     rsx! {
         div { class: "sidebar-head",
@@ -262,6 +246,7 @@ fn Sidebar() -> Element {
             button { class: "icon-btn", title: t("lock.lock_now"), onclick: move |_| lock(), Icon { name: "lock", size: 17 } }
         }
         div { class: "nav",
+            NavButton { target: Nav::Home, icon: "home", label: t("nav.home") }
             NavButton { target: Nav::All, icon: "grid", label: t("nav.all"), count: all }
             NavButton { target: Nav::Favorites, icon: "star", label: t("nav.favorites"), count: favorites }
             NavButton { target: Nav::Watchtower(None), icon: "shield", label: t("nav.watchtower"), badge: issues }
@@ -313,6 +298,28 @@ fn Sidebar() -> Element {
     }
 }
 
+/// The sync state as a dot class (`.sync-dot`) and a line of text.
+pub fn sync_summary(linked: bool, last_sync: Option<i64>) -> (&'static str, String) {
+    let sync = SYNC.read().clone();
+    if !linked {
+        ("off", t("sync.local").to_string())
+    } else if sync.running {
+        ("busy", t("sync.syncing").to_string())
+    } else if sync.needs_reauth {
+        ("err", t("sync.signed_out").to_string())
+    } else if sync.error.is_some() {
+        ("err", t("sync.error").to_string())
+    } else {
+        (
+            "",
+            match last_sync {
+                Some(ts) => format!("{} {}", t("sync.synced"), relative_time(ts)),
+                None => t("sync.never").to_string(),
+            },
+        )
+    }
+}
+
 pub fn relative_time(ts: i64) -> String {
     let d = (now() - ts).max(0);
     if d < 60 {
@@ -328,6 +335,7 @@ pub fn relative_time(ts: i64) -> String {
 
 pub fn nav_title(nav: &Nav) -> String {
     match nav {
+        Nav::Home => t("nav.home").into(),
         Nav::All => t("nav.all").into(),
         Nav::Favorites => t("nav.favorites").into(),
         Nav::Category(c) => category_name(*c),

@@ -6,7 +6,7 @@ use twosecret_core::biometric::BiometricUnlock;
 use twosecret_core::import::{self, ImportFormat};
 
 use crate::biometric;
-use crate::components::shell::relative_time;
+use crate::components::shell::{nav_title, relative_time};
 use crate::components::widgets::*;
 use crate::i18n::{t, Lang, LANG};
 use crate::icons::{either, vault_icon, AccountAvatar, Icon};
@@ -686,6 +686,27 @@ fn AppearanceSection() -> Element {
                     },
                     for (th , label) in [(Theme::System, t("settings.theme_system")), (Theme::Light, t("settings.theme_light")), (Theme::Dark, t("settings.theme_dark"))] {
                         option { key: "{th.id()}", value: "{th.id()}", selected: prefs.theme == th, "{label}" }
+                    }
+                }
+            }
+            if !crate::extension::ENABLED {
+                div { class: "settings-row",
+                    div { class: "k",
+                        div { class: "t", {t("settings.start_screen")} }
+                        div { class: "d", {t("settings.start_screen_desc")} }
+                    }
+                    select { class: "input",
+                        onchange: move |e| {
+                            if let Some(start) = StartScreen::ALL.into_iter().find(|s| s.id() == e.value()) {
+                                PREFS.write().start_screen = start;
+                                save_prefs();
+                            }
+                        },
+                        for start in StartScreen::ALL {
+                            option { key: "{start.id()}", value: "{start.id()}", selected: prefs.start_screen == start,
+                                {nav_title(&start.nav())}
+                            }
+                        }
                     }
                 }
             }
