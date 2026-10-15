@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.1
 
 - Dashboard: the apps open with an overview after unlocking: a greeting,
   search, the number of items, favourites and vaults, the Watchtower score
