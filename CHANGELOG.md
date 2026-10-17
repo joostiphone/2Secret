@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.1
 
 - Setup links on Windows, Linux and the BSDs: `otpauth://` links on websites
   open 2Secret too, which adds the one-time password to a login. 2Secret
