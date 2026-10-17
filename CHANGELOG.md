@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Setup links on Windows, Linux and the BSDs: `otpauth://` links on websites
+  open 2Secret too, which adds the one-time password to a login. 2Secret
+  registers itself for them for your user when no other app opens them;
+  *Settings → Security → Setup links for one-time passwords* makes 2Secret
+  the app for them. A link opened while 2Secret runs goes to that window.
+
 ## 1.6.0
 
 - Verification codes in AutoFill: on iPhone and iPad with iOS 18 and on the

@@ -1,9 +1,10 @@
 //! Setting up one-time passwords from `otpauth://` links. iOS and macOS open
 //! 2Secret with them when it is chosen under *Set Up Codes In* (Settings →
 //! General → AutoFill & Passwords), for example after tapping a website's
-//! setup link or scanning its QR code with the camera. The event loop hands
-//! the link to the UI, which asks which login gets it once the vault is
-//! unlocked (`Modal::SetUpCode`).
+//! setup link or scanning its QR code with the camera; on Windows, Linux and
+//! the BSDs `link_handler` registers 2Secret for them. The event loop (or
+//! `link_handler`) hands the link to the UI, which asks which login gets it
+//! once the vault is unlocked (`Modal::SetUpCode`).
 
 use twosecret_core::item::Item;
 use twosecret_core::totp::Totp;
@@ -38,6 +39,13 @@ pub async fn receive() {
         match Totp::parse(&link) {
             Ok(totp) => *crate::state::CODE_SETUP.write() = Some(totp.to_uri()),
             Err(_) => crate::state::toast_err(crate::i18n::t("code.invalid")),
+        }
+        // The link may come from a browser in front of the app.
+        #[cfg(feature = "desktop")]
+        {
+            let window = dioxus::desktop::window();
+            window.set_minimized(false);
+            window.set_focus();
         }
     }
 }

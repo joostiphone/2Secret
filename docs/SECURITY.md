@@ -275,10 +275,14 @@ conflict never silently loses a password. Deletions are tombstones.
   extension runs in the App Sandbox. The extension cannot change the vault
   and stops filling after the same 14 days. The system receives websites,
   user names and passkey IDs for its suggestions, never passwords, keys or
-  one-time password secrets. An `otpauth://` setup
-  link that opens the app is only read; its secret is saved, encrypted like
-  any field, once you choose a login for it. Details:
+  one-time password secrets. Details:
   [APP-STORE.md](APP-STORE.md#how-autofill-works).
+- **Setup links** (`otpauth://`): a link that opens the app is only read; its
+  secret is saved, encrypted like any field, once you choose a login for it.
+  On Windows, Linux and the BSDs a link starts a second 2Secret process,
+  which hands it to the running app through a file in the data directory
+  (readable only by you) and wakes it through a local socket or named pipe
+  that carries nothing else.
 - **Clipboard**: copied secrets are cleared after a configurable time
   (default 90 s) if the clipboard still contains them. Browsers only allow
   reading the clipboard after a permission prompt, so the web vault and the

@@ -614,6 +614,52 @@ fn AutofillRow() -> Element {
     rsx! {}
 }
 
+/// Windows, Linux and the BSDs: whether `otpauth://` setup links open 2Secret
+/// (`link_handler`).
+#[cfg(all(feature = "desktop", not(target_os = "macos")))]
+#[component]
+fn SetupLinksRow() -> Element {
+    use crate::link_handler::{handler, register, Handler};
+    let mut ours = use_signal(|| None::<bool>);
+    use_hook(move || {
+        spawn(async move {
+            let handler = crate::platform::run_heavy(handler).await;
+            ours.set(Some(handler == Handler::TwoSecret));
+        })
+    });
+    let make_default = move |_| {
+        spawn(async move {
+            if crate::platform::run_heavy(register).await {
+                ours.set(Some(true));
+                toast(t("settings.setup_links_on"));
+            } else {
+                toast_err(t("settings.setup_links_failed"));
+            }
+        });
+    };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.setup_links")} }
+                div { class: "d", {t("settings.setup_links_desc")} }
+            }
+            match ours() {
+                Some(true) => rsx! { span { class: "muted", {t("settings.setup_links_on")} } },
+                Some(false) => rsx! { button { class: "btn small", onclick: make_default, {t("settings.setup_links_use")} } },
+                None => rsx! {},
+            }
+        }
+    }
+}
+
+/// macOS and iOS: 2Secret is chosen under *Set Up Codes In* in the system
+/// settings; the web vault and Android open no setup links.
+#[cfg(not(all(feature = "desktop", not(target_os = "macos"))))]
+#[component]
+fn SetupLinksRow() -> Element {
+    rsx! {}
+}
+
 #[component]
 fn SecuritySection() -> Element {
     let prefs = PREFS.read().clone();
@@ -634,6 +680,7 @@ fn SecuritySection() -> Element {
             }
             BiometricRow {}
             AutofillRow {}
+            SetupLinksRow {}
             if crate::extension::ENABLED {
                 PasskeysRow {}
             }

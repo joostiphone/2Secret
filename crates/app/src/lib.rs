@@ -13,6 +13,8 @@ mod components;
 mod extension;
 mod i18n;
 mod icons;
+#[cfg(all(feature = "desktop", not(target_os = "macos")))]
+mod link_handler;
 mod platform;
 mod state;
 mod updater;
@@ -30,6 +32,10 @@ const STYLE: &str = include_str!("style.css");
 
 /// Start the app (does not return).
 pub fn run() {
+    // Windows, Linux, BSDs: a setup link that started another 2Secret goes to
+    // the one that runs.
+    #[cfg(all(feature = "desktop", not(target_os = "macos")))]
+    link_handler::start();
     // A downloaded update is installed before the app starts (and restarts it).
     updater::apply_at_start();
     #[cfg(feature = "desktop")]
