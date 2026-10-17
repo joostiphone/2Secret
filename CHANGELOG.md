@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.1
 
 - Windows: 2Secret comes as one setup (`2Secret_<version>_x64-setup.exe`)
   from now on, no longer also as an `.msi`. The setup installs 2Secret for
