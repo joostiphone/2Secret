@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0
 
 - Verification codes in AutoFill: on iPhone and iPad with iOS 18 and on the
   Mac with macOS 15, Safari and other apps fill one-time codes from 2Secret
