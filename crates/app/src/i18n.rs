@@ -247,6 +247,14 @@ static TABLE: &[Entry] = &[
     ("list.search", "Search", "Zoeken"),
     ("list.no_results", "No items match your search.", "Geen items gevonden."),
     ("list.empty", "Nothing here yet.", "Hier staat nog niets."),
+    // One-time passwords from otpauth:// links
+    ("code.setup_title", "Set up one-time password", "Eenmalig wachtwoord instellen"),
+    ("code.setup_explain", "Add it to the login of this account. 2Secret then shows its codes and fills them, like the password.", "Voeg het toe aan de login van dit account. 2Secret laat dan de codes zien en vult ze in, net als het wachtwoord."),
+    ("code.search", "Search logins", "Logins zoeken"),
+    ("code.new_login", "New login", "Nieuwe login"),
+    ("code.replaces", "Replaces its one-time password", "Vervangt het eenmalige wachtwoord"),
+    ("code.added", "One-time password added", "Eenmalig wachtwoord toegevoegd"),
+    ("code.invalid", "This link holds no valid one-time password.", "Deze link bevat geen geldig eenmalig wachtwoord."),
     // Dashboard
     ("home.welcome", "Welcome", "Welkom"),
     ("home.morning", "Good morning, {name}", "Goedemorgen, {name}"),

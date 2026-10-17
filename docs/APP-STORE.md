@@ -120,20 +120,28 @@ with your compliance code) so App Store Connect stops asking.
 
 The AutoFill extension runs outside the app and cannot unlock the vault
 itself. While the app is unlocked and *Unlock with Face ID* is on, it writes
-the logins and passkeys AutoFill may use to a file in the app group,
-encrypted with ChaCha20-Poly1305 under a new random key on every write. The
-key is kept in the keychain, shared through the app group, readable only
-after Face ID or Touch ID with the current enrolment, on this device. The
-extension stops filling after 14 days without the master password, like the
-app. iOS also gets the websites, user names and passkey IDs (never
-passwords or keys) for its suggestions above the keyboard. Turning Face ID
-unlock off removes all of it. AutoFill cannot save new passkeys; those are
-created with the browser extension and sync to the phone.
+the logins, passkeys and one-time password secrets AutoFill may use to a file
+in the app group, encrypted with ChaCha20-Poly1305 under a new random key on
+every write. The key is kept in the keychain, shared through the app group,
+readable only after Face ID or Touch ID with the current enrolment, on this
+device. The extension stops filling after 14 days without the master
+password, like the app. iOS also gets the websites, user names and passkey
+IDs (never passwords, keys or one-time password secrets) for its suggestions
+above the keyboard. Turning Face ID unlock off removes all of it. AutoFill
+cannot save new passkeys; those are created with the browser extension and
+sync to the phone.
+
+From iOS 18 the extension also fills verification codes
+(`ProvidesOneTimeCodes`), computed from the login's one-time password. The
+app registers the `otpauth` URL scheme, so it can be chosen under *Settings →
+General → AutoFill & Passwords → Set Up Codes In*: setup links and QR codes
+then open 2Secret, which asks which login gets the one-time password.
 
 The Mac works the same way (`macos/`, sharing `ios/AutoFill/Vault.swift`)
 with *Unlock with Touch ID*: the app group is
 `<Team ID>.io.github.joostiphone.twosecret` (on macOS app groups start with
 the Team ID), the key is in the data protection keychain under that access
-group, and the extension needs macOS 14. `scripts/macos-sign.sh` builds the
-extension into the Developer ID release; see CONTRIBUTING.md, *Signing the
-macOS app*.
+group, and the extension needs macOS 14 (verification codes macOS 15).
+`scripts/macos-sign.sh` builds the extension into the Developer ID release
+and registers the `otpauth` URL scheme in the app's Info.plist; see
+CONTRIBUTING.md, *Signing the macOS app*.

@@ -1,7 +1,8 @@
 //! iOS and macOS: keeps the AutoFill extension's cache
 //! (`twosecret_core::autofill`) up to date while the vault is unlocked and
 //! Face ID / Touch ID unlock is on. The extension (`ios/AutoFill`,
-//! `macos/AutoFill`) fills passwords and passkeys in Safari and other apps.
+//! `macos/AutoFill`) fills passwords, passkeys and verification codes in
+//! Safari and other apps.
 //!
 //! The sealed cache goes into the app group container, its key into the
 //! keychain (shared with the extension through the access group), readable
@@ -14,9 +15,9 @@ use objc2::runtime::ProtocolObject;
 use objc2::AnyThread;
 use objc2_authentication_services::{
     ASCredentialIdentity, ASCredentialIdentityStore, ASCredentialServiceIdentifier, ASCredentialServiceIdentifierType,
-    ASPasskeyCredentialIdentity, ASPasswordCredentialIdentity,
+    ASOneTimeCodeCredentialIdentity, ASPasskeyCredentialIdentity, ASPasswordCredentialIdentity,
 };
-use objc2_foundation::{NSArray, NSData, NSFileManager, NSString};
+use objc2_foundation::{NSArray, NSData, NSFileManager, NSOperatingSystemVersion, NSProcessInfo, NSString};
 use security_framework::access_control::{ProtectionMode, SecAccessControl};
 use security_framework::passwords::{
     delete_generic_password_options, set_generic_password_options, AccessControlOptions, PasswordOptions,
@@ -40,14 +41,24 @@ fn group() -> Option<String> {
 /// `dx serve`) and before macOS 14, which the extension needs.
 #[cfg(target_os = "macos")]
 fn group() -> Option<String> {
-    use objc2_foundation::{NSBundle, NSOperatingSystemVersion, NSProcessInfo};
-    let sonoma = NSOperatingSystemVersion { majorVersion: 14, minorVersion: 0, patchVersion: 0 };
-    if !NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(sonoma) {
+    use objc2_foundation::NSBundle;
+    if !system_at_least(14) {
         return None;
     }
     let value = NSBundle::mainBundle().objectForInfoDictionaryKey(&NSString::from_str("TwoSecretAppGroup"))?;
     let group = value.downcast::<NSString>().ok()?.to_string();
     (!group.is_empty()).then_some(group)
+}
+
+fn system_at_least(major: isize) -> bool {
+    let version = NSOperatingSystemVersion { majorVersion: major, minorVersion: 0, patchVersion: 0 };
+    NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(version)
+}
+
+/// Whether AutoFill can fill verification codes: iOS 18 and macOS 15 added
+/// them, older systems do not know their credential identity.
+fn one_time_codes() -> bool {
+    system_at_least(if cfg!(target_os = "ios") { 18 } else { 15 })
 }
 
 /// Whether this build has the AutoFill extension.
@@ -83,25 +94,41 @@ pub fn write(cache: &AutofillCache) {
 
 /// Tell the system which websites and accounts 2Secret can fill, for the
 /// suggestions above the keyboard or in the password menu and the passkey
-/// sheet. Only websites, user names and passkey ids; never passwords or keys.
+/// sheet. Only websites, user names and passkey ids; never passwords, keys
+/// or one-time password secrets.
 fn publish_identities(cache: &AutofillCache) {
     let s = |text: &str| NSString::from_str(text);
+    let service = |domain: &str| unsafe {
+        ASCredentialServiceIdentifier::initWithIdentifier_type(
+            ASCredentialServiceIdentifier::alloc(),
+            &s(domain),
+            ASCredentialServiceIdentifierType::Domain,
+        )
+    };
+    let codes = one_time_codes();
     let mut entries: Vec<Retained<ProtocolObject<dyn ASCredentialIdentity>>> = Vec::new();
     for login in &cache.logins {
         if !login.password.is_empty() {
             for domain in &login.domains {
-                let service = unsafe {
-                    ASCredentialServiceIdentifier::initWithIdentifier_type(
-                        ASCredentialServiceIdentifier::alloc(),
-                        &s(domain),
-                        ASCredentialServiceIdentifierType::Domain,
-                    )
-                };
                 let identity = unsafe {
                     ASPasswordCredentialIdentity::initWithServiceIdentifier_user_recordIdentifier(
                         ASPasswordCredentialIdentity::alloc(),
-                        &service,
+                        &service(domain),
                         &s(&login.username),
+                        Some(&s(&login.id)),
+                    )
+                };
+                entries.push(ProtocolObject::from_retained(identity));
+            }
+        }
+        if codes && login.totp.is_some() {
+            let label = if login.username.is_empty() { &login.title } else { &login.username };
+            for domain in &login.domains {
+                let identity = unsafe {
+                    ASOneTimeCodeCredentialIdentity::initWithServiceIdentifier_label_recordIdentifier(
+                        ASOneTimeCodeCredentialIdentity::alloc(),
+                        &service(domain),
+                        &s(label),
                         Some(&s(&login.id)),
                     )
                 };

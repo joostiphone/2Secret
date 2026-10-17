@@ -1,9 +1,10 @@
-//! The AutoFill cache for iOS: what the AutoFill extension may fill, sealed
-//! for the extension.
+//! The AutoFill cache for iOS and macOS: what the AutoFill extension may
+//! fill, sealed for the extension.
 //!
 //! The extension runs outside the app and cannot unlock the vault, so the app
 //! (while unlocked, with Face ID / Touch ID unlock turned on) writes the
-//! logins and passkeys it may fill to a file shared with the extension. The
+//! logins, passkeys and one-time password secrets it may fill to a file
+//! shared with the extension. The
 //! file is encrypted with ChaCha20-Poly1305 under a fresh random 256-bit key
 //! on every write; the key goes into the keychain, readable only after Face ID
 //! or Touch ID on this device. The layout is CryptoKit's
@@ -16,7 +17,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::crypto::SymmetricKey;
 use crate::session::Session;
-use crate::util::{base_domain, now, random_bytes, url_host};
+use crate::totp::Totp;
+use crate::util::{b64url, base_domain, now, random_bytes, url_host};
 use crate::{Error, Result};
 
 /// Associated data of the sealed cache.
@@ -43,6 +45,10 @@ pub struct AutofillLogin {
     /// extension needs no public suffix list.
     pub domains: Vec<String>,
     pub passkeys: Vec<AutofillPasskey>,
+    /// The login's one-time password, for filling verification codes (iOS 18,
+    /// macOS 15).
+    #[serde(default)]
+    pub totp: Option<AutofillTotp>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -56,15 +62,41 @@ pub struct AutofillPasskey {
     pub private_key: String,
 }
 
+/// What the extension needs to compute codes like [`Totp::code_at`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+pub struct AutofillTotp {
+    /// The shared secret, base64url.
+    pub secret: String,
+    /// `SHA1`, `SHA256` or `SHA512`.
+    pub algorithm: String,
+    pub digits: u32,
+    pub period: u64,
+    /// Steam Guard: five characters from Steam's alphabet instead of digits.
+    pub steam: bool,
+}
+
+impl From<&Totp> for AutofillTotp {
+    fn from(t: &Totp) -> Self {
+        AutofillTotp {
+            secret: b64url(t.secret()),
+            algorithm: t.algorithm.name().into(),
+            digits: t.digits,
+            period: t.period,
+            steam: t.steam,
+        }
+    }
+}
+
 impl Session {
-    /// Everything the AutoFill extension may fill: logins with a password or
-    /// a passkey, outside the trash.
+    /// Everything the AutoFill extension may fill: logins with a password, a
+    /// passkey or a one-time password, outside the trash.
     pub fn autofill_cache(&self, password_entered_at: i64) -> AutofillCache {
         let mut logins: Vec<AutofillLogin> = self
             .all_items()
             .filter(|(_, i)| !i.is_trashed())
-            .filter(|(_, i)| i.password().is_some_and(|p| !p.is_empty()) || !i.passkeys.is_empty())
-            .map(|(_, i)| {
+            .map(|(_, i)| (i, i.totp_secret().and_then(|t| Totp::parse(t).ok())))
+            .filter(|(i, totp)| i.password().is_some_and(|p| !p.is_empty()) || !i.passkeys.is_empty() || totp.is_some())
+            .map(|(i, totp)| {
                 let mut domains: Vec<String> =
                     i.urls.iter().filter_map(|u| url_host(u)).map(|h| base_domain(&h)).collect();
                 domains.extend(i.passkeys.iter().map(|p| base_domain(&p.rp_id)));
@@ -87,6 +119,7 @@ impl Session {
                             private_key: p.private_key.clone(),
                         })
                         .collect(),
+                    totp: totp.as_ref().map(AutofillTotp::from),
                 }
             })
             .collect();
@@ -136,7 +169,6 @@ mod tests {
     use crate::item::Item;
     use crate::passkey::{self, CreationOptions};
     use crate::session::tests::new_session;
-    use crate::util::b64url;
 
     #[test]
     fn cache_holds_what_autofill_needs() {
@@ -144,6 +176,12 @@ mod tests {
         let v = s.default_vault_id().unwrap();
         s.add_item(&v, Item::login("Bank", "jan", "pw-1", Some("https://login.mybank.co.uk/"))).unwrap();
         s.add_item(&v, Item::login("Empty", "nobody", "", Some("https://example.com"))).unwrap();
+        let mut codes = Item::login("Codes", "me", "", Some("https://codes.example.org"));
+        codes.set_value(
+            "totp",
+            "otpauth://totp/Codes:me?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&digits=8&algorithm=SHA256",
+        );
+        s.add_item(&v, codes).unwrap();
         let trashed = s.add_item(&v, Item::login("Old", "old", "pw-2", Some("https://old.example.com"))).unwrap();
         s.trash_item(&trashed).unwrap();
         let options = CreationOptions {
@@ -162,9 +200,13 @@ mod tests {
         let cache = s.autofill_cache(123);
         assert_eq!(cache.password_entered_at, 123);
         let titles: Vec<&str> = cache.logins.iter().map(|l| l.title.as_str()).collect();
-        assert_eq!(titles, ["Bank", "GitHub"]);
+        assert_eq!(titles, ["Bank", "Codes", "GitHub"]);
         assert_eq!(cache.logins[0].domains, ["mybank.co.uk"]);
-        assert_eq!(cache.logins[1].passkeys[0].rp_id, "github.com");
+        assert!(cache.logins[0].totp.is_none());
+        let totp = cache.logins[1].totp.as_ref().unwrap();
+        assert_eq!(totp.secret, b64url(b"12345678901234567890"));
+        assert_eq!((totp.algorithm.as_str(), totp.digits, totp.period, totp.steam), ("SHA256", 8, 30, false));
+        assert_eq!(cache.logins[2].passkeys[0].rp_id, "github.com");
 
         let (sealed, key) = cache.seal().unwrap();
         assert_eq!(AutofillCache::open(&sealed, &key).unwrap(), cache);

@@ -39,7 +39,7 @@ is free, open source, and you can host the sync server yourself.
 | 🧱 **End-to-end encryption** | Every item is encrypted with 256-bit keys (XChaCha20-Poly1305), per-vault keys, quantum-resistant hybrid encryption (X25519 + ML-KEM-768) for sharing. The server only sees ciphertext, padded to hide exact sizes. |
 | 🗂️ **Vaults & sharing** | Multiple vaults; share a vault with other people on your server as *viewer*, *editor* or *manager*; leave or revoke access at any time. |
 | 🧾 **19 item types** | Logins, passwords, secure notes, credit cards, identities, bank accounts (IBAN/BIC), crypto wallets, software licenses, SSH keys, API credentials, databases, servers, Wi-Fi routers, e-mail accounts, passports, driver licenses, memberships, reward programs and documents – plus custom fields, tags, favorites and encrypted file attachments. |
-| ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. |
+| ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. On iPhone, iPad and Mac, setup links and QR codes can open 2Secret (*Set Up Codes In*). |
 | 🛡️ **Watchtower** | Finds weak, reused and old passwords, unencrypted (`http://`) sites, expired and expiring cards/documents, and – opt-in – passwords from data breaches via Have I Been Pwned (k-anonymity: only 5 hash characters leave your device). |
 | 📊 **Dashboard** | After unlocking: your favourites, recent changes, vaults and security score at a glance, without showing any secrets. Or start with all items, favourites or Watchtower. |
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
@@ -47,7 +47,7 @@ is free, open source, and you can host the sync server yourself.
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
 | 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
-| 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords and passkeys in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID. |
+| 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. |
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |

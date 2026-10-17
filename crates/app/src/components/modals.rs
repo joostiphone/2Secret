@@ -7,7 +7,7 @@ use twosecret_core::profile::Role;
 
 use crate::components::widgets::*;
 use crate::i18n::{category_name, role_name, t};
-use crate::icons::{category_icon, either, vault_icon, Icon, VAULT_ICONS};
+use crate::icons::{category_icon, either, vault_icon, Icon, ItemAvatar, VAULT_ICONS};
 use crate::state::*;
 
 fn close() {
@@ -29,6 +29,101 @@ pub fn ModalHost() -> Element {
         Some(Modal::Reauth) => rsx! { ReauthModal {} },
         Some(Modal::ForgetDevice) => rsx! { ForgetModal {} },
         Some(Modal::Backup) => rsx! { BackupModal {} },
+        Some(Modal::SetUpCode(uri)) => rsx! { SetUpCodeModal { uri } },
+    }
+}
+
+/// A one-time password from an `otpauth://` link: add it to the account's
+/// login (the best fits first), or start a new login with it.
+#[component]
+fn SetUpCodeModal(uri: String) -> Element {
+    let mut query = use_signal(String::new);
+    let Ok(totp) = twosecret_core::totp::Totp::parse(&uri) else { return rsx! {} };
+    let account =
+        [totp.issuer.as_deref(), totp.account.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let q = query().trim().to_lowercase();
+    let mut logins: Vec<(u8, Item)> = {
+        let session = SESSION.read();
+        let Some(s) = session.as_ref() else { return rsx! {} };
+        let writable: Vec<String> = s.vaults().into_iter().filter(|v| v.role.can_write()).map(|v| v.id).collect();
+        s.all_items()
+            .filter(|(v, i)| !i.is_trashed() && writable.iter().any(|w| w == v))
+            .filter(|(_, i)| i.category == Category::Login || i.totp_secret().is_some())
+            .filter(|(_, i)| {
+                q.is_empty()
+                    || i.title.to_lowercase().contains(&q)
+                    || i.username().is_some_and(|u| u.to_lowercase().contains(&q))
+                    || i.urls.iter().any(|u| u.to_lowercase().contains(&q))
+            })
+            .map(|(_, i)| (crate::code_setup::fit(i, &totp), i.clone()))
+            .collect()
+    };
+    logins.sort_by_key(|(fit, i)| (std::cmp::Reverse(*fit), i.title.to_lowercase()));
+    logins.truncate(20);
+
+    let new_login = {
+        let uri = uri.clone();
+        move |_| {
+            let Some(vault_id) = SESSION.peek().as_ref().and_then(|s| s.default_vault_id()) else {
+                toast_err(t("err.no_vault"));
+                return;
+            };
+            let Ok(totp) = twosecret_core::totp::Totp::parse(&uri) else { return };
+            let title = totp.issuer.clone().or_else(|| totp.account.clone()).unwrap_or_default();
+            let mut item = Item::new(Category::Login, &title);
+            if let Some(account) = &totp.account {
+                item.set_value("username", account);
+            }
+            item.set_totp(&uri);
+            item.urls.push(String::new());
+            clear_search();
+            *NAV.write() = Nav::All;
+            *SELECTED.write() = None;
+            *EDITING.write() = Some(Draft { item, vault_id, is_new: true });
+            *PANE.write() = Pane::Detail;
+            close();
+        }
+    };
+    rsx! {
+        ModalFrame { title: t("code.setup_title"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn primary", onclick: new_login, Icon { name: "plus", size: 15 } {t("code.new_login")} }
+            },
+            if !account.is_empty() { p { style: "margin-top:0", strong { "{account}" } } }
+            p { class: "muted", style: "margin-top:0;line-height:1.5", {t("code.setup_explain")} }
+            div { class: "form-group",
+                input { class: "input", r#type: "search", placeholder: t("code.search"), value: "{query}",
+                    oninput: move |e| query.set(e.value()) }
+            }
+            if logins.is_empty() {
+                p { class: "muted", {t("list.no_results")} }
+            }
+            div { class: "pick-list",
+                for (_, item) in logins {
+                    button { class: "choice compact", key: "{item.id}",
+                        onclick: {
+                            let (id, uri) = (item.id.clone(), uri.clone());
+                            move |_| {
+                                if mutate(|s| s.set_totp(&id, &uri)).is_some() {
+                                    close();
+                                    open_item(&id);
+                                    toast(t("code.added"));
+                                }
+                            }
+                        },
+                        ItemAvatar { category: item.category, title: item.title.clone(), size: 32,
+                            icon: item.icon.as_ref().and_then(|i| i.safe_image()).map(str::to_string) }
+                        div {
+                            div { class: "t", "{item.title}" }
+                            div { class: "d",
+                                if item.totp_secret().is_some() { {t("code.replaces")} } else { {item.username().unwrap_or_default().to_string()} }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

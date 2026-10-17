@@ -1,11 +1,11 @@
 import AppKit
 import AuthenticationServices
 
-/// AutoFill for passwords and passkeys on the Mac, in Safari and other apps
-/// (System Settings → General → AutoFill & Passwords → 2Secret). Like the iOS
-/// extension it fills from the cache the 2Secret app keeps while unlocking
-/// with Touch ID is on (see ios/AutoFill/Vault.swift); it cannot change the
-/// vault.
+/// AutoFill for passwords, passkeys and verification codes on the Mac, in
+/// Safari and other apps (System Settings → General → AutoFill & Passwords →
+/// 2Secret). Like the iOS extension it fills from the cache the 2Secret app
+/// keeps while unlocking with Touch ID is on (see ios/AutoFill/Vault.swift);
+/// it cannot change the vault.
 @objc(CredentialProviderViewController)
 final class CredentialProviderViewController: ASCredentialProviderViewController,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate
@@ -14,6 +14,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         case header(String)
         case login(Login)
         case passkey(Login, Passkey)
+        case code(Login)
 
         var selectable: Bool {
             if case .header = self { return false }
@@ -29,6 +30,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var cache: AutofillCache?
     private var serviceIdentifiers: [ASCredentialServiceIdentifier] = []
     private var passkeyParameters: ASPasskeyCredentialRequestParameters?
+    /// The list is for a verification code field (macOS 15).
+    private var oneTimeCodes = false
     private var rows: [Row] = []
     private var messageAction: (() -> Void)?
 
@@ -123,6 +126,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         unlock { [weak self] _ in self?.reload() }
     }
 
+    /// A verification code field: the logins with a one-time password.
+    @available(macOS 15.0, *)
+    override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        self.serviceIdentifiers = serviceIdentifiers
+        oneTimeCodes = true
+        unlock { [weak self] _ in self?.reload() }
+    }
+
     /// A suggestion in the password menu was chosen. The key needs Touch ID,
     /// so macOS has to show our interface first.
     override func provideCredentialWithoutUserInteraction(for credentialRequest: ASCredentialRequest) {
@@ -145,6 +156,12 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                       let login = cache.logins.first(where: { $0.id == identity.recordIdentifier })
             {
                 self.complete(login: login)
+                return
+            } else if #available(macOS 15.0, *),
+                      let identity = credentialRequest.credentialIdentity as? ASOneTimeCodeCredentialIdentity,
+                      let login = cache.logins.first(where: { $0.id == identity.recordIdentifier && $0.totp != nil })
+            {
+                self.complete(code: login)
                 return
             }
             self.extensionContext.cancelRequest(withError: Self.error(.credentialIdentityNotFound))
@@ -208,6 +225,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    private func complete(code login: Login) {
+        guard #available(macOS 15.0, *), let code = login.totp?.code() else {
+            extensionContext.cancelRequest(withError: Self.error(.failed))
+            return
+        }
+        extensionContext.completeOneTimeCodeRequest(using: ASOneTimeCodeCredential(code: code), completionHandler: nil)
+    }
+
     private func choose(_ row: Row) {
         switch row {
         case .header:
@@ -217,6 +242,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         case let .passkey(_, passkey):
             guard let params = passkeyParameters else { return }
             complete(passkey: passkey, clientDataHash: params.clientDataHash)
+        case let .code(login):
+            complete(code: login)
         }
     }
 
@@ -271,18 +298,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             }
             if !passkeys.isEmpty { rows += [Row.header(L.passkeys)] + passkeys }
         }
-        let withPassword = cache.logins.filter { !$0.password.isEmpty && matchesQuery($0) }
-        let suggested = withPassword.filter { !Set($0.domains).isDisjoint(with: wanted) }
-        let others = withPassword.filter { Set($0.domains).isDisjoint(with: wanted) }
-        if !suggested.isEmpty { rows += [Row.header(L.suggested)] + suggested.map(Row.login) }
-        if !others.isEmpty { rows += [Row.header(L.all)] + others.map(Row.login) }
+        // Logins with a password, or with a one-time password for a code field.
+        let listed = cache.logins.filter { (oneTimeCodes ? $0.totp != nil : !$0.password.isEmpty) && matchesQuery($0) }
+        let row: (Login) -> Row = oneTimeCodes ? Row.code : Row.login
+        let suggested = listed.filter { !Set($0.domains).isDisjoint(with: wanted) }
+        let others = listed.filter { Set($0.domains).isDisjoint(with: wanted) }
+        if !suggested.isEmpty { rows += [Row.header(L.suggested)] + suggested.map(row) }
+        if !others.isEmpty { rows += [Row.header(L.all)] + others.map(row) }
         self.rows = rows
         tableView.reloadData()
 
         searchField.isHidden = false
         scrollView.isHidden = rows.isEmpty
         messageLabel.isHidden = !rows.isEmpty
-        messageLabel.stringValue = L.nothing
+        messageLabel.stringValue = oneTimeCodes && query.isEmpty ? L.noCodes : L.nothing
         messageButton.isHidden = true
         select(rows.firstIndex(where: \.selectable))
         if view.window?.firstResponder !== searchField.currentEditor() {
@@ -374,6 +403,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 title: passkey.userName.isEmpty ? login.username : passkey.userName,
                 subtitle: "\(login.title) · \(passkey.rpId)"
             )
+        case let .code(login):
+            return item(symbol: "clock.fill", title: login.title, subtitle: login.username)
         }
     }
 

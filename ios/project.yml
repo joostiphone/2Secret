@@ -48,6 +48,11 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSFaceIDUsageDescription: 2Secret uses Face ID to unlock your vault, so you do not have to type your master password every time.
+        # Setting up verification codes from otpauth:// links and QR codes
+        # (Settings → General → AutoFill & Passwords → Set Up Codes In).
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.joostiphone.twosecret.otpauth
+            CFBundleURLSchemes: [otpauth]
     entitlements:
       path: App/2Secret.entitlements
       properties:
@@ -85,6 +90,8 @@ targets:
             ASCredentialProviderExtensionCapabilities:
               ProvidesPasswords: true
               ProvidesPasskeys: true
+              # Verification codes (iOS 18, macOS 15).
+              ProvidesOneTimeCodes: true
               ShowsConfigurationUI: true
     entitlements:
       path: AutoFill/AutoFill.entitlements

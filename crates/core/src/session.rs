@@ -845,6 +845,11 @@ impl Session {
     }
 
     /// Move an item to the trash (recoverable).
+    /// Give an item a one-time password (see [`Item::set_totp`]).
+    pub fn set_totp(&mut self, id: &str, value: &str) -> Result<()> {
+        self.modify_item(id, |i| i.set_totp(value))
+    }
+
     pub fn trash_item(&mut self, id: &str) -> Result<()> {
         self.modify_item(id, |i| i.trashed_at = Some(now()))
     }

@@ -18,15 +18,6 @@ use crate::state::*;
 /// How many favourites and recent changes the dashboard lists.
 const SHOWN: usize = 5;
 
-/// Show an item in the list of all items.
-fn open_item(id: &str) {
-    clear_search();
-    *NAV.write() = Nav::All;
-    *EDITING.write() = None;
-    *SELECTED.write() = Some(id.to_string());
-    *PANE.write() = Pane::Detail;
-}
-
 /// "Good morning, Alex", by the time of day.
 fn greeting(name: &str) -> String {
     let Some(first) = name.split_whitespace().next() else { return t("home.welcome").to_string() };

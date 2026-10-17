@@ -141,6 +141,8 @@ pub enum Modal {
     Reauth,
     ForgetDevice,
     Backup,
+    /// Add a one-time password from an `otpauth://` link to a login.
+    SetUpCode(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -228,6 +230,10 @@ pub static PANE: GlobalSignal<Pane> = Signal::global(|| Pane::List);
 pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
 /// Breach counts from the last Have I Been Pwned check (item id → count).
 pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
+
+/// A one-time password from an `otpauth://` link (`code_setup`), until the
+/// vault is unlocked and its dialog opens.
+pub static CODE_SETUP: GlobalSignal<Option<String>> = Signal::global(|| None);
 
 /// Extension: the passkey request this window was opened for.
 pub static PASSKEY: GlobalSignal<Option<extension::PasskeyRequest>> = Signal::global(|| None);
@@ -560,6 +566,15 @@ pub fn fetch_icons(ids: Vec<String>) {
     }
     #[cfg(target_arch = "wasm32")]
     let _ = ids;
+}
+
+/// Show an item from outside the list (the dashboard, a dialog).
+pub fn open_item(id: &str) {
+    clear_search();
+    *NAV.write() = Nav::All;
+    *EDITING.write() = None;
+    *SELECTED.write() = Some(id.to_string());
+    *PANE.write() = Pane::Detail;
 }
 
 pub fn clear_search() {

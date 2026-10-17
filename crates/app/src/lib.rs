@@ -8,6 +8,7 @@ mod android;
 mod apple_autofill;
 mod avatar;
 mod biometric;
+mod code_setup;
 mod components;
 mod extension;
 mod i18n;
@@ -49,16 +50,27 @@ pub fn run() {
         if let Ok(icon) = dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon-256.png")) {
             config = config.with_icon(icon);
         }
+        config = config.with_custom_event_handler(|event, _| {
+            if let dioxus::desktop::tao::event::Event::Opened { urls } = event {
+                code_setup::opened(urls.iter().map(|u| u.as_str()));
+            }
+        });
         dioxus::LaunchBuilder::desktop().with_cfg(config).launch(App);
     }
     #[cfg(feature = "mobile")]
     {
         // maximum-scale: iOS zooms in on a text field with small text when it
         // gets the focus, and an app does not zoom.
-        let config = dioxus::mobile::Config::new().with_custom_head(
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\">"
-                .to_string(),
-        );
+        let config = dioxus::mobile::Config::new()
+            .with_custom_head(
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\">"
+                    .to_string(),
+            )
+            .with_custom_event_handler(|event, _| {
+                if let dioxus::mobile::tao::event::Event::Opened { urls } = event {
+                    code_setup::opened(urls.iter().map(|u| u.as_str()));
+                }
+            });
         dioxus::LaunchBuilder::mobile().with_cfg(config).launch(App);
     }
     #[cfg(not(any(feature = "desktop", feature = "mobile")))]
@@ -177,6 +189,15 @@ fn App() -> Element {
             init();
         });
         spawn(updater::background());
+        spawn(code_setup::receive());
+    });
+    // A one-time password from an otpauth:// link, once the vault is unlocked
+    // and no other dialog is open.
+    use_effect(|| {
+        if *PHASE.read() == Phase::Unlocked && MODAL.read().is_none() && CODE_SETUP.read().is_some() {
+            let uri = CODE_SETUP.write().take();
+            *MODAL.write() = uri.map(Modal::SetUpCode);
+        }
     });
     #[cfg(feature = "mobile")]
     use_effect(|| {

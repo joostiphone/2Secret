@@ -40,6 +40,8 @@ targets:
             ASCredentialProviderExtensionCapabilities:
               ProvidesPasswords: true
               ProvidesPasskeys: true
+              # Verification codes (iOS 18, macOS 15).
+              ProvidesOneTimeCodes: true
               ShowsConfigurationUI: true
     settings:
       base:

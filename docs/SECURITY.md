@@ -266,15 +266,18 @@ conflict never silently loses a password. Deletions are tombstones.
   stored. The master password is required again every 14 days, and turning
   the feature off or removing the account deletes the device key.
 - **AutoFill on iOS and macOS** (only while biometric unlock is on): the app
-  shares the logins and passkeys AutoFill may fill with its extension through
-  a file in the app group, encrypted with ChaCha20-Poly1305 under a new random
-  key on every write. The key is a keychain item that opens only after Face ID
-  or Touch ID with the current enrolment, on this device; on macOS it is in
-  the data protection keychain, shared only with the extension (same Team ID
-  and access group), and the extension runs in the App Sandbox. The extension
-  cannot change the vault and stops filling after the same 14 days. The
-  system receives websites, user names and passkey IDs for its suggestions,
-  never passwords or keys. Details:
+  shares the logins, passkeys and one-time password secrets AutoFill may fill
+  with its extension through a file in the app group, encrypted with
+  ChaCha20-Poly1305 under a new random key on every write. The key is a
+  keychain item that opens only after Face ID or Touch ID with the current
+  enrolment, on this device; on macOS it is in the data protection keychain,
+  shared only with the extension (same Team ID and access group), and the
+  extension runs in the App Sandbox. The extension cannot change the vault
+  and stops filling after the same 14 days. The system receives websites,
+  user names and passkey IDs for its suggestions, never passwords, keys or
+  one-time password secrets. An `otpauth://` setup
+  link that opens the app is only read; its secret is saved, encrypted like
+  any field, once you choose a login for it. Details:
   [APP-STORE.md](APP-STORE.md#how-autofill-works).
 - **Clipboard**: copied secrets are cleared after a configurable time
   (default 90 s) if the clipboard still contains them. Browsers only allow

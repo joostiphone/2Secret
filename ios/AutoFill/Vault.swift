@@ -20,6 +20,8 @@ struct Login: Decodable {
     /// Registrable domains of the login's websites, e.g. "example.co.uk".
     let domains: [String]
     let passkeys: [Passkey]
+    /// The login's one-time password, if it has one.
+    let totp: OneTimePassword?
 }
 
 struct Passkey: Decodable {
@@ -29,6 +31,54 @@ struct Passkey: Decodable {
     let userName: String
     /// PKCS #8, base64url.
     let privateKey: String
+}
+
+/// A time-based one-time password (RFC 6238), like `Totp` in the Rust core.
+struct OneTimePassword: Decodable {
+    /// The shared secret, base64url.
+    let secret: String
+    /// "SHA1", "SHA256" or "SHA512".
+    let algorithm: String
+    let digits: Int
+    let period: Int
+    /// Steam Guard: five characters from Steam's alphabet instead of digits.
+    let steam: Bool
+
+    private static let steamAlphabet = Array("23456789BCDFGHJKMNPQRTVWXY")
+
+    /// The code valid at `date`, like `Totp::code_at`.
+    func code(at date: Date = Date()) -> String? {
+        guard let bytes = Vault.data(base64url: secret), period > 0, (1 ... 10).contains(digits) else { return nil }
+        let counter = UInt64(max(0, date.timeIntervalSince1970)) / UInt64(period)
+        let message = withUnsafeBytes(of: counter.bigEndian) { Data($0) }
+        let key = SymmetricKey(data: bytes)
+        let hash: [UInt8]
+        switch algorithm {
+        case "SHA256":
+            hash = Array(HMAC<SHA256>.authenticationCode(for: message, using: key))
+        case "SHA512":
+            hash = Array(HMAC<SHA512>.authenticationCode(for: message, using: key))
+        default:
+            hash = Array(HMAC<Insecure.SHA1>.authenticationCode(for: message, using: key))
+        }
+        let offset = Int(hash[hash.count - 1] & 0x0F)
+        var value = UInt32(hash[offset] & 0x7F) << 24 | UInt32(hash[offset + 1]) << 16
+            | UInt32(hash[offset + 2]) << 8 | UInt32(hash[offset + 3])
+        if steam {
+            var out = ""
+            for _ in 0 ..< 5 {
+                out.append(Self.steamAlphabet[Int(value % UInt32(Self.steamAlphabet.count))])
+                value /= UInt32(Self.steamAlphabet.count)
+            }
+            return out
+        }
+        var modulo: UInt64 = 1
+        for _ in 0 ..< digits {
+            modulo *= 10
+        }
+        let number = String(UInt64(value) % modulo)
+        return String(repeating: "0", count: digits - number.count) + number
+    }
 }
 
 enum VaultError: Error {
@@ -167,6 +217,10 @@ enum L {
     static let all = t("All logins", "Alle logins")
     static let passkeys = t("Passkeys", "Passkeys")
     static let nothing = t("No logins found.", "Geen logins gevonden.")
+    static let noCodes = t(
+        "No logins with a one-time password found. Add one to a login in 2Secret.",
+        "Geen logins met een eenmalig wachtwoord gevonden. Voeg er een toe aan een login in 2Secret."
+    )
     #if os(macOS)
     static let notSetUp = t(
         "Open 2Secret and turn on unlocking with Touch ID (Settings → Security) to use AutoFill.",

@@ -39,7 +39,7 @@ base64.workspace = true
 # Profile photos: read what people pick, write a small JPEG.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 arboard = { version = "3", optional = true, default-features = false }
-tokio = { version = "1", features = ["time", "rt"], optional = true }
+tokio = { version = "1", features = ["time", "rt", "sync"], optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Window", "Storage", "Navigator", "Document", "Element", "HtmlElement", "HtmlAnchorElement", "Location", "Clipboard", "Blob", "BlobPropertyBag", "Url", "Event", "EventTarget", "IdbFactory", "IdbOpenDbRequest", "IdbRequest", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "DomException"] }
 js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
@@ -58,17 +58,17 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSFileManager", "NSURL", "NSArray", "NSData", "NSBundle", "NSProcessInfo"] }
 objc2-local-authentication = { version = "0.3", default-features = false, features = ["std", "block2", "LAContext", "LAError", "LABiometryType"] }
 block2 = "0.6"
-objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
+objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASOneTimeCodeCredentialIdentity", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 security-framework = "3"
 security-framework-sys = "2"
 core-foundation = "0.10"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSFileManager", "NSURL", "NSArray", "NSData"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSFileManager", "NSURL", "NSArray", "NSData", "NSProcessInfo"] }
 objc2-local-authentication = { version = "0.3", default-features = false, features = ["std", "block2", "LAContext", "LAError", "LABiometryType"] }
 block2 = "0.6"
-objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
+objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASOneTimeCodeCredentialIdentity", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
 
 # Unlocking with Windows Hello.
 [target.'cfg(windows)'.dependencies]

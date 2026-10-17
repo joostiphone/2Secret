@@ -14,7 +14,7 @@ pub enum Algorithm {
 }
 
 impl Algorithm {
-    fn name(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self {
             Algorithm::Sha1 => "SHA1",
             Algorithm::Sha256 => "SHA256",
@@ -190,6 +190,11 @@ impl Totp {
             return Err(Error::invalid("invalid TOTP period"));
         }
         Ok(totp)
+    }
+
+    /// The shared secret.
+    pub(crate) fn secret(&self) -> &[u8] {
+        &self.secret
     }
 
     fn hmac(&self, counter: u64) -> Vec<u8> {

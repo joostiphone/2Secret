@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Signs the macOS app that `dx bundle` made and packages it as a .dmg. With a
 # Developer ID it also adds the AutoFill extension (macos/), which fills
-# passwords and passkeys in Safari and other apps, and has Apple notarize the
-# app and the .dmg. Runs on macOS with Xcode; the release workflow calls it.
+# passwords, passkeys and verification codes in Safari and other apps, and has
+# Apple notarize the app and the .dmg. Runs on macOS with Xcode; the release
+# workflow calls it.
 #
 #   scripts/macos-sign.sh <2Secret.app> <output .dmg>
 #
@@ -88,6 +89,13 @@ package() {
   ln -s /Applications "$work/dmg/Applications"
   hdiutil create -volname 2Secret -srcfolder "$work/dmg" -ov -format UDZO "$dmg"
 }
+
+# otpauth:// links (and QR codes scanned with the camera) can open 2Secret,
+# which then sets up the one-time password: System Settings → General →
+# AutoFill & Passwords → Set Up Codes In. `dx bundle` cannot add URL schemes.
+plutil -replace CFBundleURLTypes -json \
+  '[{"CFBundleURLName":"io.github.joostiphone.twosecret.otpauth","CFBundleURLSchemes":["otpauth"]}]' \
+  "$app/Contents/Info.plist"
 
 if [ -z "${APPLE_CERTIFICATE:-}" ]; then
   # Without a Developer ID, sign ad hoc: a downloaded app with an unsigned

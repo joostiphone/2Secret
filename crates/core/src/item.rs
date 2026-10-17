@@ -544,6 +544,15 @@ impl Item {
         self.fields.iter().find(|f| f.kind == FieldKind::Totp && !f.value.trim().is_empty()).map(|f| f.value.as_str())
     }
 
+    /// Put a one-time password secret in the first one-time password field,
+    /// replacing what it held, or in a new one.
+    pub fn set_totp(&mut self, value: &str) {
+        match self.fields.iter_mut().find(|f| f.kind == FieldKind::Totp) {
+            Some(f) => f.value = value.to_string(),
+            None => self.set_value("totp", value),
+        }
+    }
+
     pub fn primary_url(&self) -> Option<&str> {
         self.urls.iter().map(|u| u.as_str()).find(|u| !u.trim().is_empty()).or_else(|| self.value("url"))
     }
@@ -730,6 +739,12 @@ mod tests {
         assert!(item.totp_secret().is_none());
         item.set_value("totp", "JBSWY3DPEHPK3PXP");
         assert!(item.totp_secret().is_some());
+        let fields = item.fields.len();
+        item.set_totp("GEZDGNBVGY3TQOJQ");
+        assert_eq!((item.totp_secret(), item.fields.len()), (Some("GEZDGNBVGY3TQOJQ"), fields));
+        let mut note = Item::new(Category::SecureNote, "Note");
+        note.set_totp("JBSWY3DPEHPK3PXP");
+        assert_eq!(note.totp_secret(), Some("JBSWY3DPEHPK3PXP"));
         item.set_value("Recovery codes", "a b c");
         assert_eq!(item.value("recovery codes"), Some("a b c"));
     }

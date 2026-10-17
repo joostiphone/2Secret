@@ -105,6 +105,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   cursor: pointer; text-align: left; margin-bottom: 10px; color: var(--text); }
 .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
 .choice.compact { padding: 10px 14px; margin-bottom: 8px; }
+/* A list of choices that scrolls by itself, so the dialog's buttons stay in view. */
+.pick-list { max-height: min(320px, 40vh); overflow-y: auto; }
 .banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--accent);
   background: var(--accent-soft); border-radius: 10px; }
 .banner .grow { min-width: 160px; }

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Verification codes in AutoFill: on iPhone and iPad with iOS 18 and on the
+  Mac with macOS 15, Safari and other apps fill one-time codes from 2Secret
+  after Face ID or Touch ID, from the logins that have a one-time password.
+  *Settings → General → AutoFill & Passwords* then lists 2Secret for
+  "Passkeys, passwords and codes" (if it does not after updating, turn
+  2Secret off and on there once). Open 2Secret once after updating, so
+  AutoFill gets the one-time passwords.
+- Setting up codes: 2Secret can be chosen under *Set Up Codes In* in the same
+  settings. Setup links (`otpauth://`) on websites and QR codes scanned with
+  the camera then open 2Secret, which adds the one-time password to the login
+  you choose or starts a new login with it.
+
 ## 1.5.1
 
 - Dashboard: the apps open with an overview after unlocking: a greeting,

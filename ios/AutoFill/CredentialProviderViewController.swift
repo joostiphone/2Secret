@@ -1,10 +1,10 @@
 import AuthenticationServices
 import UIKit
 
-/// AutoFill for passwords and passkeys (Settings → General → AutoFill &
-/// Passwords → 2Secret). It fills from the cache the 2Secret app keeps while
-/// unlocking with Face ID or Touch ID is on (see Vault.swift); it cannot
-/// change the vault.
+/// AutoFill for passwords, passkeys and verification codes (Settings →
+/// General → AutoFill & Passwords → 2Secret). It fills from the cache the
+/// 2Secret app keeps while unlocking with Face ID or Touch ID is on (see
+/// Vault.swift); it cannot change the vault.
 @objc(CredentialProviderViewController)
 final class CredentialProviderViewController: ASCredentialProviderViewController,
     UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate
@@ -12,6 +12,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private enum Row {
         case login(Login)
         case passkey(Login, Passkey)
+        case code(Login)
     }
 
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
@@ -20,6 +21,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var cache: AutofillCache?
     private var serviceIdentifiers: [ASCredentialServiceIdentifier] = []
     private var passkeyParameters: ASPasskeyCredentialRequestParameters?
+    /// The list is for a verification code field (iOS 18).
+    private var oneTimeCodes = false
     private var sections: [(title: String, rows: [Row])] = []
 
     // MARK: - Layout
@@ -85,6 +88,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         unlock { [weak self] _ in self?.reload() }
     }
 
+    /// A verification code field: the logins with a one-time password.
+    @available(iOS 18.0, *)
+    override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        self.serviceIdentifiers = serviceIdentifiers
+        oneTimeCodes = true
+        unlock { [weak self] _ in self?.reload() }
+    }
+
     /// A suggestion above the keyboard was chosen. The key needs Face ID, so
     /// iOS has to show our interface first.
     override func provideCredentialWithoutUserInteraction(for credentialRequest: ASCredentialRequest) {
@@ -107,6 +118,12 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                       let login = cache.logins.first(where: { $0.id == identity.recordIdentifier })
             {
                 self.complete(login: login)
+                return
+            } else if #available(iOS 18.0, *),
+                      let identity = credentialRequest.credentialIdentity as? ASOneTimeCodeCredentialIdentity,
+                      let login = cache.logins.first(where: { $0.id == identity.recordIdentifier && $0.totp != nil })
+            {
+                self.complete(code: login)
                 return
             }
             self.extensionContext.cancelRequest(withError: Self.error(.credentialIdentityNotFound))
@@ -170,6 +187,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    private func complete(code login: Login) {
+        guard #available(iOS 18.0, *), let code = login.totp?.code() else {
+            extensionContext.cancelRequest(withError: Self.error(.failed))
+            return
+        }
+        extensionContext.completeOneTimeCodeRequest(using: ASOneTimeCodeCredential(code: code), completionHandler: nil)
+    }
+
     @objc private func cancelTapped() {
         extensionContext.cancelRequest(withError: Self.error(.userCanceled))
     }
@@ -225,17 +250,19 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             }
             if !rows.isEmpty { sections.append((L.passkeys, rows)) }
         }
-        let withPassword = cache.logins.filter { !$0.password.isEmpty && matchesQuery($0) }
-        let suggested = withPassword.filter { !Set($0.domains).isDisjoint(with: wanted) }
-        let others = withPassword.filter { Set($0.domains).isDisjoint(with: wanted) }
-        if !suggested.isEmpty { sections.append((L.suggested, suggested.map(Row.login))) }
-        if !others.isEmpty { sections.append((L.all, others.map(Row.login))) }
+        // Logins with a password, or with a one-time password for a code field.
+        let listed = cache.logins.filter { (oneTimeCodes ? $0.totp != nil : !$0.password.isEmpty) && matchesQuery($0) }
+        let row: (Login) -> Row = oneTimeCodes ? Row.code : Row.login
+        let suggested = listed.filter { !Set($0.domains).isDisjoint(with: wanted) }
+        let others = listed.filter { Set($0.domains).isDisjoint(with: wanted) }
+        if !suggested.isEmpty { sections.append((L.suggested, suggested.map(row))) }
+        if !others.isEmpty { sections.append((L.all, others.map(row))) }
         self.sections = sections.map { (title: $0.0, rows: $0.1) }
 
         searchBar.isHidden = false
         tableView.isHidden = sections.isEmpty
         messageLabel.isHidden = !sections.isEmpty
-        messageLabel.text = L.nothing
+        messageLabel.text = oneTimeCodes && query.isEmpty ? L.noCodes : L.nothing
         tableView.reloadData()
     }
 
@@ -267,6 +294,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             content.text = passkey.userName.isEmpty ? login.username : passkey.userName
             content.secondaryText = "\(login.title) · \(passkey.rpId)"
             content.image = UIImage(systemName: "person.badge.key.fill")
+        case let .code(login):
+            content.text = login.title
+            content.secondaryText = login.username
+            content.image = UIImage(systemName: "clock.fill")
         }
         content.imageProperties.tintColor = .systemBlue
         cell.contentConfiguration = content
@@ -281,6 +312,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         case let .passkey(_, passkey):
             guard let params = passkeyParameters else { return }
             complete(passkey: passkey, clientDataHash: params.clientDataHash)
+        case let .code(login):
+            complete(code: login)
         }
     }
 }
