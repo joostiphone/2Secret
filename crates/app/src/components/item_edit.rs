@@ -311,7 +311,9 @@ fn EditField(idx: usize, field: Field, title: String) -> Element {
                         SecretArea { value: value.clone(), oninput: set }
                     },
                     FieldKind::Concealed => rsx! {
-                        PasswordInput { value: value.clone(), oninput: set, generate: is_password_field(&field) }
+                        PasswordInput { value: value.clone(), oninput: set, generate: is_password_field(&field),
+                            rules: field.generator.clone(),
+                            onrules: move |rules| draft_mut(|d| { if let Some(f) = d.item.fields.get_mut(idx) { f.generator = Some(rules); } }) }
                         if is_password_field(&field) {
                             StrengthMeter { password: value.clone(), inputs: vec![title.clone()] }
                         }

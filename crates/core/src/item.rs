@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::generator::GeneratorOptions;
 use crate::passkey::Passkey;
 use crate::util::{new_id, now, url_host};
 
@@ -359,11 +360,23 @@ pub struct Field {
     /// Optional section heading used to group custom fields.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub section: String,
+    /// How a new value is generated for this password (length, character
+    /// sets, …), when chosen for it; else the generator's defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[zeroize(skip)]
+    pub generator: Option<GeneratorOptions>,
 }
 
 impl Field {
     pub fn new(id: &str, label: &str, kind: FieldKind, value: &str) -> Self {
-        Self { id: id.to_string(), label: label.to_string(), kind, value: value.to_string(), section: String::new() }
+        Self {
+            id: id.to_string(),
+            label: label.to_string(),
+            kind,
+            value: value.to_string(),
+            section: String::new(),
+            generator: None,
+        }
     }
 
     /// A custom field with a random id.
@@ -747,6 +760,19 @@ mod tests {
         assert_eq!(note.totp_secret(), Some("JBSWY3DPEHPK3PXP"));
         item.set_value("Recovery codes", "a b c");
         assert_eq!(item.value("recovery codes"), Some("a b c"));
+    }
+
+    #[test]
+    fn password_rules_travel_with_the_field() {
+        let mut item = Item::login("Bank", "jan", "pw", None);
+        let plain = serde_json::to_string(&item).unwrap();
+        assert!(!plain.contains("generator"), "fields without rules serialize as before");
+        let rules = GeneratorOptions { length: 12, symbols: false, ..GeneratorOptions::default() };
+        item.field_mut("password").unwrap().generator = Some(rules.clone());
+        let again: Item = serde_json::from_str(&serde_json::to_string(&item).unwrap()).unwrap();
+        assert_eq!(again.field("password").unwrap().generator, Some(rules));
+        let old: Item = serde_json::from_str(&plain).unwrap();
+        assert_eq!(old.field("password").unwrap().generator, None);
     }
 
     #[test]

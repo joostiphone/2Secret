@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Password rules per password: next to *Generate password* in the item
+  editor, *Password rules* sets how that password is made: random,
+  memorable or a PIN, its length (also exactly, from 4 to 128 characters),
+  and upper case, lower case, digits, symbols and look-alike characters.
+  Every change makes a new password right away. The item keeps the rules,
+  encrypted and synced, so the next new password for it follows them too;
+  *Use as default* makes them the generator's defaults. Versions before this
+  one keep the password but forget its rules when they save the item.
+- The password generator takes an exact length next to its slider.
+
 ## 1.6.3
 
 - *Settings → About* shows where 2Secret is installed, and on Windows

@@ -136,11 +136,25 @@ pub fn PasswordInput(
     /// Change this to clear/replace the field from outside.
     #[props(default)]
     reset: u32,
+    /// How this password is generated, when chosen for it (else the
+    /// generator's defaults).
+    #[props(default)]
+    rules: Option<GeneratorOptions>,
+    /// Offers the generator's options for this password (with `generate`).
+    #[props(default)]
+    onrules: Option<EventHandler<GeneratorOptions>>,
 ) -> Element {
     let mut reveal = use_signal(|| false);
     let mut version = use_signal(|| 0u32);
+    let mut options_open = use_signal(|| false);
     let kind = if reveal() { "text" } else { "password" };
     let key = format!("{reset}-{}", version());
+    let current = rules.clone().unwrap_or_else(default_rules);
+    let mut fill = move |opts: &GeneratorOptions| {
+        oninput.call(opts.generate());
+        version += 1;
+        reveal.set(true);
+    };
     rsx! {
         div { class: "input-group",
             for k in [key] {
@@ -171,18 +185,18 @@ pub fn PasswordInput(
             }
             if generate {
                 button { class: "icon-btn", r#type: "button", title: t("gen.generate"),
-                    onclick: move |_| {
-                        let opts = PREFS.peek().generator.clone();
-                        let opts = if opts.kind == twosecret_core::generator::GeneratorKind::Pin {
-                            GeneratorOptions::random(20)
-                        } else {
-                            opts
-                        };
-                        oninput.call(opts.generate());
-                        version += 1;
-                        reveal.set(true);
+                    onclick: {
+                        let current = current.clone();
+                        move |_| fill(&current)
                     },
                     Icon { name: "zap", size: 16 }
+                }
+                if onrules.is_some() {
+                    button { class: either(options_open(), "icon-btn on", "icon-btn"), r#type: "button", title: t("gen.rules"),
+                        "aria-expanded": "{options_open()}",
+                        onclick: move |_| options_open.toggle(),
+                        Icon { name: "settings", size: 16 }
+                    }
                 }
             }
             button { class: "icon-btn", r#type: "button", title: t("common.reveal"),
@@ -190,6 +204,55 @@ pub fn PasswordInput(
                 Icon { name: either(reveal(), "eye-off", "eye"), size: 16 }
             }
         }
+        if let (true, Some(onrules)) = (generate && options_open(), onrules) {
+            div { class: "gen-panel",
+                div { class: "row", style: "justify-content:space-between;margin-bottom:10px",
+                    span { class: "small", style: "font-weight:600", {t("gen.rules_here")} }
+                    span { class: "small muted", {crate::components::generator::strength(&current)} }
+                }
+                crate::components::generator::GeneratorControls {
+                    opts: current.clone(),
+                    kinds: true,
+                    // A new password right away, so the result shows.
+                    set: move |opts: GeneratorOptions| {
+                        fill(&opts);
+                        onrules.call(opts);
+                    },
+                }
+                div { class: "row", style: "margin-top:12px",
+                    button { class: "btn small", r#type: "button",
+                        onclick: {
+                            let current = current.clone();
+                            move |_| fill(&current)
+                        },
+                        Icon { name: "refresh", size: 14 }
+                        {t("gen.regenerate")}
+                    }
+                    button { class: "link-btn small", r#type: "button",
+                        onclick: {
+                            let current = current.clone();
+                            move |_| {
+                                PREFS.write().generator = current.clone();
+                                save_prefs();
+                                toast(t("gen.saved_default"));
+                            }
+                        },
+                        {t("gen.save_default")}
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The generator's defaults for a password field. A PIN as the default (for
+/// the generator page) would make a weak password, so that gives a random one.
+fn default_rules() -> GeneratorOptions {
+    let opts = PREFS.peek().generator.clone();
+    if opts.kind == twosecret_core::generator::GeneratorKind::Pin {
+        GeneratorOptions::random(20)
+    } else {
+        opts
     }
 }
 

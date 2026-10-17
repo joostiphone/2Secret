@@ -470,6 +470,10 @@ static TABLE: &[Entry] = &[
     ("gen.capitalize", "Capitalize words", "Woorden met hoofdletter"),
     ("gen.number", "Include a number", "Voeg een cijfer toe"),
     ("gen.history", "Recently copied", "Recent gekopieerd"),
+    ("gen.rules", "Password rules", "Wachtwoordregels"),
+    ("gen.rules_here", "Rules for this password", "Regels voor dit wachtwoord"),
+    ("gen.save_default", "Use as default", "Als standaard gebruiken"),
+    ("gen.saved_default", "New passwords now use these rules by default.", "Nieuwe wachtwoorden gebruiken nu standaard deze regels."),
 
     // Strength
     ("strength.terrible", "Terrible", "Zeer zwak"),

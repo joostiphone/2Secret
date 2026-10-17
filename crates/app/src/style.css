@@ -106,6 +106,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
 .choice.compact { padding: 10px 14px; margin-bottom: 8px; }
 /* A list of choices that scrolls by itself, so the dialog's buttons stay in view. */
+/* The generator's options under a password field in the item editor. */
+.gen-panel { margin-top: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+.icon-btn.on { color: var(--accent); background: var(--accent-soft); }
 .pick-list { max-height: min(320px, 40vh); overflow-y: auto; }
 .banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--accent);
   background: var(--accent-soft); border-radius: 10px; }
