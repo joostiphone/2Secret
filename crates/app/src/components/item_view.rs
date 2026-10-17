@@ -351,11 +351,7 @@ fn FieldRow(field: Field, item_title: String) -> Element {
         },
         _ => {
             let concealed = field.kind == FieldKind::Concealed;
-            let is_password = concealed
-                && matches!(
-                    field.id.as_str(),
-                    "password" | "wireless_password" | "credential" | "base_station_password" | "passphrase"
-                );
+            let is_password = field.is_password();
             rsx! {
                 div { class: "field",
                     div { class: "grow",

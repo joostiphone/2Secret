@@ -15,14 +15,6 @@ fn draft_mut(f: impl FnOnce(&mut Draft)) {
     }
 }
 
-fn is_password_field(f: &Field) -> bool {
-    f.kind == FieldKind::Concealed
-        && matches!(
-            f.id.as_str(),
-            "password" | "wireless_password" | "base_station_password" | "credential" | "passphrase"
-        )
-}
-
 #[component]
 pub fn ItemEditor() -> Element {
     let mut new_kind = use_signal(|| FieldKind::Text);
@@ -311,10 +303,10 @@ fn EditField(idx: usize, field: Field, title: String) -> Element {
                         SecretArea { value: value.clone(), oninput: set }
                     },
                     FieldKind::Concealed => rsx! {
-                        PasswordInput { value: value.clone(), oninput: set, generate: is_password_field(&field),
+                        PasswordInput { value: value.clone(), oninput: set, generate: field.is_password(),
                             rules: field.generator.clone(),
                             onrules: move |rules| draft_mut(|d| { if let Some(f) = d.item.fields.get_mut(idx) { f.generator = Some(rules); } }) }
-                        if is_password_field(&field) {
+                        if field.is_password() {
                             StrengthMeter { password: value.clone(), inputs: vec![title.clone()] }
                         }
                     },

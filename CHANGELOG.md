@@ -12,6 +12,9 @@
 - Starting 2Secret while it already runs brings its window to the front
   instead of opening a second 2Secret (Windows, Linux; macOS did this
   already), also when the window is hidden in the system tray.
+- A field you add to an item with the kind *Password* gets *Generate
+  password*, *Password rules* and the strength meter too, like the item's
+  own password.
 
 ## 1.7.1
 

@@ -388,6 +388,18 @@ impl Field {
     pub fn is_custom(&self) -> bool {
         self.id.starts_with("custom-")
     }
+
+    /// A password, which the apps can generate and rate: the passwords of
+    /// the templates, and every custom field of the kind *Password*. Other
+    /// concealed template fields (PINs, card codes, keys) are not.
+    pub fn is_password(&self) -> bool {
+        self.kind == FieldKind::Concealed
+            && (self.is_custom()
+                || matches!(
+                    self.id.as_str(),
+                    "password" | "wireless_password" | "base_station_password" | "credential" | "passphrase"
+                ))
+    }
 }
 
 /// A previous password of an item.
@@ -773,6 +785,19 @@ mod tests {
         assert_eq!(again.field("password").unwrap().generator, Some(rules));
         let old: Item = serde_json::from_str(&plain).unwrap();
         assert_eq!(old.field("password").unwrap().generator, None);
+    }
+
+    #[test]
+    fn password_fields() {
+        let login = Item::login("Bank", "jan", "pw", None);
+        assert!(login.field("password").unwrap().is_password());
+        assert!(!login.field("username").unwrap().is_password());
+        let card = Item::new(Category::CreditCard, "Visa");
+        assert!(!card.field("pin").unwrap().is_password());
+        assert!(!card.field("cvv").unwrap().is_password());
+        // A field added with the kind Password.
+        assert!(Field::custom("Admin", FieldKind::Concealed, "").is_password());
+        assert!(!Field::custom("Note", FieldKind::Text, "").is_password());
     }
 
     #[test]
