@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Windows Hello: turning it on (or unlocking with it) could fail with error
+  0x80098044. Windows opened its prompt behind 2Secret, and a face confirmed
+  there after a few seconds no longer counted. 2Secret now brings the prompt
+  to the front, and asks once more when Windows still turns it down.
+
 ## 1.6.1
 
 - Setup links on Windows, Linux and the BSDs: `otpauth://` links on websites

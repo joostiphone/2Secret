@@ -195,16 +195,49 @@ mod imp {
 mod imp {
     use super::{Error, Kind};
     use twosecret_core::crypto::{hkdf32, SymmetricKey};
-    use windows::core::{Array, HSTRING};
+    use windows::core::{w, Array, HSTRING, PCWSTR};
     use windows::Security::Credentials::{
         KeyCredential, KeyCredentialCreationOption, KeyCredentialManager, KeyCredentialStatus,
     };
     use windows::Security::Cryptography::CryptographicBuffer;
     use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow};
 
     /// Signed with the Windows Hello key; the signature (RSA PKCS #1 v1.5,
     /// deterministic) is the input for the device key.
     const CHALLENGE: &[u8] = b"2secret/v1/windows-hello/device-key";
+
+    /// WINBIO_E_INVALID_TICKET: a face or fingerprint confirmed in a prompt
+    /// that stayed behind other windows for a few seconds no longer counts.
+    const INVALID_TICKET: u32 = 0x8009_8044;
+
+    /// Windows often opens the Windows Hello prompt of a desktop app behind
+    /// its window. Bring it to the front once it shows (the app is in front,
+    /// as it was just clicked, so Windows lets it hand over the focus).
+    fn focus_prompt() {
+        std::thread::spawn(|| {
+            for _ in 0..20 {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                if let Ok(prompt) = unsafe { FindWindowW(w!("Credential Dialog Xaml Host"), PCWSTR::null()) } {
+                    let _ = unsafe { SetForegroundWindow(prompt) };
+                    return;
+                }
+            }
+        });
+    }
+
+    /// Ask Windows Hello with its prompt in front, and once more when the
+    /// confirmation came too late.
+    fn prompt<T>(request: impl Fn() -> windows::core::Result<T>) -> Result<T, Error> {
+        focus_prompt();
+        match request() {
+            Err(e) if e.code().0 as u32 == INVALID_TICKET => {
+                focus_prompt();
+                request().map_err(failed)
+            }
+            result => result.map_err(failed),
+        }
+    }
 
     fn init() {
         // Fails harmlessly when the thread already joined an apartment.
@@ -236,7 +269,7 @@ mod imp {
 
     fn sign(credential: &KeyCredential) -> Result<SymmetricKey, Error> {
         let data = CryptographicBuffer::CreateFromByteArray(CHALLENGE).map_err(failed)?;
-        let result = credential.RequestSignAsync(&data).map_err(failed)?.get().map_err(failed)?;
+        let result = prompt(|| credential.RequestSignAsync(&data)?.get())?;
         check(result.Status().map_err(failed)?)?;
         let mut signature = Array::<u8>::new();
         CryptographicBuffer::CopyToByteArray(&result.Result().map_err(failed)?, &mut signature).map_err(failed)?;
@@ -245,11 +278,10 @@ mod imp {
 
     pub fn create_device_key(account_id: &str, _reason: &str) -> Result<SymmetricKey, Error> {
         init();
-        let result =
-            KeyCredentialManager::RequestCreateAsync(&name(account_id), KeyCredentialCreationOption::ReplaceExisting)
-                .map_err(failed)?
+        let result = prompt(|| {
+            KeyCredentialManager::RequestCreateAsync(&name(account_id), KeyCredentialCreationOption::ReplaceExisting)?
                 .get()
-                .map_err(failed)?;
+        })?;
         check(result.Status().map_err(failed)?)?;
         sign(&result.Credential().map_err(failed)?)
     }

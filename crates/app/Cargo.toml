@@ -70,9 +70,10 @@ objc2-local-authentication = { version = "0.3", default-features = false, featur
 block2 = "0.6"
 objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASCredentialIdentity", "ASCredentialIdentityStore", "ASCredentialServiceIdentifier", "ASOneTimeCodeCredentialIdentity", "ASPasskeyCredentialIdentity", "ASPasswordCredentialIdentity"] }
 
-# Unlocking with Windows Hello, and opening setup links (registry, named pipe).
+# Unlocking with Windows Hello (and bringing its prompt to the front), and
+# opening setup links (registry, named pipe).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_WinRT"] }
+windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_WinRT", "Win32_UI_WindowsAndMessaging"] }
 
 # Android: storage location, language, links and downloads through JNI.
 [target.'cfg(target_os = "android")'.dependencies]
