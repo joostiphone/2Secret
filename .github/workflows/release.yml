@@ -103,7 +103,9 @@ jobs:
           - { name: linux, os: ubuntu-latest, types: "--package-types deb --package-types appimage" }
           - { name: macos-arm64, os: macos-latest, target: aarch64-apple-darwin, arch: aarch64 }
           - { name: macos-x64, os: macos-latest, target: x86_64-apple-darwin, arch: x64 }
-          - { name: windows, os: windows-latest, types: "--package-types msi --package-types nsis" }
+          # Only the setup: it installs for the user and can update itself (an
+          # .msi next to it made two copies of 2Secret; the setup removes one).
+          - { name: windows, os: windows-latest, types: "--package-types nsis" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -167,7 +169,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          find bundles -maxdepth 3 -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} out/ \;
+          find bundles -maxdepth 3 -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} out/ \;
           ls -la out
           test -n "$(ls out)"
       - uses: actions/upload-artifact@v4

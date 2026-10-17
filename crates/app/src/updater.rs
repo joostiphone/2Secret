@@ -12,7 +12,8 @@
 //! An update is downloaded into a private folder, verified (signature,
 //! version, size and SHA-256, see [`twosecret_core::update`]) and installed
 //! at the next start or with *Restart now*, after verifying it once more.
-//! Elsewhere (Linux packages, an MSI in Program Files, Android, the BSDs) the
+//! Elsewhere (Linux packages, an .msi of 2Secret up to 1.7.0 in Program Files,
+//! whose replacement is the setup, Android, the BSDs) the
 //! app only says that a new version is available and opens the download. The
 //! iOS app, the web vault and the browser extension are updated by their
 //! stores and servers and have no updater.
@@ -311,8 +312,9 @@ mod imp {
         use std::os::windows::process::CommandExt;
         use std::path::Path;
 
-        /// Installed with the per-user setup program (not an MSI in Program
-        /// Files, which needs an administrator).
+        /// Installed with the per-user setup program (not the .msi of
+        /// releases up to 1.7.0 in Program Files, which needs an
+        /// administrator; the setup offers to remove that one).
         pub fn can_install() -> bool {
             std::env::current_exe().ok().and_then(|exe| exe.parent().map(super::writable)).unwrap_or(false)
         }

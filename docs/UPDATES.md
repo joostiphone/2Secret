@@ -12,7 +12,8 @@ on automatic updates (*Settings → Updates*). Checking contacts GitHub, where
 | Windows, with `2Secret_<version>_x64-setup.exe` (the default per-user installation) | The new setup is downloaded and verified. The next time 2Secret starts (or right away with *Restart now*), it quits, the setup runs silently and 2Secret starts again. |
 | macOS, `2Secret.app` in a folder you may write to (`/Applications` for administrators) | The new disk image is downloaded and verified. At the next start (or *Restart now*) its app replaces the current one, after `codesign --verify`, and is started. |
 | Linux AppImage | The new AppImage is downloaded and verified, and replaces the old file at the next start (or *Restart now*). |
-| Windows MSI in *Program Files*, macOS app in a read-only place, Linux `.deb` / `.rpm`, the BSDs | The app says a new version is available and *Download* opens it; install it as usual (or with your package manager). |
+| Windows `.msi` in *Program Files* (releases up to 1.7.0) | The app says a new version is available and *Download* gets the setup, which offers to remove the `.msi` version, so one 2Secret is left. |
+| macOS app in a read-only place, Linux `.deb` / `.rpm`, the BSDs | The app says a new version is available and *Download* opens it; install it as usual (or with your package manager). |
 | Android | The app says a new version is available and *Download* opens the new `.apk`; Android asks you to confirm the installation. |
 | iOS, web vault, browser extension | Updated by the App Store, your server and the browser's extension store; no updater in the app. |
 

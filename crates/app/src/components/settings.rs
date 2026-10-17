@@ -1107,13 +1107,14 @@ fn AboutSection() -> Element {
 }
 
 /// Desktop: where this 2Secret is installed, so a second installation (the
-/// Windows setup next to the MSI, say) shows which one runs.
+/// Windows setup next to an .msi of 1.7.0 or older, say) shows which one runs.
 #[component]
 fn InstallLocation() -> Element {
     #[cfg(feature = "desktop")]
     if let Some(location) = install_location() {
-        // Windows: the MSI installs into Program Files for everyone, the
-        // setup into the user's folder, where 2Secret can update itself.
+        // Windows: the .msi (up to 1.7.0) installed into Program Files for
+        // everyone, the setup installs into the user's folder, where 2Secret
+        // can update itself.
         #[cfg(windows)]
         let kind = {
             let program_files = std::env::var("ProgramFiles").unwrap_or_default().to_lowercase();

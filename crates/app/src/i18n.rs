@@ -593,7 +593,7 @@ static TABLE: &[Entry] = &[
     ("settings.about", "About", "Over"),
     ("about.installed_in", "Installed in", "Geïnstalleerd in"),
     ("about.install_setup", "for this user (setup), can update itself", "voor deze gebruiker (setup), kan zichzelf bijwerken"),
-    ("about.install_msi", "for everyone on this PC (.msi), updates are installed by hand", "voor iedereen op deze pc (.msi), updates installeer je zelf"),
+    ("about.install_msi", "for everyone on this PC (.msi), no longer updated: get the setup under Updates, which replaces it", "voor iedereen op deze pc (.msi), wordt niet meer bijgewerkt: haal de setup op bij Updates, die vervangt hem"),
     ("settings.danger", "Danger zone", "Gevarenzone"),
     ("settings.delete_account", "Delete server account", "Serveraccount verwijderen"),
     ("settings.delete_account_desc", "Permanently deletes your account and vaults you own from the server. This device keeps a local copy.", "Verwijdert je account en kluizen die je bezit definitief van de server. Dit apparaat houdt een lokale kopie."),

@@ -5,7 +5,7 @@
 |---|---|
 | `2Secret_*_aarch64.dmg` | macOS app for Apple silicon (M1 and newer) |
 | `2Secret_*_x64.dmg` | macOS app for Intel Macs |
-| `*.msi`, `*-setup.exe` | Windows app |
+| `2Secret_*_x64-setup.exe` | Windows app (installs for your user and can update itself; removes an `.msi` version of 2Secret up to 1.7.0) |
 | `*.deb`, `*.rpm`, `*.AppImage` | Linux app (x86_64) |
 | `2Secret_*_android-arm64.apk` | Android app (Android 7 and newer) – allow installing from your browser when asked |
 | `2Secret_*_android-arm64.aab` | Android app bundle for app stores |

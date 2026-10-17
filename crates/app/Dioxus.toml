@@ -35,6 +35,11 @@ minimum_system_version = "11.0"
 [bundle.windows]
 webview_install_mode = { EmbedBootstrapper = { silent = true } }
 
+# Only the setup (.exe) is released: it installs 2Secret for the user and can
+# update itself. These hooks remove an .msi version (up to 1.7.0) first.
+[bundle.windows.nsis]
+installer_hooks = "windows/installer-hooks.nsh"
+
 # Face ID (NSFaceIDUsageDescription on iOS) for unlocking the vault.
 [permissions.biometrics]
 description = "2Secret uses Face ID to unlock your vault, so you do not have to type your master password every time."

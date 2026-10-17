@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Windows: 2Secret comes as one setup (`2Secret_<version>_x64-setup.exe`)
+  from now on, no longer also as an `.msi`. The setup installs 2Secret for
+  your user, without administrator rights, and can update itself. The `.msi`
+  installed 2Secret for everyone in *Program Files*, and the two did not
+  replace each other, so you could end up with two copies. When the `.msi`
+  version (up to 1.7.0) is installed, the setup offers to remove it, so one
+  2Secret is left; Windows asks for permission, and your vault stays where it
+  is. *Download* under *Settings → Updates* in the `.msi` version gets this
+  setup.
+
 ## 1.7.0
 
 - Password rules per password: next to *Generate password* in the item

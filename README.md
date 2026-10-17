@@ -65,7 +65,7 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 | Platform | App | How |
 |---|---|---|
 | macOS | desktop app (`.app`, `.dmg`) | `dx bundle --platform desktop` |
-| Windows | desktop app (`.msi`, `.exe`) | `dx bundle --platform desktop` |
+| Windows | desktop app (setup `.exe`) | `dx bundle --platform desktop` |
 | Linux | desktop app (`.deb`, `.rpm`, AppImage) | `dx bundle --platform desktop` |
 | FreeBSD, OpenBSD, NetBSD | desktop app, CLI, server | `cargo build` (WebKitGTK) |
 | iOS / iPadOS | native app | `dx bundle --platform ios` (on macOS with Xcode) |
