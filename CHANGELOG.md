@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- *Settings → About* shows where 2Secret is installed, and on Windows
+  whether it is the setup for your user (which can update itself) or the
+  MSI for everyone on the PC. The two install into different folders, so
+  installing the MSI next to the setup leaves the setup's version as it was.
+
 ## 1.6.2
 
 - Windows Hello: turning it on (or unlocking with it) could fail with error

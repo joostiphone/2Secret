@@ -1095,6 +1095,7 @@ fn AboutSection() -> Element {
             SectionTitle { text: t("settings.about") }
             div { class: "section-body",
                 p { style: "margin-top:0", strong { "2Secret {version}" } " · {platform_name}" }
+                InstallLocation {}
                 p { class: "small muted", style: "line-height:1.6", {t("about.text")} }
                 p { class: "small",
                     a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url("https://github.com/joostiphone/2Secret"); }, "github.com/joostiphone/2Secret" }
@@ -1103,6 +1104,49 @@ fn AboutSection() -> Element {
             }
         }
     }
+}
+
+/// Desktop: where this 2Secret is installed, so a second installation (the
+/// Windows setup next to the MSI, say) shows which one runs.
+#[component]
+fn InstallLocation() -> Element {
+    #[cfg(feature = "desktop")]
+    if let Some(location) = install_location() {
+        // Windows: the MSI installs into Program Files for everyone, the
+        // setup into the user's folder, where 2Secret can update itself.
+        #[cfg(windows)]
+        let kind = {
+            let program_files = std::env::var("ProgramFiles").unwrap_or_default().to_lowercase();
+            let msi = !program_files.is_empty() && location.to_lowercase().starts_with(&program_files);
+            format!(" · {}", t(if msi { "about.install_msi" } else { "about.install_setup" }))
+        };
+        #[cfg(not(windows))]
+        let kind = String::new();
+        return rsx! {
+            p { class: "small muted", style: "overflow-wrap:anywhere",
+                {t("about.installed_in")} " " span { class: "mono", "{location}" } "{kind}"
+            }
+        };
+    }
+    rsx! {}
+}
+
+/// The program's folder on Windows, the app bundle on macOS, the AppImage
+/// or the program on Linux and the BSDs.
+#[cfg(feature = "desktop")]
+fn install_location() -> Option<String> {
+    if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|_| cfg!(target_os = "linux")) {
+        return Some(std::path::PathBuf::from(appimage).display().to_string());
+    }
+    let exe = std::env::current_exe().ok()?;
+    let location = if cfg!(windows) {
+        exe.parent()?.to_path_buf()
+    } else if cfg!(target_os = "macos") {
+        exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).unwrap_or(&exe).to_path_buf()
+    } else {
+        exe
+    };
+    Some(location.display().to_string())
 }
 
 #[component]
