@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.2
 
 - Windows Hello: turning it on (or unlocking with it) could fail with error
   0x80098044. Windows opened its prompt behind 2Secret, and a face confirmed
