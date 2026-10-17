@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio"]
+desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:libloading"]
 web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
 # Browser extension popup (Chrome, Edge, Firefox): the web app plus autofill.
 extension = ["web"]
@@ -74,6 +74,12 @@ objc2-authentication-services = { version = "0.3", default-features = false, fea
 # opening setup links (registry, named pipe).
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_WinRT", "Win32_UI_WindowsAndMessaging"] }
+
+# Linux: whether the desktop shows the tray icon (the AppIndicator library, and
+# a panel for status icons, asked over D-Bus).
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = { version = "0.18", optional = true }
+libloading = { version = "0.7", optional = true }
 
 # Android: storage location, language, links and downloads through JNI.
 [target.'cfg(target_os = "android")'.dependencies]

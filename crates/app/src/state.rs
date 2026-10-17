@@ -188,6 +188,9 @@ pub struct Prefs {
     /// The profile shown last ([`SLOT`]).
     pub active_profile: usize,
     pub start_screen: StartScreen,
+    /// Desktop: the icon in the menu bar or system tray (`tray`); closing the
+    /// window then keeps 2Secret running there.
+    pub tray: bool,
 }
 
 impl Default for Prefs {
@@ -205,6 +208,7 @@ impl Default for Prefs {
             website_icons: true,
             active_profile: 0,
             start_screen: StartScreen::default(),
+            tray: true,
         }
     }
 }
@@ -980,6 +984,7 @@ mod tests {
         let old: Prefs = serde_json::from_str(r#"{"theme":"dark","auto_lock_minutes":5}"#).unwrap();
         assert_eq!(old.start_screen, StartScreen::Dashboard);
         assert_eq!(old.start_screen.nav(), Nav::Home);
+        assert!(old.tray);
         for start in StartScreen::ALL {
             let json = serde_json::to_string(&Prefs { start_screen: start, ..Prefs::default() }).unwrap();
             assert!(json.contains(&format!("\"start_screen\":\"{}\"", start.id())));

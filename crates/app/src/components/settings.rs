@@ -760,8 +760,45 @@ fn AppearanceSection() -> Element {
             if FETCHES_ICONS {
                 WebsiteIconsRow {}
             }
+            TrayRow {}
         }
     }
+}
+
+/// Desktop: the icon in the menu bar or system tray (`tray`).
+#[cfg(feature = "desktop")]
+#[component]
+fn TrayRow() -> Element {
+    if !cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos")) {
+        return rsx! {};
+    }
+    let on = PREFS.read().tray;
+    let supported = crate::tray::supported();
+    let title = if cfg!(target_os = "macos") { t("settings.tray_mac") } else { t("settings.tray") };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {title} }
+                div { class: "d", {either(supported, t("settings.tray_desc"), t("settings.tray_unsupported"))} }
+            }
+            if supported {
+                button { class: either(on, "btn small", "btn small primary"),
+                    onclick: move |_| {
+                        PREFS.write().tray = !on;
+                        save_prefs();
+                    },
+                    {either(on, t("common.turn_off"), t("common.turn_on"))}
+                }
+            }
+        }
+    }
+}
+
+/// The web vault, the extension and the phone apps have no such icon.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn TrayRow() -> Element {
+    rsx! {}
 }
 
 /// Fetch website icons (on by default), also for the logins already there.

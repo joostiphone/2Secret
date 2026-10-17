@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- 2Secret has an icon in the menu bar (macOS) or the system tray (Windows,
+  Linux). Its menu opens 2Secret, locks the vault or quits; on Windows a click
+  on the icon opens 2Secret too. Closing the window keeps 2Secret running
+  there, and it still locks after the auto-lock time. *Settings → Appearance*
+  turns the icon off, and closing the window then quits 2Secret as before.
+  Linux shows the icon through AppIndicator (on GNOME the AppIndicator
+  extension); the `.deb` and `.rpm` now install its library.
+- Starting 2Secret while it already runs brings its window to the front
+  instead of opening a second 2Secret (Windows, Linux; macOS did this
+  already), also when the window is hidden in the system tray.
+
 ## 1.7.1
 
 - Windows: 2Secret comes as one setup (`2Secret_<version>_x64-setup.exe`)

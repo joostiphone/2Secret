@@ -40,13 +40,10 @@ pub async fn receive() {
             Ok(totp) => *crate::state::CODE_SETUP.write() = Some(totp.to_uri()),
             Err(_) => crate::state::toast_err(crate::i18n::t("code.invalid")),
         }
-        // The link may come from a browser in front of the app.
+        // The link may come from a browser in front of the app, which may be
+        // hidden in the system tray.
         #[cfg(feature = "desktop")]
-        {
-            let window = dioxus::desktop::window();
-            window.set_minimized(false);
-            window.set_focus();
-        }
+        crate::tray::show();
     }
 }
 

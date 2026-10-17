@@ -14,6 +14,10 @@
 //! read, and connects to the running app's local socket (a named pipe on
 //! Windows), which then reads and removes the file. Nothing goes through the
 //! socket, so whoever took its name learns no secret.
+//!
+//! 2Secret started again without a link does the same without the file: the
+//! running app shows its window (also when it is hidden in the system tray),
+//! so one 2Secret runs.
 
 use crate::platform;
 
@@ -34,14 +38,13 @@ fn is_link(arg: &str) -> bool {
     arg.get(..10).is_some_and(|s| s.eq_ignore_ascii_case("otpauth://"))
 }
 
-/// At start, before the window opens: hand a link from the command line to
-/// the 2Secret that already runs and quit, or else receive links from now on.
+/// At start, before the window opens: hand a link from the command line (or
+/// just the start) to the 2Secret that already runs and quit, or else receive
+/// links from now on.
 pub fn start() {
     let link = std::env::args().skip(1).find(|a| is_link(a));
-    if let Some(link) = &link {
-        if hand_over(link) {
-            std::process::exit(0);
-        }
+    if hand_over(link.as_deref()) {
+        std::process::exit(0);
     }
     os::listen(take_handed_over);
     if let Some(link) = link {
@@ -55,24 +58,30 @@ pub fn start() {
     });
 }
 
-fn hand_over(link: &str) -> bool {
-    if platform::storage().write(HANDED_OVER, link).is_err() {
-        return false;
+fn hand_over(link: Option<&str>) -> bool {
+    if let Some(link) = link {
+        if platform::storage().write(HANDED_OVER, link).is_err() {
+            return false;
+        }
     }
     if os::ring() {
         return true;
     }
-    let _ = platform::storage().delete(HANDED_OVER);
+    if link.is_some() {
+        let _ = platform::storage().delete(HANDED_OVER);
+    }
     false
 }
 
-/// The running app was rung: the link is in the data directory.
+/// The running app was rung: show the window, and take the link from the
+/// data directory if there is one.
 fn take_handed_over() {
     let storage = platform::storage();
     if let Ok(Some(link)) = storage.read(HANDED_OVER) {
         let _ = storage.delete(HANDED_OVER);
         crate::code_setup::opened([link.trim()]);
     }
+    crate::tray::request_show();
 }
 
 /// Which app opens setup links.
@@ -97,6 +106,7 @@ mod os {
     use windows::Win32::System::Registry::{
         RegGetValueW, RegSetKeyValueW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ,
     };
+    use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY};
 
     use super::Handler;
 
@@ -106,6 +116,9 @@ mod os {
     }
 
     pub fn ring() -> bool {
+        // This process was started by the user, so it may bring a window to
+        // the front: the running 2Secret may too.
+        let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
         for _ in 0..10 {
             match std::fs::OpenOptions::new().write(true).open(pipe()) {
                 Ok(_) => return true,

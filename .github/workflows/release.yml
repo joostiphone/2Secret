@@ -163,7 +163,7 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: crates/app
         run: |
-          sed -i 's/^depends = .*/depends = ["webkit2gtk4.1", "gtk3", "libxdo", "openssl-libs"]/' Dioxus.toml
+          sed -i 's/^depends = .*/depends = ["webkit2gtk4.1", "gtk3", "libxdo", "openssl-libs", "libappindicator-gtk3"]/' Dioxus.toml
           dx bundle --platform desktop --release --package-types rpm --out-dir "$GITHUB_WORKSPACE/bundles"
       - name: Collect installers
         shell: bash

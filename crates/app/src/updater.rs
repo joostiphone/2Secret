@@ -193,6 +193,8 @@ mod imp {
         let marker = dir().join(ATTEMPT);
         std::fs::write(&marker, &update.manifest.version).map_err(|e| Problem::Other(e.to_string()))?;
         os::install(&path, &marker).map_err(Problem::Other)?;
+        #[cfg(feature = "desktop")]
+        crate::tray::remove();
         std::process::exit(0);
     }
 

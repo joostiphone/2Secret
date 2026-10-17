@@ -17,6 +17,8 @@ mod icons;
 mod link_handler;
 mod platform;
 mod state;
+#[cfg(feature = "desktop")]
+mod tray;
 mod updater;
 
 use dioxus::prelude::*;
@@ -47,6 +49,8 @@ pub fn run() {
             .with_min_inner_size(LogicalSize::new(360.0, 520.0));
         let mut config = Config::new()
             .with_window(window)
+            // `tray` decides what a click on the icon does.
+            .with_tray_icon_show_window_on_click(false)
             .with_background_color((244, 245, 248, 255))
             .with_data_directory(platform::data_dir().join("webview"))
             .with_custom_head(format!(
@@ -197,6 +201,8 @@ fn App() -> Element {
         spawn(updater::background());
         spawn(code_setup::receive());
     });
+    #[cfg(feature = "desktop")]
+    tray::use_tray();
     // A one-time password from an otpauth:// link, once the vault is unlocked
     // and no other dialog is open.
     use_effect(|| {

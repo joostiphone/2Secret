@@ -24,8 +24,9 @@ short_description = "Free, open-source password manager"
 long_description = "2Secret keeps passwords, cards, notes and other secrets end-to-end encrypted on all your devices."
 
 # Debian/Ubuntu package names; the release workflow swaps in Fedora names for the RPM.
+# AppIndicator shows the icon in the system tray.
 [bundle.deb]
-depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3", "libssl3"]
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3", "libssl3", "libayatana-appindicator3-1"]
 
 [bundle.macos]
 minimum_system_version = "11.0"
