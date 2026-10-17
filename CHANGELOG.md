@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0
 
 - Password rules per password: next to *Generate password* in the item
   editor, *Password rules* sets how that password is made: random,
