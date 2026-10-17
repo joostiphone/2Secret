@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.3
 
 - *Settings → About* shows where 2Secret is installed, and on Windows
   whether it is the setup for your user (which can update itself) or the
