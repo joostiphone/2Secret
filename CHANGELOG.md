@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.0
 
 - 2Secret has an icon in the menu bar (macOS) or the system tray (Windows,
   Linux). Its menu opens 2Secret, locks the vault or quits; on Windows a click
