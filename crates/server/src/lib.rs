@@ -13,6 +13,7 @@ pub mod db;
 pub mod error;
 pub mod ratelimit;
 pub mod routes;
+pub mod share;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -96,6 +97,8 @@ pub struct AppState {
     pub login_limiter: Arc<ratelimit::RateLimiter>,
     /// Counts new accounts per client address.
     pub signup_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts attempts to open share links per client address.
+    pub share_limiter: Arc<ratelimit::RateLimiter>,
 }
 
 impl AppState {
@@ -107,6 +110,7 @@ impl AppState {
             server_secret: Arc::new(server_secret),
             login_limiter: Arc::new(ratelimit::RateLimiter::new(10, 15 * 60)),
             signup_limiter: Arc::new(ratelimit::RateLimiter::new(signups_per_ip, 24 * 3600)),
+            share_limiter: Arc::new(ratelimit::RateLimiter::new(60, 15 * 60)),
         }
     }
 
@@ -137,9 +141,10 @@ impl AppState {
 /// Build the complete HTTP application.
 pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
-    let api = routes::api_router().with_state(state);
+    let api = routes::api_router().merge(share::api()).with_state(state.clone());
+    let pages = share::pages().with_state(state);
 
-    let mut app = Router::new().nest("/api/v1", api).layer(DefaultBodyLimit::max(config.max_body_bytes));
+    let mut app = Router::new().nest("/api/v1", api).merge(pages).layer(DefaultBodyLimit::max(config.max_body_bytes));
 
     if let Some(dir) = &config.web_dir {
         let index = dir.join("index.html");
@@ -187,13 +192,16 @@ pub fn app(state: AppState) -> Router {
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow::Result<()> {
     // Rate limiters hold client addresses and e-mail addresses in memory:
     // forget them as soon as their window has passed.
-    let limiters = [state.login_limiter.clone(), state.signup_limiter.clone()];
+    let limiters = [state.login_limiter.clone(), state.signup_limiter.clone(), state.share_limiter.clone()];
+    let db = state.db.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             tick.tick().await;
             let now = twosecret_core::util::now();
             limiters.iter().for_each(|l| l.prune(now));
+            // Expired share links go.
+            let _ = db.run(|c| Ok(share::delete_expired(c)?)).await;
         }
     });
     // The peer address is needed for the per-address sign-up limit.

@@ -52,6 +52,13 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.poly1305]
 opt-level = 3
+# PBKDF2 of share link passwords.
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3
 # RSA keys for the SSH agent's tests.
 [profile.dev.package.num-bigint-dig]
 opt-level = 3

@@ -2,7 +2,8 @@
 
 `2secret-server` is a single binary that provides
 
-- the sync API (`/api/v1/…`) used by all apps, the CLI and the extension, and
+- the sync API (`/api/v1/…`) used by all apps, the CLI and the extension,
+- the page that opens share links (`/s/…`), and
 - (optionally) the **web vault**, so people can use 2Secret from any browser.
 
 It stores only encrypted data (see [SECURITY.md](SECURITY.md)) in a SQLite

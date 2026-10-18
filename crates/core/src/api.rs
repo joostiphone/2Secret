@@ -305,3 +305,54 @@ pub struct SyncResponse {
     pub vaults: Vec<VaultDto>,
     pub results: Vec<VaultSyncResult>,
 }
+
+// ---------------------------------------------------------------------------
+// Share links (`crate::share`)
+// ---------------------------------------------------------------------------
+
+/// A new share link. The server never sees the link key in the fragment.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreateShareRequest {
+    pub id: String,
+    /// Nonce and AES-GCM ciphertext (base64url).
+    pub data: String,
+    /// Released only to whoever sends this (base64url).
+    pub proof: String,
+    /// What it is, for the sender's list; encrypted with their account key.
+    pub label: EncString,
+    pub expires_at: i64,
+    /// How often it may be opened; `None`: until it expires.
+    pub max_views: Option<u32>,
+    /// Opening needs a password.
+    pub password: bool,
+}
+
+/// A link in its sender's list.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShareDto {
+    pub id: String,
+    pub label: EncString,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub views_left: Option<u32>,
+    pub password: bool,
+}
+
+/// What anyone with a link may know before opening it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShareInfo {
+    pub expires_at: i64,
+    pub views_left: Option<u32>,
+    pub password: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OpenShareRequest {
+    pub proof: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OpenShareResponse {
+    pub data: String,
+    pub views_left: Option<u32>,
+}

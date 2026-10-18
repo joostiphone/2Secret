@@ -244,6 +244,117 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// `1h`, `12h`, `7d`: seconds.
+fn parse_duration(text: &str) -> Result<i64> {
+    let text = text.trim().to_lowercase();
+    let (number, unit) = text.split_at(text.len().saturating_sub(1));
+    let number: i64 = number.parse().map_err(|_| anyhow!("use a duration like 1h, 1d or 7d"))?;
+    let seconds = match unit {
+        "h" => number * 3600,
+        "d" => number * 86_400,
+        _ => bail!("use a duration like 1h, 1d or 7d"),
+    };
+    if !(3600..=30 * 86_400).contains(&seconds) {
+        bail!("a link works from 1 hour up to 30 days");
+    }
+    Ok(seconds)
+}
+
+pub fn share(
+    ctx: &Ctx,
+    query: &str,
+    expires: &str,
+    views: Option<u32>,
+    password: bool,
+    fields: &[String],
+    notes: bool,
+) -> Result<()> {
+    use twosecret_core::item::FieldKind;
+    use twosecret_core::share::{self, SharedItem};
+    let seconds = parse_duration(expires)?;
+    let session = ctx.unlock()?;
+    if session.server().is_none() {
+        bail!("share links need a sync server; connect this account with `2secret account connect`");
+    }
+    let item = crate::items::find(&session, query, None)?;
+    let wanted = |f: &twosecret_core::item::Field| {
+        if fields.is_empty() {
+            f.kind != FieldKind::Totp
+        } else {
+            fields.iter().any(|w| w.eq_ignore_ascii_case(&f.label) || w.eq_ignore_ascii_case(&f.id))
+        }
+    };
+    let shared = SharedItem::from_item(item, |f| f.label.clone(), wanted, notes);
+    if shared.fields.is_empty() && shared.notes.is_empty() {
+        bail!("nothing to share: the chosen fields are empty");
+    }
+    let password = if password {
+        let first = prompt_secret("Password for the link: ")?;
+        if first != prompt_secret("Repeat the password: ")? {
+            bail!("the passwords differ");
+        }
+        Some(first)
+    } else {
+        None
+    };
+    let sealed = share::seal(&shared, password.as_deref())?;
+    let expires_at = twosecret_core::util::now() + seconds;
+    let link = ctx.block_on(twosecret_client::publish_share(
+        &session,
+        &sealed,
+        &item.title,
+        expires_at,
+        views,
+        password.is_some(),
+    ))?;
+    if ctx.json {
+        print_json(&json!({ "id": sealed.id, "link": link, "expires_at": expires_at, "views": views }));
+    } else {
+        println!("{link}");
+        let expires = twosecret_core::util::format_timestamp(expires_at);
+        match views {
+            Some(1) => eprintln!("Anyone with this link can open it once, until {expires}."),
+            Some(v) => eprintln!("Anyone with this link can open it {v} times, until {expires}."),
+            None => eprintln!("Anyone with this link can open it until {expires}."),
+        }
+    }
+    Ok(())
+}
+
+pub fn shares(ctx: &Ctx, revoke: Option<&str>) -> Result<()> {
+    let session = ctx.unlock()?;
+    if session.server().is_none() {
+        bail!("share links need a sync server");
+    }
+    if let Some(id) = revoke {
+        ctx.block_on(twosecret_client::revoke_share_link(&session, id))?;
+        eprintln!("Revoked.");
+        return Ok(());
+    }
+    let links = ctx.block_on(twosecret_client::share_links(&session))?;
+    if ctx.json {
+        let list: Vec<_> = links
+            .iter()
+            .map(|l| json!({ "id": l.id, "label": l.label, "created_at": l.created_at, "expires_at": l.expires_at, "views_left": l.views_left, "password": l.password }))
+            .collect();
+        print_json(&list);
+        return Ok(());
+    }
+    if links.is_empty() {
+        eprintln!("No share links.");
+    }
+    for l in links {
+        let views = match l.views_left {
+            Some(1) => "1 view left".into(),
+            Some(v) => format!("{v} views left"),
+            None => "no view limit".into(),
+        };
+        let expires = twosecret_core::util::format_timestamp(l.expires_at);
+        println!("{}  {}  expires {expires}, {views}{}", l.id, l.label, if l.password { ", password" } else { "" });
+    }
+    Ok(())
+}
+
 pub fn sync(ctx: &Ctx) -> Result<()> {
     if ctx.offline {
         bail!("--offline was given");

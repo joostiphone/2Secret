@@ -486,3 +486,76 @@ async fn password_changed_on_other_device() {
     // The old password is useless online.
     assert!(client::unlock_online(b_profile, PW, &sk, "b").await.is_err());
 }
+
+#[tokio::test]
+async fn share_links() {
+    use twosecret_core::share::{self, SharedField, SharedItem};
+
+    let url = start_server(Config::default()).await;
+    let (alice, _) =
+        client::signup(&url, "Alice", "alice@example.com", PW, None, "laptop", "Personal", kdf()).await.unwrap();
+    let item = SharedItem {
+        title: "Wi-Fi".into(),
+        fields: vec![SharedField { label: "password".into(), value: "hunter2".into(), concealed: true }],
+        ..Default::default()
+    };
+    let in_a_day = twosecret_core::util::now() + 86_400;
+    let anyone = Client::new(&url);
+
+    // Two views, then it is gone.
+    let sealed = share::seal(&item, None).unwrap();
+    let link = client::publish_share(&alice, &sealed, "Wi-Fi", in_a_day, Some(2), false).await.unwrap();
+    assert!(link.starts_with(&format!("{url}/s/{}#", sealed.id)));
+    let info = anyone.share_info(&sealed.id).await.unwrap();
+    assert_eq!((info.views_left, info.password), (Some(2), false));
+    // Without the key in the fragment nobody can use up a view.
+    let wrong = share::open_proof(&sealed.id, &share::seal(&item, None).unwrap().key, None).unwrap();
+    assert_eq!(anyone.open_share(&sealed.id, &wrong).await.unwrap_err().status(), Some(403));
+    let opened = anyone.open_share(&sealed.id, &sealed.proof).await.unwrap();
+    assert_eq!(opened.views_left, Some(1));
+    assert_eq!(share::open(&sealed.id, &opened.data, &sealed.key, None).unwrap(), item);
+    anyone.open_share(&sealed.id, &sealed.proof).await.unwrap();
+    assert!(anyone.open_share(&sealed.id, &sealed.proof).await.unwrap_err().is_not_found());
+    assert!(anyone.share_info(&sealed.id).await.unwrap_err().is_not_found());
+
+    // With a password; the sender sees and revokes the link.
+    let sealed = share::seal(&item, Some("open sesame")).unwrap();
+    client::publish_share(&alice, &sealed, "Wi-Fi", in_a_day, None, true).await.unwrap();
+    let links = client::share_links(&alice).await.unwrap();
+    assert_eq!(links.len(), 1);
+    assert_eq!((links[0].label.as_str(), links[0].password, links[0].views_left), ("Wi-Fi", true, None));
+    let proof = share::open_proof(&sealed.id, &sealed.key, Some("open sesame")).unwrap();
+    let opened = anyone.open_share(&sealed.id, &proof).await.unwrap();
+    assert_eq!(share::open(&sealed.id, &opened.data, &sealed.key, Some("open sesame")).unwrap(), item);
+    client::revoke_share_link(&alice, &sealed.id).await.unwrap();
+    assert!(anyone.open_share(&sealed.id, &proof).await.unwrap_err().is_not_found());
+
+    // Ten wrong passwords delete a link.
+    let sealed = share::seal(&item, Some("open sesame")).unwrap();
+    client::publish_share(&alice, &sealed, "Wi-Fi", in_a_day, None, true).await.unwrap();
+    let guess = share::open_proof(&sealed.id, &sealed.key, Some("guess")).unwrap();
+    for _ in 0..10 {
+        assert_eq!(anyone.open_share(&sealed.id, &guess).await.unwrap_err().status(), Some(403));
+    }
+    assert!(anyone.share_info(&sealed.id).await.unwrap_err().is_not_found());
+
+    // Links expire within 30 days.
+    let sealed = share::seal(&item, None).unwrap();
+    let too_late = twosecret_core::util::now() + 31 * 86_400;
+    assert_eq!(
+        client::publish_share(&alice, &sealed, "x", too_late, None, false).await.unwrap_err().status(),
+        Some(400)
+    );
+}
+
+#[tokio::test]
+async fn share_page_is_served() {
+    let url = start_server(Config::default()).await;
+    let page = reqwest::get(format!("{url}/s/AAAAAAAAAAAAAAAAAAAAAA")).await.unwrap();
+    assert_eq!(page.status(), 200);
+    assert_eq!(page.headers()["x-robots-tag"], "noindex, nofollow");
+    let html = page.text().await.unwrap();
+    assert!(html.contains("<script src=\"/s/share.js\"></script>") && html.contains("<svg"));
+    let script = reqwest::get(format!("{url}/s/share.js")).await.unwrap();
+    assert!(script.headers()["content-type"].to_str().unwrap().starts_with("text/javascript"));
+}

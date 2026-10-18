@@ -125,6 +125,8 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Item titles, usernames, passwords, URLs, notes, files | **no** (encrypted) |
 | Number of vaults/items, size class of each item (padded), modification times | yes (metadata) |
 | Who shares which vault with whom, and with which role | yes |
+| Content of share links | **no** (encrypted with a key that only the link holds) |
+| Share links' expiry, views left, whether they have a password | yes |
 
 **Unknown accounts:** the pre-login endpoint answers unknown e-mail addresses
 with stable fake salts (derived from a per-installation server secret), and
@@ -209,6 +211,37 @@ a vault's key on request, for example after someone left on their own.
 What rotation cannot undo: the removed person may have kept copies of what
 they could already see. Change the passwords that matter after removing
 someone.
+
+### Share links
+
+An item (or the fields of it the user picks; one-time passwords only when
+picked, attachments and passkeys never) can be shared with someone without
+2Secret at a link `https://<server>/s/<id>#<key>`:
+
+- The device encrypts the shared fields with **AES-256-GCM** (the item id of
+  the link as associated data) under `SHA-256("2secret/share/v1/key" ‖ link
+  key [‖ PBKDF2-HMAC-SHA256(password, "2secret share " ‖ id, 600 000)])`. The
+  256-bit random link key is only in the link's fragment, which browsers never
+  send to a server. The optional password is for links sent through a channel
+  others can read; it is sent another way.
+- The server stores the ciphertext, the expiry (at most 30 days), the number
+  of views left (or none) and `SHA-256("2secret/share/v1/proof" ‖ content
+  key)`. It gives out the ciphertext only to a request with that proof
+  (compared in constant time), so a link without its fragment, a guessed id
+  or a wrong password neither reads it nor uses up its views. Ten wrong
+  proofs delete the link; opening is rate limited per address. It deletes the
+  link after its last view, when it expires and when its owner revokes it.
+- The page at `/s/<id>` is served by the sync server itself (no third-party
+  code) and decrypts in the browser with WebCrypto, which has AES-GCM,
+  SHA-256 and PBKDF2 but neither XChaCha20-Poly1305 nor Argon2id; hence these
+  choices here. It shows the content with `textContent` only, and only
+  `http(s)` addresses become links.
+- The owner's list of links shows the item's title, encrypted with the
+  account key (associated data `2secret/v1/share-label`).
+
+What a link cannot undo: whoever opened it may keep a copy. A server that is
+compromised while a link is valid can serve a page that leaks the key, as
+with any web vault; links that expire soon and can be opened once limit that.
 
 ## Passkeys
 

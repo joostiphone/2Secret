@@ -197,6 +197,34 @@ enum Command {
     /// Synchronise with the sync server now.
     Sync,
 
+    /// Share an item at a link for someone without 2Secret: end-to-end
+    /// encrypted, only the link can open it, and it expires.
+    Share {
+        item: String,
+        /// How long the link works: 1h, 1d, 7d or 30d (or any number of h/d up to 30 days).
+        #[arg(long, default_value = "7d")]
+        expires: String,
+        /// How often it can be opened (default: until it expires).
+        #[arg(long)]
+        views: Option<u32>,
+        /// Also ask for a password when the link is opened (prompted; send it another way).
+        #[arg(long)]
+        password: bool,
+        /// Only these fields (labels or ids). Default: all except one-time passwords.
+        #[arg(long = "field")]
+        fields: Vec<String>,
+        /// Leave out the notes.
+        #[arg(long)]
+        no_notes: bool,
+    },
+
+    /// List your share links, or revoke one.
+    Shares {
+        /// Revoke this link (its id) right away.
+        #[arg(long)]
+        revoke: Option<String>,
+    },
+
     #[command(hide = true)]
     ClipboardDaemon { seconds: u64 },
 }
@@ -321,6 +349,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             tools::export(&ctx, &file, format, &vault, include_trash)
         }
         Command::Sync => tools::sync(&ctx),
+        Command::Share { item, expires, views, password, fields, no_notes } => {
+            tools::share(&ctx, &item, &expires, views, password, &fields, !no_notes)
+        }
+        Command::Shares { revoke } => tools::shares(&ctx, revoke.as_deref()),
         Command::ClipboardDaemon { .. } => Ok(()),
     }
 }

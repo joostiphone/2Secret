@@ -291,4 +291,27 @@ impl Client {
     pub async fn sync(&self, req: &SyncRequest) -> Result<SyncResponse> {
         self.json(Method::POST, "/sync", Some(req)).await
     }
+
+    pub async fn create_share(&self, req: &CreateShareRequest) -> Result<()> {
+        self.empty(Method::POST, "/shares", Some(req)).await
+    }
+
+    pub async fn shares(&self) -> Result<Vec<ShareDto>> {
+        self.json(Method::GET, "/shares", None::<&()>).await
+    }
+
+    pub async fn revoke_share(&self, id: &str) -> Result<()> {
+        self.empty(Method::DELETE, &format!("/shares/{id}"), None::<&()>).await
+    }
+
+    /// What anyone with the link may see before opening it.
+    pub async fn share_info(&self, id: &str) -> Result<ShareInfo> {
+        self.json(Method::GET, &format!("/shares/{id}"), None::<&()>).await
+    }
+
+    /// Open a link (uses up a view); what the page in the browser does.
+    pub async fn open_share(&self, id: &str, proof: &str) -> Result<OpenShareResponse> {
+        self.json(Method::POST, &format!("/shares/{id}/open"), Some(&OpenShareRequest { proof: proof.to_string() }))
+            .await
+    }
 }

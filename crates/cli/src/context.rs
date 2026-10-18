@@ -233,7 +233,11 @@ pub fn prompt_secret(prompt: &str) -> Result<String> {
     }
     eprint!("{prompt}");
     let mut line = String::new();
-    std::io::stdin().lock().read_line(&mut line)?;
+    // Without input left a question asked again (a weak or mismatched
+    // password) would loop forever.
+    if std::io::stdin().lock().read_line(&mut line)? == 0 {
+        bail!("no input");
+    }
     Ok(line.trim_end_matches(['\r', '\n']).to_string())
 }
 

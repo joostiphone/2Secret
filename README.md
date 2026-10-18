@@ -37,6 +37,7 @@ is free, open source, and you can host the sync server yourself.
 |---|---|
 | 🔐 **Two-Secret Key Derivation** | Master password (Argon2id) combined with a 130-bit Secret Key that never leaves your devices. A stolen server database is useless for guessing passwords. |
 | 🧱 **End-to-end encryption** | Every item is encrypted with 256-bit keys (XChaCha20-Poly1305), per-vault keys, quantum-resistant hybrid encryption (X25519 + ML-KEM-768) for sharing. The server only sees ciphertext, padded to hide exact sizes. |
+| 🔗 **Share via link** | Share an item with someone without 2Secret: an end-to-end encrypted link that expires (1 hour to 30 days), can be limited to a number of views and can ask for a password. |
 | 🗂️ **Vaults & sharing** | Multiple vaults; share a vault with other people on your server as *viewer*, *editor* or *manager*; leave or revoke access at any time. |
 | 🧾 **19 item types** | Logins, passwords, secure notes, credit cards, identities, bank accounts (IBAN/BIC), crypto wallets, software licenses, SSH keys, API credentials, databases, servers, Wi-Fi routers, e-mail accounts, passports, driver licenses, memberships, reward programs and documents – plus custom fields, tags, favorites and encrypted file attachments. |
 | ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. Setup links (`otpauth://`) open 2Secret on Windows, Linux and Mac, the desktop apps read setup QR codes straight from the screen, and on iPhone and iPad QR codes scanned with the camera work too (*Set Up Codes In*). |
@@ -249,6 +250,9 @@ Windows, Linux, BSD, iOS, het web en je browser.
 - **Snelzoeken:** druk overal op `Ctrl+Shift+Spatie` (`⇧⌘Spatie` op de Mac),
   zoek een item en kopieer het wachtwoord, de gebruikersnaam of de eenmalige
   code zonder 2Secret te openen.
+- **Delen via link:** deel een item met iemand zonder 2Secret, via een
+  end-to-end versleutelde link die verloopt (1 uur tot 30 dagen), een beperkt
+  aantal keer te openen is en om een wachtwoord kan vragen.
 - **Back-ups:** een versleutelde kopie van al je kluizen in één bestand, met af
   en toe een herinnering.
 - **Synchroniseren zoals jij wilt:** via de 2Secret-server (`sync.2secret.app`),

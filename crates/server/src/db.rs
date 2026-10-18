@@ -65,6 +65,20 @@ CREATE TABLE IF NOT EXISTS items (
     PRIMARY KEY (vault_id, id)
 );
 CREATE INDEX IF NOT EXISTS items_revision ON items(vault_id, revision);
+CREATE TABLE IF NOT EXISTS shares (
+    id         TEXT PRIMARY KEY,
+    owner_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    label      TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    proof      TEXT NOT NULL,
+    password   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    views_left INTEGER,
+    wrong      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS shares_owner ON shares(owner_id);
+CREATE INDEX IF NOT EXISTS shares_expiry ON shares(expires_at);
 "#;
 
 /// Shared database handle.

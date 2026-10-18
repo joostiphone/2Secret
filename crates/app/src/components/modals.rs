@@ -6,8 +6,9 @@ use twosecret_core::item::{Category, Item};
 use twosecret_core::profile::Role;
 
 use crate::components::widgets::*;
-use crate::i18n::{category_name, role_name, t};
+use crate::i18n::{category_name, field_label, role_name, t};
 use crate::icons::{category_icon, either, vault_icon, Icon, ItemAvatar, VAULT_ICONS};
+use crate::platform;
 use crate::state::*;
 
 fn close() {
@@ -25,6 +26,7 @@ pub fn ModalHost() -> Element {
         Some(Modal::ShareVault(id)) => rsx! { ShareModal { id } },
         Some(Modal::DeleteVault(id)) => rsx! { DeleteVaultModal { id } },
         Some(Modal::MoveItem(id)) => rsx! { MoveItemModal { id } },
+        Some(Modal::ShareItem(id)) => rsx! { ShareItemModal { id } },
         Some(Modal::DeleteItem(id)) => rsx! { DeleteItemModal { id } },
         Some(Modal::Reauth) => rsx! { ReauthModal {} },
         Some(Modal::ForgetDevice) => rsx! { ForgetModal {} },
@@ -340,6 +342,186 @@ fn MoveItemModal(id: String) -> Element {
                     div { div { class: "t", "{v.name}" } div { class: "d", "{v.item_count} {t(\"vault.items\")}" } }
                 }
             }
+        }
+    }
+}
+
+/// How long a new link works.
+const LINK_EXPIRY: [(i64, &str); 4] =
+    [(3600, "link.hour"), (86_400, "link.day"), (7 * 86_400, "link.week"), (30 * 86_400, "link.month")];
+/// How often it can be opened (0: until it expires).
+const LINK_VIEWS: [u32; 4] = [1, 3, 10, 0];
+
+/// Share an item at a link for someone without 2Secret
+/// (`twosecret_core::share`): pick the fields, how long and how often.
+#[component]
+fn ShareItemModal(id: String) -> Element {
+    let item = SESSION.peek().as_ref().and_then(|s| s.item(&id).cloned());
+    let linked = SESSION.peek().as_ref().is_some_and(|s| s.server().is_some());
+    // Fields with a value, checked: all but one-time passwords.
+    let mut chosen = use_signal(|| {
+        item.as_ref()
+            .map(|i| {
+                i.fields
+                    .iter()
+                    .filter(|f| !f.value.trim().is_empty())
+                    .map(|f| (f.id.clone(), f.kind != twosecret_core::item::FieldKind::Totp))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
+    let mut notes = use_signal(|| true);
+    let mut expires = use_signal(|| 7 * 86_400i64);
+    let mut views = use_signal(|| 0u32);
+    let mut password = use_signal(String::new);
+    let mut error = use_signal(|| None::<String>);
+    // The new link and when it expires.
+    let mut link = use_signal(|| None::<(String, i64)>);
+    let Some(item) = item else { return rsx! {} };
+    if !linked {
+        return rsx! {
+            ModalFrame { title: t("link.title"),
+                p { {t("link.needs_server")} }
+                button { class: "btn primary", onclick: move |_| { close(); *NAV.write() = Nav::Settings; }, {t("settings.connect")} }
+            }
+        };
+    }
+
+    if let Some((url, expires_at)) = link() {
+        let copy_url = url.clone();
+        let views_text = match views() {
+            0 => String::new(),
+            1 => format!(" {}", t("link.ready_once")),
+            n => format!(" {}", t("link.ready_n").replace("{n}", &n.to_string())),
+        };
+        return rsx! {
+            ModalFrame { title: t("link.title"),
+                footer: rsx! {
+                    button { class: "btn primary", onclick: move |_| close(), {t("common.close")} }
+                },
+                p { class: "small muted",
+                    {t("link.ready").replace("{date}", &platform::local_time(expires_at))}
+                    "{views_text}"
+                }
+                div { class: "row",
+                    input { class: "input grow mono", readonly: true, value: "{url}" }
+                    button { class: "btn primary", onclick: move |_| copy(copy_url.clone(), t("link.link")),
+                        Icon { name: "copy", size: 15 }
+                        {t("common.copy")}
+                    }
+                }
+                if !password().is_empty() {
+                    p { class: "small muted", style: "margin-top:12px", {t("link.password_apart")} }
+                }
+            }
+        };
+    }
+
+    let has_notes = !item.notes.trim().is_empty();
+    let fields: Vec<_> = item.fields.iter().filter(|f| !f.value.trim().is_empty()).cloned().collect();
+    let item_id = id.clone();
+    let create = move |_| {
+        let Some(session) = session_copy() else { return };
+        let Some(item) = session.item(&item_id).cloned() else { return };
+        let picked = chosen();
+        let keep = move |f: &twosecret_core::item::Field| picked.iter().any(|(id, on)| *on && *id == f.id);
+        let shared = twosecret_core::share::SharedItem::from_item(&item, field_label, keep, notes());
+        if shared.fields.is_empty() && shared.notes.is_empty() {
+            error.set(Some(t("link.nothing").into()));
+            return;
+        }
+        let pw = password();
+        let expires_at = twosecret_core::util::now() + expires();
+        let max_views = Some(views()).filter(|v| *v > 0);
+        error.set(None);
+        spawn(async move {
+            busy(t("busy.working"));
+            let sealed = platform::run_heavy(move || {
+                let mut shared = shared;
+                let sealed = twosecret_core::share::seal(&shared, Some(pw.as_str()));
+                zeroize::Zeroize::zeroize(&mut shared);
+                sealed
+            })
+            .await;
+            let result = match sealed {
+                Ok(sealed) => twosecret_client::publish_share(
+                    &session,
+                    &sealed,
+                    &item.title,
+                    expires_at,
+                    max_views,
+                    !password.peek().is_empty(),
+                )
+                .await
+                .map_err(|e| client_error(&e)),
+                Err(e) => Err(core_error(&e)),
+            };
+            unbusy();
+            match result {
+                Ok(url) => link.set(Some((url, expires_at))),
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+
+    rsx! {
+        ModalFrame { title: format!("{} · {}", t("link.title"), item.title),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn primary", onclick: create, Icon { name: "share", size: 15 } {t("link.create")} }
+            },
+            if let Some(err) = error() { div { class: "error-box", "{err}" } }
+            p { class: "small muted", {t("link.explain")} }
+            label { class: "label", {t("link.what")} }
+            for (i, f) in fields.iter().enumerate() {
+                label { class: "checkbox", key: "{f.id}",
+                    input { r#type: "checkbox", checked: chosen.read().get(i).is_some_and(|(_, on)| *on),
+                        onchange: move |e| chosen.with_mut(|c| if let Some(entry) = c.get_mut(i) { entry.1 = e.checked() }),
+                    }
+                    "{field_label(f)}"
+                }
+            }
+            if has_notes {
+                label { class: "checkbox",
+                    input { r#type: "checkbox", checked: notes(), onchange: move |e| notes.set(e.checked()) }
+                    {t("field.notes")}
+                }
+            }
+            if !item.urls.iter().all(|u| u.trim().is_empty()) {
+                p { class: "small muted", style: "margin:6px 0 0", {t("link.websites")} }
+            }
+            div { class: "row", style: "margin-top:16px;gap:12px;flex-wrap:wrap",
+                div { class: "grow",
+                    label { class: "label", {t("link.expires")} }
+                    select { class: "input",
+                        onchange: move |e| if let Ok(v) = e.value().parse() { expires.set(v) },
+                        for (seconds, key) in LINK_EXPIRY {
+                            option { value: "{seconds}", selected: expires() == seconds, {t(key)} }
+                        }
+                    }
+                }
+                div { class: "grow",
+                    label { class: "label", {t("link.views")} }
+                    select { class: "input",
+                        onchange: move |e| if let Ok(v) = e.value().parse() { views.set(v) },
+                        for n in LINK_VIEWS {
+                            option { value: "{n}", selected: views() == n,
+                                match n {
+                                    0 => t("link.unlimited").to_string(),
+                                    1 => t("link.views_once").to_string(),
+                                    n => t("link.views_n").replace("{n}", &n.to_string()),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            label { class: "label", style: "margin-top:16px", {t("link.password")} }
+            input { class: "input", r#type: "password", autocomplete: "new-password",
+                placeholder: t("link.password_none"),
+                oninput: move |e| password.set(e.value()),
+            }
+            p { class: "small muted", style: "margin-top:6px", {t("link.password_desc")} }
         }
     }
 }

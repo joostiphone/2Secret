@@ -382,6 +382,7 @@ fn SyncSection() -> Element {
                                 }
                             }
                         }
+                        ShareLinksRows {}
                         div { class: "settings-row",
                             div { class: "k",
                                 div { class: "t", {t("settings.sign_out")} }
@@ -404,6 +405,68 @@ fn SyncSection() -> Element {
                         }
                     }
                 },
+            }
+        }
+    }
+}
+
+/// The account's share links (`2secret shares`): open them, revoke them.
+#[component]
+fn ShareLinksRows() -> Element {
+    let mut links = use_signal(|| None::<Vec<twosecret_client::ShareLink>>);
+    let load = move |_| {
+        let Some(session) = session_copy() else { return };
+        spawn(async move {
+            match twosecret_client::share_links(&session).await {
+                Ok(list) => links.set(Some(list)),
+                Err(e) => toast_err(&client_error(&e)),
+            }
+        });
+    };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("link.list")} }
+                div { class: "d", {t("link.list_desc")} }
+            }
+            button { class: "btn small", onclick: load, {t("common.show")} }
+        }
+        if let Some(list) = links() {
+            if list.is_empty() {
+                div { class: "settings-row", div { class: "k", div { class: "d", {t("link.none")} } } }
+            }
+            for l in list {
+                div { class: "settings-row", key: "{l.id}",
+                    Icon { name: "share", size: 16 }
+                    div { class: "k",
+                        div { class: "t", "{l.label}" }
+                        div { class: "d",
+                            {t("link.until").replace("{date}", &platform::local_time(l.expires_at))}
+                            match l.views_left {
+                                Some(1) => format!(" · {}", t("link.left_once")),
+                                Some(n) => format!(" · {}", t("link.left_n").replace("{n}", &n.to_string())),
+                                None => String::new(),
+                            }
+                            if l.password { " · {t(\"link.with_password\")}" }
+                        }
+                    }
+                    button { class: "btn small danger",
+                        onclick: move |_| {
+                            let Some(session) = session_copy() else { return };
+                            let id = l.id.clone();
+                            spawn(async move {
+                                match twosecret_client::revoke_share_link(&session, &id).await {
+                                    Ok(()) => {
+                                        links.with_mut(|list| if let Some(list) = list { list.retain(|x| x.id != id) });
+                                        toast(t("link.revoked"));
+                                    }
+                                    Err(e) => toast_err(&client_error(&e)),
+                                }
+                            });
+                        },
+                        {t("link.revoke")}
+                    }
+                }
             }
         }
     }

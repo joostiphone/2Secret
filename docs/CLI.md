@@ -78,6 +78,23 @@ of an id. Categories: `login`, `password`, `secure_note`, `credit_card`,
 2secret vault delete Familie        # owners delete, members leave
 ```
 
+## Share links
+
+Share an item with someone without 2Secret: they open the link in any
+browser. The content is end-to-end encrypted with a key that only the link
+holds; the server keeps it until the link expires or has been opened as often
+as allowed. One-time passwords are left out unless you name them with
+`--field`.
+
+```sh
+2secret share Wi-Fi                        # works 7 days, any number of views
+2secret share Wi-Fi --expires 1d --views 1 # 1h … 30d
+2secret share GitHub --field username --field password --no-notes
+2secret share Bank --password              # asks for a password the link asks for
+2secret shares                             # your links
+2secret shares --revoke <id>
+```
+
 ## Secret references
 
 A secret reference points at one value: `2s://<vault>/<item>/<field>` or

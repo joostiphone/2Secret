@@ -29,6 +29,15 @@
   `IdentityAgent` in `~/.ssh/config` at the socket shown in the settings; on
   Windows it is the agent of the OpenSSH client of Windows (stop the
   *OpenSSH Authentication Agent* service).
+- **Share via link** (all apps and `2secret share`): share an item, or the
+  fields of it you pick, with someone without 2Secret. They open the link in
+  any browser; it is end-to-end encrypted with a key that only the link
+  holds, works for 1 hour to 30 days, can be limited to 1, 3 or 10 views and
+  can ask for a password you send another way. *Settings → Sync* lists your
+  links and revokes them (`2secret shares`). Needs a sync server with this
+  version.
+- CLI: a password prompt no longer asks again forever when there is no input
+  left.
 - Desktop: while its window is hidden in the menu bar or system tray, 2Secret
   no longer pauses at its next screen update (the window draws nothing
   then), so Quick Access, syncing and locking keep working.

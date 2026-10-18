@@ -521,3 +521,71 @@ pub async fn breach_check_hashes(entries: Vec<(String, String, String)>) -> Resu
     }
     Ok(out)
 }
+
+// ---------------------------------------------------------------------------
+// Share links
+// ---------------------------------------------------------------------------
+
+const SHARE_LABEL_AAD: &[u8] = b"2secret/v1/share-label";
+
+/// One of the account's share links.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShareLink {
+    pub id: String,
+    /// What it shares (the item's title).
+    pub label: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub views_left: Option<u32>,
+    pub password: bool,
+}
+
+/// Put a sealed share on the account's server. Returns the link to send.
+/// Sealing is slow with a password (PBKDF2), so the caller does it
+/// ([`twosecret_core::share::seal`]), off the UI thread.
+pub async fn publish_share(
+    session: &Session,
+    sealed: &twosecret_core::share::SealedShare,
+    label: &str,
+    expires_at: i64,
+    max_views: Option<u32>,
+    password: bool,
+) -> Result<String> {
+    let client = client_for(session)?;
+    let label = twosecret_core::crypto::encrypt(session.account_key(), label.as_bytes(), SHARE_LABEL_AAD);
+    client
+        .create_share(&CreateShareRequest {
+            id: sealed.id.clone(),
+            data: sealed.data.clone(),
+            proof: sealed.proof.clone(),
+            label,
+            expires_at,
+            max_views,
+            password,
+        })
+        .await?;
+    Ok(twosecret_core::share::link(client.base_url(), sealed))
+}
+
+/// The account's links that still work, newest first.
+pub async fn share_links(session: &Session) -> Result<Vec<ShareLink>> {
+    let shares = client_for(session)?.shares().await?;
+    Ok(shares
+        .into_iter()
+        .map(|s| ShareLink {
+            label: twosecret_core::crypto::decrypt(session.account_key(), &s.label, SHARE_LABEL_AAD)
+                .map(|l| String::from_utf8_lossy(&l).into_owned())
+                .unwrap_or_default(),
+            id: s.id,
+            created_at: s.created_at,
+            expires_at: s.expires_at,
+            views_left: s.views_left,
+            password: s.password,
+        })
+        .collect())
+}
+
+/// Revoke a link: it stops working right away.
+pub async fn revoke_share_link(session: &Session, id: &str) -> Result<()> {
+    client_for(session)?.revoke_share(id).await
+}

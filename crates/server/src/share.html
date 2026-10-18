@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>2Secret</title>
+<style>
+  :root {
+    --bg: #f4f5f8; --panel: #ffffff; --text: #1a1d26; --muted: #687083; --border: #e2e5ec;
+    --accent: #3b5bdb; --accent-hover: #2f4ac0; --soft: #f1f3f7; --danger: #d6336c; --ok: #2b8a3e;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11131a; --panel: #181b24; --text: #e7e9ef; --muted: #959cb0; --border: #2a2f3e;
+      --accent: #5c7cfa; --accent-hover: #748ffc; --soft: #10131a; --danger: #f06595; --ok: #51cf66;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 40px 16px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; font-weight: 700; font-size: 20px; }
+  main { width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 26px; box-shadow: 0 10px 40px rgba(20, 24, 40, .10); }
+  h1 { font-size: 21px; margin: 0 0 6px; overflow-wrap: anywhere; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .error { color: var(--danger); }
+  .hidden { display: none !important; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; margin: 0 0 6px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--soft); color: var(--text); font: inherit; outline: none; margin-bottom: 14px; }
+  input:focus { border-color: var(--accent); }
+  button { font: inherit; cursor: pointer; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 7px 12px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 11px 18px; width: 100%; font-weight: 600; }
+  button.primary:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .6; cursor: default; }
+  .field { border-top: 1px solid var(--border); padding: 12px 0; }
+  .field .row { display: flex; gap: 8px; align-items: center; }
+  .field .value { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overflow-wrap: anywhere; white-space: pre-wrap; }
+  .notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+  a { color: var(--accent); overflow-wrap: anywhere; }
+  footer { margin-top: 22px; max-width: 560px; text-align: center; }
+</style>
+</head>
+<body>
+<header>{logo}<span>2Secret</span></header>
+<main>
+  <section id="loading"><p class="muted" id="loading-text">…</p></section>
+  <section id="ask" class="hidden">
+    <h1 id="ask-title"></h1>
+    <p class="muted" id="ask-info"></p>
+    <div id="password-box" class="hidden">
+      <label for="password" id="password-label"></label>
+      <input id="password" type="password" autocomplete="off">
+    </div>
+    <p id="ask-error" class="error hidden"></p>
+    <button id="show" class="primary"></button>
+  </section>
+  <section id="content" class="hidden">
+    <h1 id="title"></h1>
+    <p class="muted" id="content-info"></p>
+    <div id="fields"></div>
+  </section>
+  <section id="gone" class="hidden">
+    <h1 id="gone-title"></h1>
+    <p class="muted" id="gone-text"></p>
+  </section>
+</main>
+<footer class="muted" id="footer"></footer>
+<script src="/s/share.js"></script>
+</body>
+</html>

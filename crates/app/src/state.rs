@@ -137,6 +137,8 @@ pub enum Modal {
     ShareVault(String),
     DeleteVault(String),
     MoveItem(String),
+    /// Share an item at a link for someone without 2Secret.
+    ShareItem(String),
     DeleteItem(String),
     Reauth,
     ForgetDevice,

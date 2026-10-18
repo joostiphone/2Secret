@@ -42,6 +42,8 @@ quick-xml = "0.37"
 ssh-key = { version = "0.6", default-features = false, features = ["alloc", "ed25519", "rand_core"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem", "std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 rsa = { version = "0.9", optional = true, features = ["sha2"] }
 signature = { version = "2", optional = true }
 

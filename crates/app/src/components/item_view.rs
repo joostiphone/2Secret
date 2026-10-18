@@ -114,6 +114,14 @@ pub fn ItemView(id: String) -> Element {
                                     Icon { name: "folder", size: 16 }
                                     {t("item.move")}
                                 }
+                                button {
+                                    onclick: {
+                                        let id = id_menu.clone();
+                                        move |_| { menu.set(false); *MODAL.write() = Some(Modal::ShareItem(id.clone())); }
+                                    },
+                                    Icon { name: "share", size: 16 }
+                                    {t("link.menu")}
+                                }
                                 button { class: "danger",
                                     onclick: {
                                         let id = id_menu.clone();

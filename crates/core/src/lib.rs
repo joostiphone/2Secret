@@ -24,6 +24,7 @@ pub mod passkey;
 pub mod profile;
 pub mod secret_ref;
 pub mod session;
+pub mod share;
 pub mod ssh;
 #[cfg(feature = "ssh-agent")]
 pub mod ssh_agent;
