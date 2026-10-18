@@ -3,6 +3,7 @@
 mod account;
 mod clipboard;
 mod context;
+mod emergency;
 mod items;
 mod output;
 mod tools;
@@ -131,6 +132,10 @@ enum Command {
     /// Manage vaults and sharing.
     #[command(subcommand)]
     Vault(vaults::VaultCmd),
+
+    /// Emergency access: trust someone with your vaults for when you cannot.
+    #[command(subcommand)]
+    Emergency(emergency::EmergencyCmd),
 
     /// Print a secret by reference: `2secret read 2s://Personal/GitHub/password`.
     Read {
@@ -338,6 +343,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Attach { item, file } => items::attach(&ctx, &item, &file),
         Command::Attachment { item, name, output } => items::save_attachment(&ctx, &item, &name, output),
         Command::Vault(cmd) => vaults::run(&ctx, cmd),
+        Command::Emergency(cmd) => emergency::run(&ctx, cmd),
         Command::Read { reference, no_newline } => tools::read(&ctx, &reference, no_newline),
         Command::Inject { input, output } => tools::inject(&ctx, input, output),
         Command::Run { env_file, command } => tools::run_command(&ctx, &env_file, &command),

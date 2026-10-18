@@ -10,6 +10,7 @@
 pub mod auth;
 pub mod client_ip;
 pub mod db;
+pub mod emergency;
 pub mod error;
 pub mod ratelimit;
 pub mod routes;
@@ -141,7 +142,7 @@ impl AppState {
 /// Build the complete HTTP application.
 pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
-    let api = routes::api_router().merge(share::api()).with_state(state.clone());
+    let api = routes::api_router().merge(share::api()).merge(emergency::api()).with_state(state.clone());
     let pages = share::pages().with_state(state);
 
     let mut app = Router::new().nest("/api/v1", api).merge(pages).layer(DefaultBodyLimit::max(config.max_body_bytes));

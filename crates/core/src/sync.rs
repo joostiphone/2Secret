@@ -37,6 +37,9 @@ pub struct SyncReport {
     /// The profile photo was changed on another device.
     #[serde(default)]
     pub avatar_changed: bool,
+    /// Emergency access as the server sees it (none: not supported there).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emergency: Option<crate::api::EmergencyOverview>,
 }
 
 impl SyncReport {

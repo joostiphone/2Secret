@@ -240,6 +240,9 @@ pub static BUSY: GlobalSignal<Option<String>> = Signal::global(|| None);
 pub static PANE: GlobalSignal<Pane> = Signal::global(|| Pane::List);
 /// URL of the active browser tab (extension only).
 pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
+/// Emergency access as the server said at the last sync (none: not
+/// connected, or a server without it).
+pub static EMERGENCY: GlobalSignal<Option<twosecret_core::api::EmergencyOverview>> = Signal::global(|| None);
 /// Breach counts from the last Have I Been Pwned check (item id → count).
 pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
 
@@ -371,6 +374,7 @@ fn reset_view() {
     *MODAL.write() = None;
     *NAV.write() = start_nav();
     *BREACHES.write() = None;
+    *EMERGENCY.write() = None;
     *SYNC.write() = SyncStatus::default();
     *PANE.write() = Pane::List;
 }
@@ -886,6 +890,9 @@ pub async fn run_sync(show_result: bool) {
                 (report.over_quota > 0).then(|| t("sync.over_quota").replace("{n}", &report.over_quota.to_string()));
             status.needs_reauth = false;
             drop(status);
+            if report.emergency.is_some() && *EMERGENCY.peek() != report.emergency {
+                *EMERGENCY.write() = report.emergency.clone();
+            }
             persist();
             // The selected item may have been deleted remotely.
             let gone = SELECTED

@@ -559,3 +559,97 @@ async fn share_page_is_served() {
     let script = reqwest::get(format!("{url}/s/share.js")).await.unwrap();
     assert!(script.headers()["content-type"].to_str().unwrap().starts_with("text/javascript"));
 }
+
+#[tokio::test]
+async fn emergency_access() {
+    let url = start_server(Config::default()).await;
+    let signup = |name: &'static str, email: &'static str| {
+        let url = url.clone();
+        async move { client::signup(&url, name, email, PW, None, name, "Personal", kdf()).await.unwrap().0 }
+    };
+    let mut alice = signup("Alice", "alice@example.com").await;
+    let mut bob = signup("Bob", "bob@example.com").await;
+    let mut carol = signup("Carol", "carol@example.com").await;
+    let personal = alice.default_vault_id().unwrap();
+    let bank = alice.add_item(&personal, Item::login("Bank", "alice", "pin-1234", None)).unwrap();
+    // A vault Carol shares with Alice is not Alice's to give.
+    let carols = carol.default_vault_id().unwrap();
+    client::share_vault(&mut carol, &carols, "alice@example.com", Role::Editor).await.unwrap();
+
+    let contact = client::add_emergency_contact(&mut alice, "bob@example.com", 7).await.unwrap();
+    assert_eq!(contact.account_id, bob.account().id);
+    assert!(client::add_emergency_contact(&mut alice, "alice@example.com", 7).await.is_err());
+    assert_eq!(client::add_emergency_contact(&mut alice, "bob@example.com", 7).await.unwrap_err().status(), Some(409));
+    let mine = client::emergency_overview(&alice).await.unwrap();
+    assert_eq!(mine.contacts.len(), 1);
+    assert_eq!(mine.contacts[0].keys.len(), 1);
+    assert_eq!(mine.contacts[0].keys[0].vault_id, personal);
+    let id = mine.contacts[0].id.clone();
+
+    // Bob sees who trusts him, cannot open before asking, and after asking
+    // has to wait.
+    let theirs = client::emergency_overview(&bob).await.unwrap();
+    assert_eq!(theirs.trusted_by.len(), 1);
+    assert_eq!(theirs.trusted_by[0].email, "alice@example.com");
+    assert!(theirs.trusted_by[0].keys.is_empty());
+    assert_eq!(client::open_emergency_access(&mut bob, &id).await.unwrap_err().status(), Some(403));
+    client::request_emergency_access(&bob, &id).await.unwrap();
+    let theirs = client::emergency_overview(&bob).await.unwrap();
+    let requested = theirs.trusted_by[0].requested_at.unwrap();
+    assert_eq!(theirs.trusted_by[0].grants_at, Some(requested + 7 * 86_400));
+    assert!(!theirs.trusted_by[0].granted);
+    assert_eq!(client::open_emergency_access(&mut bob, &id).await.unwrap_err().status(), Some(403));
+    // Only Alice approves, only Bob asks.
+    assert!(client::approve_emergency_access(&bob, &id).await.is_err());
+    assert!(client::request_emergency_access(&carol, &id).await.is_err());
+
+    // Alice denies; Bob asks again and Alice approves.
+    let report = client::sync(&mut alice).await.unwrap();
+    assert!(report.emergency.unwrap().contacts[0].requested_at.is_some());
+    client::reject_emergency_access(&mut alice, &id).await.unwrap();
+    assert!(client::emergency_overview(&bob).await.unwrap().trusted_by[0].requested_at.is_none());
+    client::request_emergency_access(&bob, &id).await.unwrap();
+    client::approve_emergency_access(&alice, &id).await.unwrap();
+    assert!(client::emergency_overview(&bob).await.unwrap().trusted_by[0].granted);
+
+    // Bob opens: Alice's own vault, read-only; not the one Carol shared.
+    client::open_emergency_access(&mut bob, &id).await.unwrap();
+    assert_eq!(bob.vault(&personal).unwrap().role, Role::Viewer);
+    assert_eq!(bob.item(&bank).unwrap().password(), Some("pin-1234"));
+    assert!(bob.vault(&carols).is_none());
+    assert!(client::emergency_overview(&bob).await.unwrap().trusted_by[0].opened);
+
+    // A vault Alice creates later reaches Bob too (her next sync gives him
+    // its key).
+    let later = alice.create_vault("Later", "").unwrap();
+    alice.add_item(&later, Item::new(Category::SecureNote, "Will")).unwrap();
+    client::sync(&mut alice).await.unwrap();
+    client::sync(&mut alice).await.unwrap();
+    client::sync(&mut bob).await.unwrap();
+    assert_eq!(bob.find_vault("Later").unwrap().item_count, 1);
+
+    // Alice ends the access but keeps Bob as her contact: her vaults get
+    // new keys, which her next sync gives him for a later request.
+    let first_key = alice.vault_key(&personal).unwrap().clone();
+    client::reject_emergency_access(&mut alice, &id).await.unwrap();
+    assert_ne!(alice.vault_key(&personal), Some(&first_key));
+    client::sync(&mut bob).await.unwrap();
+    assert!(bob.vault(&personal).is_none());
+    client::sync(&mut alice).await.unwrap();
+    client::request_emergency_access(&bob, &id).await.unwrap();
+    client::approve_emergency_access(&alice, &id).await.unwrap();
+    client::open_emergency_access(&mut bob, &id).await.unwrap();
+    assert_eq!(bob.vault_key(&personal), alice.vault_key(&personal));
+    assert_eq!(bob.item(&bank).unwrap().password(), Some("pin-1234"));
+    assert!(bob.undecryptable().is_empty());
+
+    // Alice ends it: Bob loses both vaults and they get new keys.
+    let old_key = alice.vault_key(&personal).unwrap().clone();
+    client::remove_emergency_contact(&mut alice, &id).await.unwrap();
+    assert_ne!(alice.vault_key(&personal), Some(&old_key));
+    client::sync(&mut bob).await.unwrap();
+    assert!(bob.vault(&personal).is_none());
+    assert!(bob.find_vault("Later").is_err());
+    assert!(client::emergency_overview(&bob).await.unwrap().trusted_by.is_empty());
+    assert_eq!(alice.vault(&personal).unwrap().member_count, 1);
+}

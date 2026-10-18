@@ -621,6 +621,29 @@ impl Session {
         WrappedKey::wrap_for(recipient, key, &aad::vault_key(vault_id))
     }
 
+    /// The keys of the vaults this account owns (and the server has), sealed
+    /// to an emergency contact: those of which the server holds no key of
+    /// the current generation (`have`).
+    pub fn emergency_keys_for(
+        &self,
+        recipient: &AccountPublicKeys,
+        have: &[crate::api::EmergencyKeyState],
+    ) -> Result<Vec<crate::api::EmergencyKey>> {
+        self.profile
+            .vaults
+            .iter()
+            .filter(|v| v.role == Role::Owner && v.sync_state == SyncState::Synced)
+            .filter(|v| !have.iter().any(|h| h.vault_id == v.id && h.key_rev == v.key_rev))
+            .map(|v| {
+                Ok(crate::api::EmergencyKey {
+                    vault_id: v.id.clone(),
+                    key_rev: v.key_rev,
+                    wrapped_key: self.wrap_vault_key_for(&v.id, recipient)?,
+                })
+            })
+            .collect()
+    }
+
     // ------------------------------------------------------------------
     // Items
     // ------------------------------------------------------------------

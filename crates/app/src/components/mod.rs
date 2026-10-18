@@ -1,4 +1,5 @@
 pub mod dashboard;
+pub mod emergency;
 pub mod generator;
 pub mod item_edit;
 pub mod item_view;

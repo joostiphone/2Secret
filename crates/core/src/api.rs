@@ -356,3 +356,91 @@ pub struct OpenShareResponse {
     pub data: String,
     pub views_left: Option<u32>,
 }
+
+// ---------------------------------------------------------------------------
+// Emergency access (`crate::emergency`)
+// ---------------------------------------------------------------------------
+
+/// A vault key sealed to a trusted contact's public keys, which the server
+/// holds back until their emergency access is granted.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EmergencyKey {
+    pub vault_id: String,
+    /// Generation of the vault key (see [`VaultDto::key_rev`]).
+    pub key_rev: u64,
+    pub wrapped_key: WrappedKey,
+}
+
+/// Trust someone with emergency access (`POST /emergency`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AddEmergencyContactRequest {
+    pub account_id: String,
+    /// Days between their request and their access, unless approved sooner.
+    pub wait_days: u32,
+    /// The keys of the vaults the account owns, sealed to the contact.
+    pub keys: Vec<EmergencyKey>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AddEmergencyContactResponse {
+    pub id: String,
+}
+
+/// New or replaced vault keys for a contact (`PUT /emergency/{id}/keys`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EmergencyKeysRequest {
+    pub keys: Vec<EmergencyKey>,
+}
+
+/// Which vault key generation the server holds for a contact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmergencyKeyState {
+    pub vault_id: String,
+    pub key_rev: u64,
+}
+
+/// One side of an emergency access arrangement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmergencyContactDto {
+    pub id: String,
+    /// The other person: the contact for whoever trusts them, the one who
+    /// trusts for the contact.
+    pub account_id: String,
+    pub email: String,
+    pub name: String,
+    pub public_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_public_key: Option<String>,
+    pub wait_days: u32,
+    pub created_at: i64,
+    /// When the contact asked for access (none: not asked).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_at: Option<i64>,
+    /// When access is (or was) granted: the request plus the waiting period,
+    /// or earlier when approved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grants_at: Option<i64>,
+    /// Access is granted now.
+    pub granted: bool,
+    /// The contact has opened the vaults.
+    pub opened: bool,
+    /// For whoever trusts: the vault keys the server holds for this contact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<EmergencyKeyState>,
+}
+
+/// `GET /emergency`
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmergencyOverview {
+    /// The people this account trusts.
+    pub contacts: Vec<EmergencyContactDto>,
+    /// The people who trust this account.
+    pub trusted_by: Vec<EmergencyContactDto>,
+}
+
+/// Vaults someone lost access to (after a denial or removal): their owner
+/// gives them a new key.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EmergencyRevoked {
+    pub vault_ids: Vec<String>,
+}

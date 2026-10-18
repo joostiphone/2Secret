@@ -36,6 +36,12 @@
   can ask for a password you send another way. *Settings → Sync* lists your
   links and revokes them (`2secret shares`). Needs a sync server with this
   version.
+- **Emergency access** (all apps, `2secret emergency`): trust people on the
+  same server with read access to the vaults you own, for when you cannot
+  give it yourself. They ask for it and get it after the waiting period you
+  chose (1 to 30 days in the apps) unless you deny it; you can also approve
+  at once. Your apps show the request. Ending the access gives the vaults new
+  keys. Needs a sync server with this version.
 - CLI: a password prompt no longer asks again forever when there is no input
   left.
 - Desktop: while its window is hidden in the menu bar or system tray, 2Secret

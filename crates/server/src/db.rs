@@ -79,6 +79,29 @@ CREATE TABLE IF NOT EXISTS shares (
 );
 CREATE INDEX IF NOT EXISTS shares_owner ON shares(owner_id);
 CREATE INDEX IF NOT EXISTS shares_expiry ON shares(expires_at);
+CREATE TABLE IF NOT EXISTS emergency_contacts (
+    id           TEXT PRIMARY KEY,
+    grantor_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    grantee_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    wait_days    INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL,
+    requested_at INTEGER,
+    approved_at  INTEGER,
+    UNIQUE (grantor_id, grantee_id)
+);
+CREATE INDEX IF NOT EXISTS emergency_grantee ON emergency_contacts(grantee_id);
+CREATE TABLE IF NOT EXISTS emergency_keys (
+    contact_id  TEXT NOT NULL REFERENCES emergency_contacts(id) ON DELETE CASCADE,
+    vault_id    TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+    key_rev     INTEGER NOT NULL,
+    wrapped_key TEXT NOT NULL,
+    PRIMARY KEY (contact_id, vault_id)
+);
+CREATE TABLE IF NOT EXISTS emergency_members (
+    contact_id TEXT NOT NULL REFERENCES emergency_contacts(id) ON DELETE CASCADE,
+    vault_id   TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+    PRIMARY KEY (contact_id, vault_id)
+);
 "#;
 
 /// Shared database handle.

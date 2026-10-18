@@ -314,4 +314,36 @@ impl Client {
         self.json(Method::POST, &format!("/shares/{id}/open"), Some(&OpenShareRequest { proof: proof.to_string() }))
             .await
     }
+
+    pub async fn emergency(&self) -> Result<EmergencyOverview> {
+        self.json(Method::GET, "/emergency", None::<&()>).await
+    }
+
+    pub async fn add_emergency_contact(&self, req: &AddEmergencyContactRequest) -> Result<AddEmergencyContactResponse> {
+        self.json(Method::POST, "/emergency", Some(req)).await
+    }
+
+    pub async fn set_emergency_keys(&self, id: &str, req: &EmergencyKeysRequest) -> Result<()> {
+        self.empty(Method::PUT, &format!("/emergency/{id}/keys"), Some(req)).await
+    }
+
+    pub async fn request_emergency_access(&self, id: &str) -> Result<()> {
+        self.empty(Method::POST, &format!("/emergency/{id}/request"), None::<&()>).await
+    }
+
+    pub async fn approve_emergency_access(&self, id: &str) -> Result<()> {
+        self.empty(Method::POST, &format!("/emergency/{id}/approve"), None::<&()>).await
+    }
+
+    pub async fn reject_emergency_access(&self, id: &str) -> Result<EmergencyRevoked> {
+        self.json(Method::POST, &format!("/emergency/{id}/reject"), None::<&()>).await
+    }
+
+    pub async fn open_emergency_access(&self, id: &str) -> Result<()> {
+        self.empty(Method::POST, &format!("/emergency/{id}/open"), None::<&()>).await
+    }
+
+    pub async fn remove_emergency_contact(&self, id: &str) -> Result<EmergencyRevoked> {
+        self.json(Method::DELETE, &format!("/emergency/{id}"), None::<&()>).await
+    }
 }

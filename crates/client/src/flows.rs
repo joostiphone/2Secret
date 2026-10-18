@@ -312,7 +312,38 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     total.needs_another_round = false;
     post_quantum_upkeep(&client, access).await?;
     total.avatar_changed = avatar_upkeep(&client, access).await?;
+    total.emergency = emergency_upkeep(&client, access).await?;
     Ok(total)
+}
+
+/// Give every emergency contact the current key of every vault this account
+/// owns: vaults created since, and keys replaced since. Servers from before
+/// emergency access answer 404 or 405: there is nothing to do then.
+async fn emergency_upkeep<A: SessionAccess>(client: &Client, access: &mut A) -> Result<Option<EmergencyOverview>> {
+    let mut overview = match client.emergency().await {
+        Ok(overview) => overview,
+        Err(e) if e.is_not_found() || e.status() == Some(405) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    for contact in &mut overview.contacts {
+        let recipient = AccountPublicKeys::from_b64(&contact.public_key, contact.pq_public_key.as_deref())?;
+        let keys = access.with_session(|s| s.emergency_keys_for(&recipient, &contact.keys))??;
+        if keys.is_empty() {
+            continue;
+        }
+        match client.set_emergency_keys(&contact.id, &EmergencyKeysRequest { keys: keys.clone() }).await {
+            Ok(()) => {
+                contact.keys.retain(|k| !keys.iter().any(|n| n.vault_id == k.vault_id));
+                contact.keys.extend(
+                    keys.iter().map(|k| EmergencyKeyState { vault_id: k.vault_id.clone(), key_rev: k.key_rev }),
+                );
+            }
+            // A key replaced or a vault deleted meanwhile: the next sync.
+            Err(e) if e.status() == Some(409) || e.status() == Some(403) || e.is_not_found() => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(Some(overview))
 }
 
 /// Send a profile photo changed here, or (at most hourly) take one changed on
@@ -385,6 +416,72 @@ pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, rol
         .await?;
     sync(session).await?;
     Ok(user)
+}
+
+/// Trust someone (an account on the same server) with emergency access to
+/// the vaults this account owns: they can ask for it, and get it as a viewer
+/// after `wait_days` unless it is denied. Returns who they are, with the
+/// fingerprint of their public keys to compare.
+pub async fn add_emergency_contact(session: &mut Session, email: &str, wait_days: u32) -> Result<PublicKeyResponse> {
+    sync(session).await?;
+    let client = client_for(session)?;
+    let user = client.lookup_user(email).await?;
+    if user.account_id == session.account().id {
+        return Err(twosecret_core::Error::invalid("you cannot be your own emergency contact").into());
+    }
+    let recipient = AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?;
+    let keys = session.emergency_keys_for(&recipient, &[])?;
+    client
+        .add_emergency_contact(&AddEmergencyContactRequest { account_id: user.account_id.clone(), wait_days, keys })
+        .await?;
+    Ok(user)
+}
+
+pub async fn emergency_overview(session: &Session) -> Result<EmergencyOverview> {
+    client_for(session)?.emergency().await
+}
+
+/// Ask someone who trusts this account for emergency access.
+pub async fn request_emergency_access(session: &Session, id: &str) -> Result<()> {
+    client_for(session)?.request_emergency_access(id).await
+}
+
+/// Grant a contact's request now instead of after the waiting period.
+pub async fn approve_emergency_access(session: &Session, id: &str) -> Result<()> {
+    client_for(session)?.approve_emergency_access(id).await
+}
+
+/// Deny a contact's request (or, as the contact, withdraw it). Vaults they
+/// already opened get a new key.
+pub async fn reject_emergency_access(session: &mut Session, id: &str) -> Result<()> {
+    let revoked = client_for(session)?.reject_emergency_access(id).await?;
+    rotate_revoked(session, &revoked).await
+}
+
+/// Take the access granted to this account: the vaults appear as shared
+/// vaults (read-only).
+pub async fn open_emergency_access(session: &mut Session, id: &str) -> Result<()> {
+    client_for(session)?.open_emergency_access(id).await?;
+    sync(session).await.map(|_| ())
+}
+
+/// End an emergency access arrangement, from either side. Vaults the contact
+/// opened get a new key.
+pub async fn remove_emergency_contact(session: &mut Session, id: &str) -> Result<()> {
+    let revoked = client_for(session)?.remove_emergency_contact(id).await?;
+    rotate_revoked(session, &revoked).await
+}
+
+/// After someone lost access to vaults: those this account owns get a new
+/// key, so what changes from now on is unreadable with the key they had.
+async fn rotate_revoked(session: &mut Session, revoked: &EmergencyRevoked) -> Result<()> {
+    sync(session).await?;
+    for vault_id in &revoked.vault_ids {
+        if session.vault(vault_id).is_some_and(|v| v.is_owner) {
+            rotate_vault_key(session, vault_id).await?;
+        }
+    }
+    Ok(())
 }
 
 pub async fn vault_members(session: &Session, vault_id: &str) -> Result<Vec<MemberDto>> {

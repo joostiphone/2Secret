@@ -55,7 +55,7 @@ fn valid_pq_key(key: Option<&str>) -> ApiResult<()> {
     }
 }
 
-fn valid_id(id: &str) -> ApiResult<()> {
+pub(crate) fn valid_id(id: &str) -> ApiResult<()> {
     let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     if ok {
         Ok(())
@@ -705,6 +705,7 @@ async fn add_member(
                  ON CONFLICT(vault_id, account_id) DO UPDATE SET role = excluded.role, wrapped_key = excluded.wrapped_key",
                 params![id, req.account_id, req.role.id(), serde_json::to_string(&req.wrapped_key)?, now()],
             )?;
+            crate::emergency::forget_member(c, &id, &req.account_id)?;
             Ok(())
         })
         .await?;
@@ -855,6 +856,7 @@ async fn remove_member(
                 return Err(ApiError::bad_request("the owner cannot be removed; delete the vault instead"));
             }
             c.execute("DELETE FROM vault_members WHERE vault_id = ?1 AND account_id = ?2", params![id, account_id])?;
+            crate::emergency::forget_member(c, &id, &account_id)?;
             Ok(())
         })
         .await?;

@@ -25,6 +25,7 @@ pub fn SettingsPage() -> Element {
                 AccountSection {}
                 SyncSection {}
                 VaultsSection {}
+                crate::components::emergency::EmergencySection {}
                 SecuritySection {}
                 AppearanceSection {}
                 DesktopSection {}

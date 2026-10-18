@@ -423,6 +423,7 @@ fn ItemList() -> Element {
                     }
                 }
             }
+            crate::components::emergency::EmergencyBanner {}
             BackupReminder {}
             div { class: "search",
                 Icon { name: "search", size: 16 }

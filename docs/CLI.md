@@ -78,6 +78,25 @@ of an id. Categories: `login`, `password`, `secure_note`, `credit_card`,
 2secret vault delete Familie        # owners delete, members leave
 ```
 
+## Emergency access
+
+Trust someone on the same server with read access to the vaults you own, for
+when you cannot give it yourself. They ask for it and get it after the
+waiting period, unless you deny it.
+
+```sh
+2secret emergency add partner@example.com --wait 7   # 1 to 90 days
+2secret emergency list
+2secret emergency approve partner@example.com        # give access now
+2secret emergency deny partner@example.com           # also ends access given
+2secret emergency remove partner@example.com
+
+# As the trusted contact
+2secret emergency request alice@example.com
+2secret emergency cancel alice@example.com
+2secret emergency open alice@example.com             # once access is granted
+```
+
 ## Share links
 
 Share an item with someone without 2Secret: they open the link in any

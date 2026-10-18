@@ -119,6 +119,7 @@ pub fn DashboardPage() -> Element {
                         }
                     }
                 }
+                crate::components::emergency::EmergencyBanner {}
                 BackupReminder {}
                 if let Some(results) = results {
                     div { class: "section",

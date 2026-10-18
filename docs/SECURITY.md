@@ -127,6 +127,8 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Who shares which vault with whom, and with which role | yes |
 | Content of share links | **no** (encrypted with a key that only the link holds) |
 | Share links' expiry, views left, whether they have a password | yes |
+| Emergency contacts, their waiting periods and requests | yes |
+| Vault keys for emergency contacts | **no** (sealed to the contact's public keys) |
 
 **Unknown accounts:** the pre-login endpoint answers unknown e-mail addresses
 with stable fake salts (derived from a per-installation server secret), and
@@ -242,6 +244,30 @@ picked, attachments and passkeys never) can be shared with someone without
 What a link cannot undo: whoever opened it may keep a copy. A server that is
 compromised while a link is valid can serve a page that leaks the key, as
 with any web vault; links that expire soon and can be opened once limit that.
+
+### Emergency access
+
+An account can trust up to ten other accounts on the same server as
+**emergency contacts**, each with a waiting period of 1 to 90 days:
+
+- The owner's device seals the key of every vault the account owns to the
+  contact's public keys (hybrid, exactly as when sharing; compare the
+  fingerprint) and uploads it. Its devices keep this up to date on every sync:
+  new vaults and replaced keys are sealed again. The server cannot open these
+  keys and holds them back.
+- The contact asks for access. The owner's apps show the request; the owner
+  can approve it at once or deny it. Without either, the server grants it when
+  the waiting period has passed. Then the contact can open the vaults: the
+  server makes them a **viewer** of each vault whose current key it holds,
+  and they read it like a shared vault (they cannot change anything).
+- Denying a request after access was given, ending the access or removing the
+  contact takes the contact out of those vaults, and the owner's device gives
+  them new keys (see *Revocation and key rotation*). Vaults that were shared
+  with the account by others are never part of it.
+
+The waiting period is enforced by the server: a server that colludes with the
+contact can give access early. It cannot read the vaults on its own. Nobody
+gets the account itself, its master password or its Secret Key.
 
 ## Passkeys
 
