@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# The desktop apps' SSH agent: SSH keys of every common kind (Ed25519, ECDSA,
+# RSA), also protected with a passphrase.
+ssh-agent = ["ssh-key/p256", "ssh-key/p384", "ssh-key/rsa", "ssh-key/encryption", "dep:rsa", "dep:signature"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
@@ -37,6 +42,8 @@ quick-xml = "0.37"
 ssh-key = { version = "0.6", default-features = false, features = ["alloc", "ed25519", "rand_core"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem", "std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+rsa = { version = "0.9", optional = true, features = ["sha2"] }
+signature = { version = "2", optional = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

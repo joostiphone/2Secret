@@ -21,6 +21,14 @@
   2Secret hides its window for a moment and reads the screens; the
   screenshot never leaves memory. macOS asks once for permission to record
   the screen, Wayland desktops may ask too.
+- **SSH agent** (desktop, *Settings → Desktop app*): `ssh`, `git` and other
+  programs log in and sign with the keys of SSH Key items (Ed25519, ECDSA,
+  RSA; also passphrase-protected OpenSSH keys and RSA keys in PEM). 2Secret
+  asks every time, naming the program and the key, or once per key until it
+  locks; the private keys never leave 2Secret. On macOS and Linux point
+  `IdentityAgent` in `~/.ssh/config` at the socket shown in the settings; on
+  Windows it is the agent of the OpenSSH client of Windows (stop the
+  *OpenSSH Authentication Agent* service).
 - Desktop: while its window is hidden in the menu bar or system tray, 2Secret
   no longer pauses at its next screen update (the window draws nothing
   then), so Quick Access, syncing and locking keep working.

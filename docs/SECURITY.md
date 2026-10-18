@@ -283,6 +283,24 @@ conflict never silently loses a password. Deletions are tombstones.
   which hands it to the running app through a file in the data directory
   (readable only by you) and wakes it through a local socket or named pipe
   that carries nothing else.
+- **Quick Access** (desktop): the small search window gets titles, user
+  names and websites of the items, never passwords, codes or keys; the main
+  window copies the secret you pick, with the usual clipboard clearing. The
+  window is closed and its list dropped when the vault locks.
+- **SSH agent** (desktop, off by default): programs reach it through a Unix
+  socket in the data directory (`0600`, in a folder only you can open) or,
+  on Windows, through the pipe of the OpenSSH agent (`openssh-ssh-agent`;
+  remote clients are refused, and other users cannot write to it). It lists
+  the public keys of SSH Key items while the vault is unlocked and signs
+  only after you allow it in 2Secret, which shows the program that asks and
+  the key; *until 2Secret locks* skips the question for that key. Private
+  keys are decrypted in memory for one signature and never leave 2Secret;
+  adding keys, removing keys and agent extensions are refused. RSA keys sign
+  with SHA-256 or SHA-512 only.
+- **QR codes on the screen** (desktop): *Scan QR code* takes a screenshot of
+  the screens in memory, reads the QR code and drops the image; under
+  Wayland the screenshot portal saves a file, which 2Secret deletes right
+  after reading it.
 - **Clipboard**: copied secrets are cleared after a configurable time
   (default 90 s) if the clipboard still contains them. Browsers only allow
   reading the clipboard after a permission prompt, so the web vault and the

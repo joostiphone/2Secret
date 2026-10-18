@@ -776,6 +776,7 @@ fn DesktopSection() -> Element {
             TrayRow {}
             AutostartRow {}
             QuickAccessRow {}
+            crate::ssh_agent::SshAgentRow {}
         }
     }
 }

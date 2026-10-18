@@ -193,6 +193,8 @@ pub struct Prefs {
     pub tray: bool,
     /// Desktop: the Quick Access shortcut (`quick`).
     pub quick_access: bool,
+    /// Desktop: the SSH agent (`ssh_agent`).
+    pub ssh_agent: bool,
 }
 
 impl Default for Prefs {
@@ -212,6 +214,7 @@ impl Default for Prefs {
             start_screen: StartScreen::default(),
             tray: true,
             quick_access: true,
+            ssh_agent: false,
         }
     }
 }

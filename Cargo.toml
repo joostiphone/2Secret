@@ -52,3 +52,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.poly1305]
 opt-level = 3
+# RSA keys for the SSH agent's tests.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3

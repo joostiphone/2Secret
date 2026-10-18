@@ -22,6 +22,8 @@ mod platform;
 mod quick;
 #[cfg(feature = "desktop")]
 mod screen_qr;
+#[cfg(feature = "desktop")]
+mod ssh_agent;
 mod state;
 #[cfg(feature = "desktop")]
 mod tray;
@@ -36,10 +38,18 @@ use components::shell::Shell;
 use components::widgets::{BusyOverlay, ToastHost};
 #[cfg(feature = "desktop")]
 use quick::QuickShortcut;
+#[cfg(feature = "desktop")]
+use ssh_agent::SshPrompt;
 /// Only the desktop has Quick Access.
 #[cfg(not(feature = "desktop"))]
 #[component]
 fn QuickShortcut() -> Element {
+    rsx! {}
+}
+/// Only the desktop has the SSH agent.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn SshPrompt() -> Element {
     rsx! {}
 }
 use state::*;
@@ -257,6 +267,8 @@ fn App() -> Element {
     tray::use_tray();
     #[cfg(feature = "desktop")]
     quick::use_quick_access();
+    #[cfg(feature = "desktop")]
+    ssh_agent::use_ssh_agent();
     // The shortcut needs the preferences.
     #[cfg(feature = "desktop")]
     let quick_shortcut = PREFS.read().quick_access && *PHASE.read() != Phase::Loading;
@@ -312,6 +324,7 @@ fn App() -> Element {
             if quick_shortcut {
                 QuickShortcut {}
             }
+            SshPrompt {}
         }
     }
 }
