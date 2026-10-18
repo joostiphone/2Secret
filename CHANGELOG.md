@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.0
 
 - **Quick Access** on the desktop: press Ctrl+Shift+Space (⇧⌘Space on the
   Mac) anywhere to find an item and copy its password (Enter), user name
