@@ -22,8 +22,11 @@ pub fn ItemEditor() -> Element {
     let mut error = use_signal(|| None::<String>);
     // Bumped on structural URL changes so uncontrolled inputs are re-created.
     let mut url_rev = use_signal(|| 0u32);
-    // Bumped when field values are replaced programmatically (SSH key generation).
+    // Bumped when field values are replaced programmatically (SSH key
+    // generation, a QR code from the screen).
     let mut field_rev = use_signal(|| 0u32);
+    // Bumped when the title is filled in programmatically.
+    let mut title_rev = use_signal(|| 0u32);
     let draft = EDITING.read().clone();
     let Some(draft) = draft else { return rsx! {} };
     let item = draft.item.clone();
@@ -89,9 +92,11 @@ pub fn ItemEditor() -> Element {
                 div { class: "detail-head",
                     ItemAvatar { category: item.category, title: item.title.clone(), size: 56, icon: item.icon.as_ref().and_then(|i| i.safe_image()).map(str::to_string) }
                     div { class: "grow",
-                        input { class: "title-input", initial_value: "{item.title}", placeholder: "{title_placeholder}", autofocus: draft.is_new,
-                            onmounted: move |e: MountedEvent| async move { if draft_is_new { let _ = e.set_focus(true).await; } },
-                            oninput: move |e| draft_mut(|d| d.item.title = e.value()) }
+                        for k in [title_rev()] {
+                            input { key: "{k}", class: "title-input", initial_value: "{item.title}", placeholder: "{title_placeholder}", autofocus: draft.is_new && k == 0,
+                                onmounted: move |e: MountedEvent| async move { if draft_is_new && k == 0 { let _ = e.set_focus(true).await; } },
+                                oninput: move |e| draft_mut(|d| d.item.title = e.value()) }
+                        }
                         if draft.is_new && vaults.len() > 1 {
                             select { class: "input", style: "width:auto;margin-top:6px",
                                 onchange: move |e| draft_mut(|d| d.vault_id = e.value()),
@@ -125,6 +130,35 @@ pub fn ItemEditor() -> Element {
                                 Icon { name: "key", size: 14 }
                                 {t("edit.generate_ssh")}
                             }
+                        }
+                        ScanCodeButton {
+                            onfound: move |link: String| {
+                                let Ok(totp) = twosecret_core::totp::Totp::parse(&link) else {
+                                    toast_err(t("code.invalid"));
+                                    return;
+                                };
+                                let mut titled = false;
+                                draft_mut(|d| {
+                                    d.item.set_totp(&totp.to_uri());
+                                    // A new item gets the account the code is for.
+                                    if d.item.title.trim().is_empty() {
+                                        if let Some(issuer) = totp.issuer.clone().filter(|i| !i.trim().is_empty()) {
+                                            d.item.title = issuer;
+                                            titled = true;
+                                        }
+                                    }
+                                    if let Some(account) = totp.account.as_deref().filter(|a| !a.trim().is_empty()) {
+                                        if let Some(f) = d.item.fields.iter_mut().find(|f| f.id == "username" && f.value.trim().is_empty()) {
+                                            f.value = account.to_string();
+                                        }
+                                    }
+                                });
+                                field_rev += 1;
+                                if titled {
+                                    title_rev += 1;
+                                }
+                                toast(t("edit.scan_qr_added"));
+                            },
                         }
                         select { class: "input", style: "width:auto",
                             onchange: move |e| {
@@ -326,4 +360,39 @@ fn EditField(idx: usize, field: Field, title: String) -> Element {
             }
         }
     }
+}
+
+/// Desktop: a one-time password from a QR code on the screen (`screen_qr`).
+#[cfg(feature = "desktop")]
+#[component]
+fn ScanCodeButton(onfound: EventHandler<String>) -> Element {
+    let mut scanning = use_signal(|| false);
+    let scan = move |_| {
+        scanning.set(true);
+        spawn(async move {
+            use crate::screen_qr::Problem;
+            match crate::screen_qr::scan().await {
+                Ok(link) => onfound.call(link),
+                Err(Problem::NotFound) => toast_err(t("edit.scan_qr_none")),
+                Err(Problem::OtherCode) => toast_err(t("edit.scan_qr_other")),
+                Err(Problem::Permission) => toast_err(t("edit.scan_qr_permission")),
+                Err(Problem::Capture(e)) => toast_err(&t("edit.scan_qr_failed").replace("{error}", &e)),
+            }
+            scanning.set(false);
+        });
+    };
+    rsx! {
+        button { class: "btn small", title: t("edit.scan_qr_desc"), disabled: scanning(), onclick: scan,
+            Icon { name: "qr-code", size: 14 }
+            {t("edit.scan_qr")}
+        }
+    }
+}
+
+/// Phones and the browser scan with the camera, or open setup links.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn ScanCodeButton(onfound: EventHandler<String>) -> Element {
+    let _ = onfound;
+    rsx! {}
 }

@@ -224,7 +224,7 @@ fn create() {
         .with_window(window)
         .with_background_color((244, 245, 248, 255))
         .with_data_directory(crate::platform::data_dir().join("webview"))
-        .with_custom_head(format!("<style>{}</style>", crate::STYLE));
+        .with_custom_head(format!("<style>{}</style>{}", crate::STYLE, crate::HIDDEN_UPDATES_JS));
     let pending = main.new_window(VirtualDom::new(QuickWindow), config);
     spawn(async move {
         let window = pending.resolve().await;

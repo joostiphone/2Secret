@@ -20,6 +20,8 @@ mod link_handler;
 mod platform;
 #[cfg(feature = "desktop")]
 mod quick;
+#[cfg(feature = "desktop")]
+mod screen_qr;
 mod state;
 #[cfg(feature = "desktop")]
 mod tray;
@@ -43,6 +45,40 @@ fn QuickShortcut() -> Element {
 use state::*;
 
 pub(crate) const STYLE: &str = include_str!("style.css");
+
+/// Desktop windows: Dioxus applies UI updates in the next animation frame,
+/// and waits until they are applied before it runs the app further. Hidden
+/// windows draw no frames, so a window hidden in the menu bar or system tray
+/// (or the hidden Quick Access window) would stop 2Secret at its next update,
+/// until it shows again. This applies updates right away while the window is
+/// hidden, and after a moment when no frame comes.
+#[cfg(feature = "desktop")]
+pub(crate) const HIDDEN_UPDATES_JS: &str = r#"<script>
+(function () {
+  var current;
+  Object.defineProperty(window, "interpreter", {
+    configurable: true,
+    get: function () { return current; },
+    set: function (interpreter) {
+      current = interpreter;
+      if (!interpreter || typeof interpreter.rafEdits !== "function") return;
+      interpreter.rafEdits = function (bytes) {
+        var self = this;
+        self.enqueueBytes(bytes);
+        var flush = function () {
+          if (self.queuedBytes.length) {
+            self.flushQueuedBytes();
+            self.markEditsFinished();
+          }
+        };
+        if (document.hidden) { flush(); return; }
+        requestAnimationFrame(flush);
+        setTimeout(flush, 250);
+      };
+    }
+  });
+})();
+</script>"#;
 
 /// Start the app (does not return).
 pub fn run() {
@@ -70,7 +106,7 @@ pub fn run() {
             .with_background_color((244, 245, 248, 255))
             .with_data_directory(platform::data_dir().join("webview"))
             .with_custom_head(format!(
-                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{STYLE}</style>"
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{STYLE}</style>{HIDDEN_UPDATES_JS}"
             ));
         // Window and taskbar icon (macOS uses the app bundle's icon instead).
         if let Ok(icon) = dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon-256.png")) {

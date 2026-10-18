@@ -15,6 +15,15 @@
   clipboard manager (until it is cleared after the time you chose).
 - *Settings → Desktop app* holds the icon, starting at login and Quick
   Access.
+- **Scan a QR code from the screen** (desktop): *Scan QR code* in the item
+  editor sets up a one-time password from the QR code a website shows for
+  two-step verification, and fills in the title and user name of a new item.
+  2Secret hides its window for a moment and reads the screens; the
+  screenshot never leaves memory. macOS asks once for permission to record
+  the screen, Wayland desktops may ask too.
+- Desktop: while its window is hidden in the menu bar or system tray, 2Secret
+  no longer pauses at its next screen update (the window draws nothing
+  then), so Quick Access, syncing and locking keep working.
 
 ## 1.8.0
 

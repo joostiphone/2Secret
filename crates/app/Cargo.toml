@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:libloading"]
+desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:gdk", "dep:libloading", "dep:rqrr"]
 web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
 # Browser extension popup (Chrome, Edge, Firefox): the web app plus autofill.
 extension = ["web"]
@@ -45,6 +45,8 @@ js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
+# Desktop: QR codes of one-time passwords on the screen.
+rqrr = { version = "0.11", optional = true, default-features = false, features = ["img"] }
 
 # Opening links in the system browser (Android goes through JNI).
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
@@ -73,15 +75,21 @@ objc2-authentication-services = { version = "0.3", default-features = false, fea
 # Unlocking with Windows Hello (and bringing its prompt to the front), and
 # opening setup links (registry, named pipe).
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_WinRT", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61", features = ["Foundation", "Security_Credentials", "Security_Cryptography", "Storage_Streams", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_WinRT", "Win32_UI_WindowsAndMessaging"] }
 
 # Linux: whether the desktop shows the tray icon (the AppIndicator library, and
-# a panel for status icons, asked over D-Bus).
+# a panel for status icons, asked over D-Bus), and screenshots (GDK under X11,
+# the screenshot portal under Wayland).
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = { version = "0.18", optional = true }
+gdk = { version = "0.18", optional = true }
 libloading = { version = "0.7", optional = true }
 
 # Android: storage location, language, links and downloads through JNI.
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 ndk-context = "0.1"
+
+[dev-dependencies]
+# Screens with QR codes for the tests of `screen_qr`.
+qrcode = { version = "0.14", default-features = false, features = ["image"] }

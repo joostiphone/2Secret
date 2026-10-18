@@ -39,7 +39,7 @@ is free, open source, and you can host the sync server yourself.
 | 🧱 **End-to-end encryption** | Every item is encrypted with 256-bit keys (XChaCha20-Poly1305), per-vault keys, quantum-resistant hybrid encryption (X25519 + ML-KEM-768) for sharing. The server only sees ciphertext, padded to hide exact sizes. |
 | 🗂️ **Vaults & sharing** | Multiple vaults; share a vault with other people on your server as *viewer*, *editor* or *manager*; leave or revoke access at any time. |
 | 🧾 **19 item types** | Logins, passwords, secure notes, credit cards, identities, bank accounts (IBAN/BIC), crypto wallets, software licenses, SSH keys, API credentials, databases, servers, Wi-Fi routers, e-mail accounts, passports, driver licenses, memberships, reward programs and documents – plus custom fields, tags, favorites and encrypted file attachments. |
-| ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. Setup links (`otpauth://`) open 2Secret on Windows, Linux and Mac, and on iPhone and iPad also QR codes scanned with the camera (*Set Up Codes In*). |
+| ⏱️ **One-time passwords** | Built-in TOTP authenticator (RFC 6238, SHA-1/256/512, Steam Guard) with live codes. Setup links (`otpauth://`) open 2Secret on Windows, Linux and Mac, the desktop apps read setup QR codes straight from the screen, and on iPhone and iPad QR codes scanned with the camera work too (*Set Up Codes In*). |
 | 🛡️ **Watchtower** | Finds weak, reused and old passwords, unencrypted (`http://`) sites, expired and expiring cards/documents, and – opt-in – passwords from data breaches via Have I Been Pwned (k-anonymity: only 5 hash characters leave your device). |
 | 📊 **Dashboard** | After unlocking: your favourites, recent changes, vaults and security score at a glance, without showing any secrets. Or start with all items, favourites or Watchtower. |
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). In the item editor each password can have its own rules (length, character sets), which the item keeps for the next new password. SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
@@ -223,7 +223,8 @@ Windows, Linux, BSD, iOS, het web en je browser.
   SSH-sleutels, API-sleutels, databases, servers, wifi, paspoorten,
   rijbewijzen en meer – met eigen velden, labels, favorieten en versleutelde
   bijlagen.
-- **Eenmalige codes (2FA/TOTP)** ingebouwd.
+- **Eenmalige codes (2FA/TOTP)** ingebouwd; de desktop-apps lezen de QR-code
+  om ze in te stellen rechtstreeks van je scherm.
 - **Watchtower:** waarschuwt voor zwakke, hergebruikte en oude wachtwoorden,
   onbeveiligde websites, verlopen passen en (optioneel) gelekte wachtwoorden
   via Have I Been Pwned.

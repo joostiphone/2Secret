@@ -308,6 +308,13 @@ static TABLE: &[Entry] = &[
     // Editor
     ("edit.new_title", "New item", "Nieuw item"),
     ("edit.edit_title", "Edit item", "Item bewerken"),
+    ("edit.scan_qr", "Scan QR code", "QR-code scannen"),
+    ("edit.scan_qr_desc", "Set up a one-time password with a QR code on your screen", "Stel een eenmalig wachtwoord in met een QR-code op je scherm"),
+    ("edit.scan_qr_added", "One-time password added", "Eenmalig wachtwoord toegevoegd"),
+    ("edit.scan_qr_none", "No QR code found on the screen. Make sure the whole QR code is visible, for example in your browser.", "Geen QR-code gevonden op het scherm. Zorg dat de hele QR-code zichtbaar is, bijvoorbeeld in je browser."),
+    ("edit.scan_qr_other", "This QR code is not for a one-time password.", "Deze QR-code is niet voor een eenmalig wachtwoord."),
+    ("edit.scan_qr_permission", "Allow 2Secret under System Settings → Privacy & Security → Screen Recording, restart 2Secret and try again.", "Sta 2Secret toe onder Systeeminstellingen → Privacy en beveiliging → Schermopname, start 2Secret opnieuw en probeer het nog eens."),
+    ("edit.scan_qr_failed", "2Secret could not read the screen: {error}", "2Secret kon het scherm niet lezen: {error}"),
     ("edit.add_field", "Add field", "Veld toevoegen"),
     ("edit.add_website", "Add website", "Website toevoegen"),
     ("edit.field_label", "Label", "Naam"),
