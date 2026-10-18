@@ -93,7 +93,7 @@ their usage under *Settings → Sync*.
 
 - **Every night** `2secret-backup` copies the database (safe while the server
   runs) to `/var/backups/2secret`, compressed, and keeps 14 days. Run it any
-  time: `2secret-backup`.
+  time: `/usr/local/sbin/2secret-backup`.
 - **Proxmox**: *Datacenter → Backup → Add*, the container, daily, mode
   *Snapshot*, with a retention you like. Better still to Proxmox Backup
   Server.
@@ -120,8 +120,16 @@ did not list the server in `update.json` yet; for those the checksums from
 `SHA256SUMS` are used.
 
 Check with `systemctl list-timers '2secret-*'` and `journalctl -u
-2secret-update`; update right away with `2secret-install --update`. Turn
-automatic updates off with `--no-auto-update`.
+2secret-update`. Turn automatic updates off with `--no-auto-update`. To
+update right away, in the container (`pct enter <id>` on the Proxmox host):
+
+```sh
+/usr/local/sbin/2secret-install --update
+curl -s https://sync.2secret.app/api/v1/health   # shows the new version
+```
+
+Type the full path: a shell from `pct enter` may not have `/usr/local/sbin`
+in its `PATH`, and then `2secret-install` alone gives *command not found*.
 
 Keep Debian itself up to date as well: `apt update && apt upgrade`, or
 `unattended-upgrades`.
