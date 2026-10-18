@@ -27,6 +27,7 @@ pub fn SettingsPage() -> Element {
                 VaultsSection {}
                 SecuritySection {}
                 AppearanceSection {}
+                DesktopSection {}
                 ImportSection {}
                 ExportSection {}
                 UpdatesSection {}
@@ -760,12 +761,33 @@ fn AppearanceSection() -> Element {
             if FETCHES_ICONS {
                 WebsiteIconsRow {}
             }
-            TrayRow {}
         }
     }
 }
 
-/// Desktop: the icon in the menu bar or system tray (`tray`).
+/// Desktop: the icon in the menu bar or system tray, starting at login,
+/// Quick Access.
+#[cfg(feature = "desktop")]
+#[component]
+fn DesktopSection() -> Element {
+    rsx! {
+        div { class: "section",
+            SectionTitle { text: t("settings.desktop") }
+            TrayRow {}
+            AutostartRow {}
+            QuickAccessRow {}
+        }
+    }
+}
+
+/// The web vault, the extension and the phone apps run differently.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn DesktopSection() -> Element {
+    rsx! {}
+}
+
+/// The icon in the menu bar or system tray (`tray`).
 #[cfg(feature = "desktop")]
 #[component]
 fn TrayRow() -> Element {
@@ -794,11 +816,77 @@ fn TrayRow() -> Element {
     }
 }
 
-/// The web vault, the extension and the phone apps have no such icon.
-#[cfg(not(feature = "desktop"))]
+/// Start 2Secret at login (`autostart`).
+#[cfg(feature = "desktop")]
 #[component]
-fn TrayRow() -> Element {
-    rsx! {}
+fn AutostartRow() -> Element {
+    let mut on = use_signal(|| None::<bool>);
+    use_hook(move || {
+        spawn(async move {
+            on.set(Some(crate::platform::run_heavy(crate::autostart::enabled).await));
+        })
+    });
+    let tray = PREFS.read().tray && crate::tray::supported();
+    let desc = match (tray, cfg!(target_os = "macos")) {
+        (true, true) => t("settings.autostart_desc_mac"),
+        (true, false) => t("settings.autostart_desc"),
+        (false, _) => t("settings.autostart_desc_window"),
+    };
+    let toggle = move |_| {
+        let wanted = on() != Some(true);
+        spawn(async move {
+            if crate::platform::run_heavy(move || crate::autostart::set(wanted)).await {
+                on.set(Some(wanted));
+            } else {
+                toast_err(t("settings.autostart_failed"));
+            }
+        });
+    };
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.autostart")} }
+                div { class: "d", {desc} }
+            }
+            if let Some(enabled) = on() {
+                button { class: either(enabled, "btn small", "btn small primary"), onclick: toggle,
+                    {either(enabled, t("common.turn_off"), t("common.turn_on"))}
+                }
+            }
+        }
+    }
+}
+
+/// Quick Access (`quick`).
+#[cfg(feature = "desktop")]
+#[component]
+fn QuickAccessRow() -> Element {
+    let on = PREFS.read().quick_access;
+    let taken = crate::quick::SHORTCUT_TAKEN();
+    let wayland = cfg!(all(unix, not(target_os = "macos")))
+        && std::env::var("XDG_SESSION_TYPE").is_ok_and(|s| s.eq_ignore_ascii_case("wayland"));
+    let desc = t("settings.quick_desc").replace("{shortcut}", &crate::quick::shortcut_label());
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.quick")} }
+                div { class: "d", "{desc}" }
+                if on && taken {
+                    div { class: "d warn-text", {t("settings.quick_taken")} }
+                }
+                if on && wayland {
+                    div { class: "d", {t("settings.quick_wayland")} " " code { "2-secret {crate::quick::ARG}" } }
+                }
+            }
+            button { class: either(on, "btn small", "btn small primary"),
+                onclick: move |_| {
+                    PREFS.write().quick_access = !on;
+                    save_prefs();
+                },
+                {either(on, t("common.turn_off"), t("common.turn_on"))}
+            }
+        }
+    }
 }
 
 /// Fetch website icons (on by default), also for the logins already there.

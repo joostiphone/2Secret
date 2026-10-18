@@ -49,7 +49,8 @@ is free, open source, and you can host the sync server yourself.
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
 | 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. |
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
-| 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. |
+| 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. It can start there when you log in. |
+| ⚡ **Quick Access** | `Ctrl+Shift+Space` (`⇧⌘Space` on the Mac) anywhere: find an item and copy its password, user name or one-time code without opening 2Secret. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
@@ -240,7 +241,10 @@ Windows, Linux, BSD, iOS, het web en je browser.
   Face ID of Windows Hello.
 - **Icoon in de menubalk** (Mac) of het systeemvak (Windows, Linux) om 2Secret
   te openen, te vergrendelen of af te sluiten; als je het venster sluit, blijft
-  2Secret daar actief.
+  2Secret daar actief. Het kan daar starten als je inlogt.
+- **Snelzoeken:** druk overal op `Ctrl+Shift+Spatie` (`⇧⌘Spatie` op de Mac),
+  zoek een item en kopieer het wachtwoord, de gebruikersnaam of de eenmalige
+  code zonder 2Secret te openen.
 - **Back-ups:** een versleutelde kopie van al je kluizen in één bestand, met af
   en toe een herinnering.
 - **Synchroniseren zoals jij wilt:** via de 2Secret-server (`sync.2secret.app`),

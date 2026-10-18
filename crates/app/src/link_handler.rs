@@ -17,12 +17,18 @@
 //!
 //! 2Secret started again without a link does the same without the file: the
 //! running app shows its window (also when it is hidden in the system tray),
-//! so one 2Secret runs.
+//! so one 2Secret runs. Started with `--quick-access` it opens Quick Access
+//! instead, and started at login (`--hidden`) it shows nothing.
 
 use crate::platform;
 
 /// The storage key of a link handed to the running app.
 const HANDED_OVER: &str = "opened-link";
+/// The storage key of what the running app does when it is rung without a
+/// link: [`QUICK`] or [`NOTHING`] (else it shows its window).
+const REQUEST: &str = "start-request";
+const QUICK: &str = "quick-access";
+const NOTHING: &str = "nothing";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Handler {
@@ -42,9 +48,21 @@ fn is_link(arg: &str) -> bool {
 /// just the start) to the 2Secret that already runs and quit, or else receive
 /// links from now on.
 pub fn start() {
-    let link = std::env::args().skip(1).find(|a| is_link(a));
-    if hand_over(link.as_deref()) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let link = args.iter().find(|a| is_link(a)).cloned();
+    let request = if args.iter().any(|a| a == crate::quick::ARG) {
+        Some(QUICK)
+    } else if crate::autostart::started_hidden() {
+        Some(NOTHING)
+    } else {
+        None
+    };
+    if hand_over(link.as_deref(), request) {
         std::process::exit(0);
+    }
+    if request == Some(QUICK) {
+        // Quick Access once the vault is unlocked; it asks to unlock first.
+        crate::quick::request();
     }
     os::listen(take_handed_over);
     if let Some(link) = link {
@@ -58,30 +76,43 @@ pub fn start() {
     });
 }
 
-fn hand_over(link: Option<&str>) -> bool {
+fn hand_over(link: Option<&str>, request: Option<&str>) -> bool {
+    let storage = platform::storage();
     if let Some(link) = link {
-        if platform::storage().write(HANDED_OVER, link).is_err() {
+        if storage.write(HANDED_OVER, link).is_err() {
+            return false;
+        }
+    }
+    if let Some(request) = request.filter(|_| link.is_none()) {
+        if storage.write(REQUEST, request).is_err() {
             return false;
         }
     }
     if os::ring() {
         return true;
     }
-    if link.is_some() {
-        let _ = platform::storage().delete(HANDED_OVER);
-    }
+    let _ = storage.delete(HANDED_OVER);
+    let _ = storage.delete(REQUEST);
     false
 }
 
-/// The running app was rung: show the window, and take the link from the
-/// data directory if there is one.
+/// The running app was rung: take the link from the data directory if there
+/// is one, else do what was asked (show the window when nothing was).
 fn take_handed_over() {
     let storage = platform::storage();
+    let request = storage.read(REQUEST).ok().flatten();
+    let _ = storage.delete(REQUEST);
     if let Ok(Some(link)) = storage.read(HANDED_OVER) {
         let _ = storage.delete(HANDED_OVER);
+        // Shows the window too.
         crate::code_setup::opened([link.trim()]);
+        return;
     }
-    crate::tray::request_show();
+    match request.as_deref() {
+        Some(QUICK) => crate::quick::request(),
+        Some(NOTHING) => {}
+        _ => crate::tray::request_show(),
+    }
 }
 
 /// Which app opens setup links.
@@ -94,6 +125,9 @@ pub fn handler() -> Handler {
 pub fn register() -> bool {
     os::register()
 }
+
+#[cfg(unix)]
+pub use os::exec_program;
 
 #[cfg(windows)]
 mod os {
@@ -278,8 +312,8 @@ mod os {
         std::env::var_os("APPIMAGE").map(PathBuf::from).filter(|p| p.is_file()).or_else(|| std::env::current_exe().ok())
     }
 
-    /// A hidden desktop entry that opens setup links with this program.
-    fn entry() -> Option<String> {
+    /// This program for the Exec line of a desktop entry (also `autostart`).
+    pub fn exec_program() -> Option<String> {
         let exe = exe()?.to_string_lossy().replace('%', "%%");
         // Paths that would need escaping in an Exec line are not worth it.
         if exe.contains(['"', '`', '$', '\\', '\n']) {
@@ -287,7 +321,12 @@ mod os {
         }
         // Quoted only when needed: xdg-open without a desktop environment
         // does not understand quotes.
-        let exe = if exe.contains(|c| " \t'><~|&;*?#()".contains(c)) { format!("\"{exe}\"") } else { exe };
+        Some(if exe.contains(|c| " \t'><~|&;*?#()".contains(c)) { format!("\"{exe}\"") } else { exe })
+    }
+
+    /// A hidden desktop entry that opens setup links with this program.
+    fn entry() -> Option<String> {
+        let exe = exec_program()?;
         Some(format!(
             "[Desktop Entry]\nType=Application\nName=2Secret\nComment=Set up one-time passwords\n\
              Exec={exe} %u\nTerminal=false\nNoDisplay=true\nMimeType={SCHEME};\n"

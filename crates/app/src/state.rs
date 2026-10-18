@@ -191,6 +191,8 @@ pub struct Prefs {
     /// Desktop: the icon in the menu bar or system tray (`tray`); closing the
     /// window then keeps 2Secret running there.
     pub tray: bool,
+    /// Desktop: the Quick Access shortcut (`quick`).
+    pub quick_access: bool,
 }
 
 impl Default for Prefs {
@@ -209,6 +211,7 @@ impl Default for Prefs {
             active_profile: 0,
             start_screen: StartScreen::default(),
             tray: true,
+            quick_access: true,
         }
     }
 }
@@ -367,13 +370,13 @@ fn reset_view() {
     *PANE.write() = Pane::List;
 }
 
+/// The stored preferences (the defaults when there are none).
+pub fn stored_prefs() -> Prefs {
+    platform::storage().read(PREFS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
 pub fn init() {
-    let prefs: Prefs = platform::storage()
-        .read(PREFS_KEY)
-        .ok()
-        .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
+    let prefs = stored_prefs();
     *LANG.write() = prefs.lang.unwrap_or_else(|| Lang::from_code(&platform::system_language()));
     if MULTI_PROFILE {
         let wanted = prefs.active_profile.min(MAX_PROFILES - 1);
@@ -985,6 +988,7 @@ mod tests {
         assert_eq!(old.start_screen, StartScreen::Dashboard);
         assert_eq!(old.start_screen.nav(), Nav::Home);
         assert!(old.tray);
+        assert!(old.quick_access);
         for start in StartScreen::ALL {
             let json = serde_json::to_string(&Prefs { start_screen: start, ..Prefs::default() }).unwrap();
             assert!(json.contains(&format!("\"start_screen\":\"{}\"", start.id())));

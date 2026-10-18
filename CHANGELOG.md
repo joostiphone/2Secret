@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **Quick Access** on the desktop: press Ctrl+Shift+Space (⇧⌘Space on the
+  Mac) anywhere to find an item and copy its password (Enter), user name
+  (Shift+Enter) or one-time code (Ctrl/⌘+Enter) without opening 2Secret;
+  Alt/⌥+Enter shows the item in 2Secret. It is also in the menu of the icon
+  in the menu bar or system tray. Under Wayland, where apps cannot register a
+  shortcut, set one in the desktop's settings that runs `2-secret
+  --quick-access`. *Settings → Desktop app* turns it off.
+- **Start at login** (*Settings → Desktop app*): 2Secret starts in the menu
+  bar or system tray when you log in, without its window.
+- Linux: what 2Secret copies stays on the clipboard also without a
+  clipboard manager (until it is cleared after the time you chose).
+- *Settings → Desktop app* holds the icon, starting at login and Quick
+  Access.
+
 ## 1.8.0
 
 - 2Secret has an icon in the menu bar (macOS) or the system tray (Windows,

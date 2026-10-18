@@ -165,13 +165,26 @@ mod imp {
         rx.await.expect("background task failed")
     }
 
+    /// The clipboard, kept for as long as 2Secret runs: on Linux what was
+    /// copied is gone when it is dropped, unless a clipboard manager runs.
+    #[cfg(all(feature = "desktop", not(target_os = "ios"), not(target_os = "android")))]
+    fn with_clipboard<T>(f: impl FnOnce(&mut arboard::Clipboard) -> T) -> Option<T> {
+        thread_local! {
+            static CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> = const { std::cell::RefCell::new(None) };
+        }
+        CLIPBOARD.with_borrow_mut(|clipboard| {
+            if clipboard.is_none() {
+                *clipboard = arboard::Clipboard::new().ok();
+            }
+            clipboard.as_mut().map(f)
+        })
+    }
+
     pub async fn copy_text(text: &str) -> bool {
         #[cfg(all(feature = "desktop", not(target_os = "ios"), not(target_os = "android")))]
         {
-            if let Ok(mut cb) = arboard::Clipboard::new() {
-                if cb.set_text(text.to_string()).is_ok() {
-                    return true;
-                }
+            if with_clipboard(|cb| cb.set_text(text.to_string()).is_ok()) == Some(true) {
+                return true;
             }
         }
         super::js_copy(text).await
@@ -181,10 +194,12 @@ mod imp {
     pub async fn clear_clipboard_if(text: &str) {
         #[cfg(all(feature = "desktop", not(target_os = "ios"), not(target_os = "android")))]
         {
-            if let Ok(mut cb) = arboard::Clipboard::new() {
+            let cleared = with_clipboard(|cb| {
                 if cb.get_text().map(|t| t == text).unwrap_or(false) {
                     let _ = cb.clear();
                 }
+            });
+            if cleared.is_some() {
                 return;
             }
         }

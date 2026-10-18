@@ -6,6 +6,8 @@
 mod android;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple_autofill;
+#[cfg(feature = "desktop")]
+mod autostart;
 mod avatar;
 mod biometric;
 mod code_setup;
@@ -16,6 +18,8 @@ mod icons;
 #[cfg(all(feature = "desktop", not(target_os = "macos")))]
 mod link_handler;
 mod platform;
+#[cfg(feature = "desktop")]
+mod quick;
 mod state;
 #[cfg(feature = "desktop")]
 mod tray;
@@ -28,9 +32,17 @@ use components::onboarding::{CreateAccount, LockScreen, NewAccount, SignIn, Welc
 use components::passkey::PasskeyPrompt;
 use components::shell::Shell;
 use components::widgets::{BusyOverlay, ToastHost};
+#[cfg(feature = "desktop")]
+use quick::QuickShortcut;
+/// Only the desktop has Quick Access.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn QuickShortcut() -> Element {
+    rsx! {}
+}
 use state::*;
 
-const STYLE: &str = include_str!("style.css");
+pub(crate) const STYLE: &str = include_str!("style.css");
 
 /// Start the app (does not return).
 pub fn run() {
@@ -43,10 +55,14 @@ pub fn run() {
     #[cfg(feature = "desktop")]
     {
         use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
+        // Started at login: only the icon in the menu bar or system tray.
+        let hidden = autostart::started_hidden() && state::stored_prefs().tray && tray::supported();
+        std::thread::spawn(autostart::refresh);
         let window = WindowBuilder::new()
             .with_title("2Secret")
             .with_inner_size(LogicalSize::new(1200.0, 780.0))
-            .with_min_inner_size(LogicalSize::new(360.0, 520.0));
+            .with_min_inner_size(LogicalSize::new(360.0, 520.0))
+            .with_visible(!hidden);
         let mut config = Config::new()
             .with_window(window)
             // `tray` decides what a click on the icon does.
@@ -203,6 +219,13 @@ fn App() -> Element {
     });
     #[cfg(feature = "desktop")]
     tray::use_tray();
+    #[cfg(feature = "desktop")]
+    quick::use_quick_access();
+    // The shortcut needs the preferences.
+    #[cfg(feature = "desktop")]
+    let quick_shortcut = PREFS.read().quick_access && *PHASE.read() != Phase::Loading;
+    #[cfg(not(feature = "desktop"))]
+    let quick_shortcut = false;
     // A one-time password from an otpauth:// link, once the vault is unlocked
     // and no other dialog is open.
     use_effect(|| {
@@ -250,6 +273,9 @@ fn App() -> Element {
             ModalHost {}
             BusyOverlay {}
             ToastHost {}
+            if quick_shortcut {
+                QuickShortcut {}
+            }
         }
     }
 }

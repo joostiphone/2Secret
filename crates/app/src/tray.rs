@@ -35,6 +35,18 @@ pub fn remove() {
     icon::remove();
 }
 
+/// Whether the icon is there (closing the window then hides it).
+fn shown() -> bool {
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    {
+        icon::shown()
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        false
+    }
+}
+
 /// Whether this desktop shows the icon.
 pub fn supported() -> bool {
     #[cfg(target_os = "linux")]
@@ -60,10 +72,13 @@ pub fn use_tray() {
         })
     });
     dioxus::desktop::use_wry_event_handler(|event, _| {
-        use dioxus::desktop::tao::event::Event;
+        use dioxus::desktop::tao::event::{Event, WindowEvent};
         match event {
             // macOS: a click on the Dock icon while the window is hidden.
             Event::Reopen { .. } => show(),
+            // Closing the window ends 2Secret without the icon, which the
+            // Quick Access window would keep open.
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } if !shown() => crate::quick::close(),
             Event::LoopDestroyed => remove(),
             _ => {}
         }
@@ -85,6 +100,7 @@ mod icon {
     use crate::state::{lock, Phase, BUSY, PHASE, PREFS};
 
     const OPEN: &str = "tray-open";
+    const QUICK: &str = "tray-quick";
     const LOCK: &str = "tray-lock";
     const QUIT: &str = "tray-quit";
 
@@ -92,6 +108,7 @@ mod icon {
         /// The icon leaves the menu bar when this is dropped.
         _icon: TrayIcon,
         open: MenuItem,
+        quick: MenuItem,
         lock: MenuItem,
         quit: MenuItem,
     }
@@ -109,7 +126,7 @@ mod icon {
                 return;
             }
             let wanted = PREFS.read().tray && super::supported();
-            let texts = [t("tray.open"), t("tray.lock"), t("tray.quit")];
+            let texts = [t("tray.open"), t("tray.quick"), t("tray.lock"), t("tray.quit")];
             let shown = TRAY.with_borrow_mut(|tray| {
                 if !wanted {
                     *tray = None;
@@ -117,7 +134,7 @@ mod icon {
                     *tray = create();
                 }
                 if let Some(tray) = tray {
-                    for (item, text) in [&tray.open, &tray.lock, &tray.quit].into_iter().zip(texts) {
+                    for (item, text) in [&tray.open, &tray.quick, &tray.lock, &tray.quit].into_iter().zip(texts) {
                         item.set_text(text);
                     }
                     tray.lock.set_enabled(phase == Phase::Unlocked);
@@ -151,9 +168,14 @@ mod icon {
         TRAY.with_borrow_mut(|tray| *tray = None);
     }
 
+    pub fn shown() -> bool {
+        TRAY.with_borrow(|tray| tray.is_some())
+    }
+
     fn choose(id: &MenuId) {
         match id.0.as_str() {
             OPEN => super::show(),
+            QUICK => crate::quick::request(),
             LOCK if *PHASE.peek() == Phase::Unlocked && BUSY.peek().is_none() => lock(),
             QUIT => quit(),
             _ => {}
@@ -162,6 +184,7 @@ mod icon {
 
     /// Close the window for real, which ends the app.
     fn quit() {
+        crate::quick::close();
         let window = window();
         window.set_close_behavior(WindowCloseBehaviour::WindowCloses);
         window.close();
@@ -169,10 +192,12 @@ mod icon {
 
     fn create() -> Option<Tray> {
         let open = MenuItem::with_id(OPEN, t("tray.open"), true, None);
+        // The shortcut shows next to it (it works without the menu too).
+        let quick = MenuItem::with_id(QUICK, t("tray.quick"), true, "CmdOrCtrl+Shift+Space".parse().ok());
         let lock = MenuItem::with_id(LOCK, t("tray.lock"), false, None);
         let quit = MenuItem::with_id(QUIT, t("tray.quit"), true, None);
         let menu = Menu::new();
-        menu.append_items(&[&open, &lock, &PredefinedMenuItem::separator(), &quit]).ok()?;
+        menu.append_items(&[&open, &quick, &lock, &PredefinedMenuItem::separator(), &quit]).ok()?;
         // Linux: the name panels show for the icon (else the program's name).
         // GLib warns when it is set twice.
         #[cfg(target_os = "linux")]
@@ -188,7 +213,7 @@ mod icon {
             .with_tooltip("2Secret")
             .build()
             .ok()?;
-        Some(Tray { _icon: icon, open, lock, quit })
+        Some(Tray { _icon: icon, open, quick, lock, quit })
     }
 
     /// macOS: a black template image, which the menu bar colours like its
