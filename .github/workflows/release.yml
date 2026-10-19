@@ -121,7 +121,14 @@ jobs:
         with:
           key: ${{ matrix.name }}
       - uses: cargo-bins/cargo-binstall@main
-      - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
+      # The dx for the runner itself: with the Intel target installed and the
+      # GitHub API rate-limited, binstall took the Intel dx on Apple silicon,
+      # which does not start there (v1.9.1).
+      - shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cargo binstall -y --force --targets "$(rustc -vV | sed -n 's/^host: //p')" dioxus-cli@${{ env.DX_VERSION }}
       - name: Bundle
         if: runner.os != 'macOS'
         working-directory: crates/app

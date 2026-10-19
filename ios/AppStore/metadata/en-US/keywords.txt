@@ -1,1 +1,1 @@
-password,passkey,vault,2fa,authenticator,totp,autofill,self-hosted,open source,encryption,secure
+passkey,vault,2fa,authenticator,totp,otp,autofill,self-hosted,open source,encrypted,secure notes

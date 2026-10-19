@@ -1,8 +1,24 @@
-No account with us is needed. On first launch choose "Create a new account",
-fill in a name, an e-mail address and a master password (at least 12
-characters), and leave "Sync with a 2Secret server" off. The vault then
-stays on the device. Syncing needs the user's own self-hosted 2Secret server
-(open source, https://github.com/joostiphone/2Secret).
+Thank you for reviewing 2Secret, a free, open-source password manager.
 
-AutoFill: turn on "Unlock with Face ID" in Settings → Security in the app,
-then enable 2Secret under iOS Settings → General → AutoFill & Passwords.
+TRYING IT WITHOUT AN ACCOUNT
+No account with us is needed. On the first screen tap "Create a new account", enter any name, e-mail address and a master password (at least 12 characters), choose "Only on this device" and tap "Create account". The vault then stays on the device.
+
+DEMO ACCOUNT (SYNC AND SHARING)
+The demo account in the User name and Password fields lives on our sync server, sync.2secret.app, and already holds sample items and a shared vault. To sign in:
+1. On the first screen tap "Sign in to an existing account".
+2. Keep "2Secret server" selected.
+3. E-mail address: the user name above.
+4. Secret Key: [SECRET KEY OF THE DEMO ACCOUNT]
+5. Master password: the password above.
+The Secret Key is a second secret that 2Secret combines with the master password; it never leaves the user's devices, so every new device asks for it once.
+
+ACCOUNT DELETION
+Settings → Danger zone → Delete server account deletes the account and its data from the server.
+
+AUTOFILL
+Turn on "Unlock with Face ID" in the app under Settings → Security, then enable 2Secret under iOS Settings → General → AutoFill & Passwords. AutoFill then offers logins, passkeys and verification codes in Safari and other apps.
+
+OTHER NOTES
+- No in-app purchases, subscriptions, ads, analytics or tracking.
+- Vault contents are end-to-end encrypted on the device; the server cannot read them.
+- Source code: https://github.com/joostiphone/2Secret

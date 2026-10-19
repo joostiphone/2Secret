@@ -1,0 +1,69 @@
+{
+  "_comment": "Captions of the App Store screenshots. `screen` is a file in screens/<language>/; *text* is highlighted; \\n breaks the line. scripts/screenshots/appstore-compose.js renders them with template.html.",
+  "iphone": [
+    {
+      "screen": "iphone-1-dashboard",
+      "hero": true,
+      "en": { "title": "All your secrets.\n*One safe place.*", "text": "Passwords, passkeys, cards and notes – end-to-end encrypted." },
+      "nl": { "title": "Al je geheimen.\n*Eén veilige plek.*", "text": "Wachtwoorden, passkeys, passen en notities – end-to-end versleuteld." }
+    },
+    {
+      "screen": "iphone-2-item",
+      "en": { "title": "One-time codes,\n*built in*", "text": "Your two-step verification codes right next to the password." },
+      "nl": { "title": "Eenmalige codes,\n*ingebouwd*", "text": "Je codes voor tweestapsverificatie direct naast het wachtwoord." }
+    },
+    {
+      "screen": "iphone-3-watchtower",
+      "en": { "title": "Find weak and\n*leaked passwords*", "text": "Watchtower checks for weak, reused and breached passwords. They never leave your device." },
+      "nl": { "title": "Vind zwakke en\n*gelekte wachtwoorden*", "text": "Watchtower zoekt zwakke, hergebruikte en gelekte wachtwoorden. Ze verlaten je apparaat nooit." }
+    },
+    {
+      "screen": "iphone-4-generator",
+      "en": { "title": "Strong passwords\n*in one tap*", "text": "Random, memorable or a PIN – and the clipboard clears itself." },
+      "nl": { "title": "Sterke wachtwoorden\n*met één tik*", "text": "Willekeurig, makkelijk te onthouden of een pincode – en het klembord wist zichzelf." }
+    },
+    {
+      "screen": "iphone-5-share",
+      "en": { "title": "Share safely\n*with family*", "text": "Shared vaults with quantum-resistant encryption. You decide who can view or edit." },
+      "nl": { "title": "Veilig delen\n*met je gezin*", "text": "Gedeelde kluizen met kwantumbestendige versleuteling. Jij bepaalt wie mag kijken of bewerken." }
+    },
+    {
+      "screen": "iphone-6-create",
+      "en": { "title": "Your data,\n*your choice*", "text": "Sync through our server or your own – or keep everything on this device." },
+      "nl": { "title": "Jouw data,\n*jouw keuze*", "text": "Synchroniseer via onze server of je eigen server, of houd alles op dit apparaat." }
+    }
+  ],
+  "ipad": [
+    {
+      "screen": "ipad-1-item",
+      "hero": true,
+      "en": { "title": "All your secrets.\n*One safe place.*", "text": "Passwords, passkeys, cards and notes – end-to-end encrypted." },
+      "nl": { "title": "Al je geheimen.\n*Eén veilige plek.*", "text": "Wachtwoorden, passkeys, passen en notities – end-to-end versleuteld." }
+    },
+    {
+      "screen": "ipad-2-dashboard",
+      "en": { "title": "Everything\n*at a glance*", "text": "Favorites, recent changes and your security score on one screen." },
+      "nl": { "title": "Alles in\n*één oogopslag*", "text": "Favorieten, recente wijzigingen en je beveiligingsscore op één scherm." }
+    },
+    {
+      "screen": "ipad-3-watchtower",
+      "en": { "title": "Find weak and\n*leaked passwords*", "text": "Watchtower checks for weak, reused and breached passwords. They never leave your device." },
+      "nl": { "title": "Vind zwakke en\n*gelekte wachtwoorden*", "text": "Watchtower zoekt zwakke, hergebruikte en gelekte wachtwoorden. Ze verlaten je apparaat nooit." }
+    },
+    {
+      "screen": "ipad-4-generator",
+      "en": { "title": "Strong passwords\n*in one tap*", "text": "Random, memorable or a PIN – and the clipboard clears itself." },
+      "nl": { "title": "Sterke wachtwoorden\n*met één tik*", "text": "Willekeurig, makkelijk te onthouden of een pincode – en het klembord wist zichzelf." }
+    },
+    {
+      "screen": "ipad-5-share",
+      "en": { "title": "Share safely\n*with family*", "text": "Shared vaults with quantum-resistant encryption. You decide who can view or edit." },
+      "nl": { "title": "Veilig delen\n*met je gezin*", "text": "Gedeelde kluizen met kwantumbestendige versleuteling. Jij bepaalt wie mag kijken of bewerken." }
+    },
+    {
+      "screen": "ipad-6-create",
+      "en": { "title": "Your data,\n*your choice*", "text": "Sync through our server or your own – or keep everything on this device." },
+      "nl": { "title": "Jouw data,\n*jouw keuze*", "text": "Synchroniseer via onze server of je eigen server, of houd alles op dit apparaat." }
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>2Secret App Store screenshot</title>
+<!--
+  One App Store screenshot: a caption above the app's screen in a device.
+  scripts/screenshots/appstore-compose.js opens this page, calls render() for
+  every slide in slides.json and saves it at the sizes App Store Connect asks
+  for. Open it in a browser to see the first slide.
+
+  Sizes are in design pixels: 1320 wide for iPhone, 2064 wide for iPad.
+  Other sizes of the same shape are scaled with `zoom`.
+-->
+<style>
+  @font-face { font-family: 'Inter Tight'; src: url(fonts/inter-tight-latin-wght-normal.woff2) format('woff2'); font-weight: 100 900; }
+  @font-face { font-family: 'Inter'; src: url(fonts/inter-latin-wght-normal.woff2) format('woff2'); font-weight: 100 900; }
+  :root {
+    --navy: #10131d; --navy-soft: #232a3f; --cyan: #08dfe8; --indigo: #3b5bdb;
+    --ink: #f3f5fa; --ink-2: #a9b1c4;
+  }
+  html, body { margin: 0; background: var(--navy); }
+  .canvas { position: relative; overflow: hidden; background: var(--navy); display: flex; flex-direction: column; align-items: center; }
+  .glow { position: absolute; left: 50%; border-radius: 50%; transform: translateX(-50%); background: radial-gradient(closest-side, rgba(59, 91, 219, .55), rgba(59, 91, 219, 0)); }
+  .mark { position: absolute; opacity: .07; }
+  .copy { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .brand { display: flex; align-items: center; }
+  .brand img { display: block; }
+  .brand span { font-family: 'Inter Tight', sans-serif; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
+  h1 { margin: 0; font-family: 'Inter Tight', sans-serif; font-weight: 800; color: var(--ink); letter-spacing: -.025em; line-height: 1.04; white-space: pre-line; }
+  h1 em { font-style: normal; color: var(--cyan); }
+  p { margin: 0; font-family: 'Inter', sans-serif; font-weight: 500; color: var(--ink-2); line-height: 1.32; }
+  .device { position: absolute; left: 50%; flex: none; background: #0b0d12; box-shadow: 0 0 0 4px #2c3244, 0 0 0 7px #0b0d12, 0 80px 160px rgba(0, 0, 0, .55); }
+  .device .screen { position: absolute; overflow: hidden; background: #fff; }
+  .device .screen img { display: block; width: 100%; height: 100%; }
+  .device .island { position: absolute; left: 50%; transform: translateX(-50%); background: #000; border-radius: 999px; }
+  .device .button { position: absolute; width: 9px; background: #2c3244; border-radius: 4px; }
+
+  /* iPhone: 1320 x 2868 design pixels; the device is a 6.9-inch iPhone. */
+  .iphone { width: 1320px; }
+  .iphone .copy { width: 1120px; padding-top: 150px; }
+  .iphone .brand { gap: 26px; margin-bottom: 64px; }
+  .iphone .brand img { width: 150px; height: 150px; margin: -15px; }
+  .iphone .brand span { font-size: 76px; }
+  .iphone h1 { font-size: var(--title, 118px); }
+  .iphone p { font-size: 50px; margin-top: 38px; max-width: 1060px; }
+  .iphone .device { width: 1060px; height: 2252px; border-radius: 170px; margin-left: -530px; top: 720px; }
+  .iphone.hero .device { top: 860px; }
+  .iphone .screen { inset: 22px; border-radius: 148px; }
+  .iphone .island { top: 48px; width: 292px; height: 86px; }
+  .iphone .glow { top: 760px; width: 1900px; height: 1500px; }
+  .iphone .mark { width: 1500px; top: 1160px; }
+  .iphone .left { left: -560px; transform: rotate(-12deg); }
+  .iphone .right { right: -560px; transform: rotate(12deg); }
+  .iphone .b1 { left: -11px; top: 400px; height: 96px; }
+  .iphone .b2 { left: -11px; top: 560px; height: 170px; }
+  .iphone .b3 { left: -11px; top: 760px; height: 170px; }
+  .iphone .b4 { right: -11px; top: 620px; height: 260px; }
+
+  /* iPad: 2064 x 2752 design pixels; the device is a 13-inch iPad Pro. */
+  .ipad { width: 2064px; }
+  .ipad .copy { width: 1800px; padding-top: 150px; }
+  .ipad .brand { gap: 30px; margin-bottom: 60px; }
+  .ipad .brand img { width: 160px; height: 160px; margin: -16px; }
+  .ipad .brand span { font-size: 82px; }
+  .ipad h1 { font-size: var(--title, 132px); }
+  .ipad p { font-size: 56px; margin-top: 40px; max-width: 1500px; }
+  .ipad .device { width: 1760px; height: 2322px; border-radius: 96px; margin-left: -880px; top: 700px; }
+  .ipad.hero .device { top: 880px; }
+  .ipad .screen { inset: 36px; border-radius: 60px; }
+  .ipad .island { display: none; }
+  .ipad .glow { top: 700px; width: 2900px; height: 1800px; }
+  .ipad .mark { width: 2100px; top: 1000px; }
+  .ipad .left { left: -900px; transform: rotate(-12deg); }
+  .ipad .right { right: -900px; transform: rotate(12deg); }
+  .ipad .b1, .ipad .b2, .ipad .b3 { display: none; }
+  .ipad .b4 { right: -11px; top: 260px; height: 190px; }
+  .ipad .button { width: 9px; }
+</style>
+</head>
+<body>
+<div class="canvas iphone" id="canvas">
+  <div class="glow"></div>
+  <img class="mark left" id="mark" src="mark.svg" alt="">
+  <div class="copy">
+    <div class="brand" id="brand"><img src="icon.svg" alt=""><span>2Secret</span></div>
+    <h1 id="title"></h1>
+    <p id="text"></p>
+  </div>
+  <div class="device">
+    <div class="button b1"></div><div class="button b2"></div><div class="button b3"></div><div class="button b4"></div>
+    <div class="screen"><img id="screen" alt=""></div>
+    <div class="island"></div>
+  </div>
+</div>
+<script>
+  // Fills in a slide. `device` is iphone or ipad, `width` and `height` the
+  // size in pixels, `copy` the caption in one language ({title, text}),
+  // `screen` the image's URL, `index` its place in the series (the mark
+  // alternates sides) and `title` an optional size for the title in design
+  // pixels. Resolves with the largest title size at which every title line
+  // fits on one line.
+  window.render = async ({ device, width, height, copy, screen, hero, index, title }) => {
+    const canvas = document.getElementById('canvas');
+    const design = device === 'ipad' ? 2064 : 1320;
+    const zoom = width / design;
+    document.documentElement.style.zoom = zoom;
+    canvas.className = 'canvas ' + device + (hero ? ' hero' : '');
+    canvas.style.height = Math.ceil(height / zoom) + 'px';
+    document.getElementById('brand').style.display = hero ? '' : 'none';
+    document.getElementById('mark').className = 'mark ' + (index % 2 ? 'right' : 'left');
+    const h1 = document.getElementById('title');
+    h1.textContent = '';
+    copy.title.split(/(\*[^*]+\*)/).forEach((part) => {
+      if (part.startsWith('*')) {
+        const em = document.createElement('em');
+        em.textContent = part.slice(1, -1);
+        h1.append(em);
+      } else {
+        h1.append(part);
+      }
+    });
+    document.getElementById('text').textContent = copy.text;
+    const img = document.getElementById('screen');
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = screen; });
+    await document.fonts.ready;
+    // The largest size at which no title line wraps.
+    let size = device === 'ipad' ? 132 : 118;
+    const lines = copy.title.split('\n').length;
+    h1.style.setProperty('--title', size + 'px');
+    while (size > 60 && h1.getBoundingClientRect().height / zoom > size * 1.04 * lines + 2) {
+      size -= 2;
+      h1.style.setProperty('--title', size + 'px');
+    }
+    if (title) h1.style.setProperty('--title', title + 'px');
+    return size;
+  };
+  if (!navigator.webdriver) {
+    window.render({ device: 'iphone', width: 1320, height: 2868, index: 0, hero: true, screen: 'screens/en-US/iphone-1-dashboard.png',
+      copy: { title: 'All your secrets.\n*One safe place.*', text: 'Passwords, passkeys, cards and notes – end-to-end encrypted.' } });
+  }
+</script>
+</body>
+</html>

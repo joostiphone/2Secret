@@ -9,9 +9,16 @@ store listing needs is in `ios/AppStore`:
 | Path | Contents |
 |---|---|
 | `ios/AppStore/metadata/<language>/` | Name, subtitle, description, keywords, promotional text, URLs and release notes in English and Dutch (the layout of fastlane *deliver*) |
-| `ios/AppStore/screenshots/<language>/` | iPhone 6.9" (1320 × 2868) and iPad 13" (2064 × 2752) screenshots, made by `scripts/screenshots.sh` |
+| `ios/AppStore/screenshots/<language>/` | The screenshots to upload: iPhone 6.9" (1320 × 2868), iPhone 6.3" (1206 × 2622) and iPad 13" (2064 × 2752) |
+| `ios/AppStore/design/` | Their design: `template.html` (layout), `slides.json` (captions), `screens/` (the app's screens) |
 | `ios/AppStore/review/notes.txt` | Notes for App Review |
-| `ios/App/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking, no data collected |
+| `ios/App/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking; the account data on the 2Secret server |
+
+`scripts/screenshots.sh` takes the app's screens from the web vault with demo
+data and renders the screenshots. After changing a caption or the design, run
+only `node scripts/screenshots/appstore-compose.js`. Apple requires at least
+one screenshot for a 6.3" iPhone and, because 2Secret runs on iPad, one for a
+13" iPad; it scales them down for smaller screens.
 
 ## 1. Apple Developer Program
 
@@ -49,13 +56,26 @@ Then fill in:
 - **Pricing and Availability**: the one-time price you want; 2Secret has no
   in-app purchases or subscriptions.
 - **App Privacy**: privacy policy URL `https://2secret.app/privacy`, and
-  *Data Not Collected*: vault data is end-to-end encrypted and only goes to
-  the server the user chooses, the developer receives nothing.
-- **Age Rating**: answer *None* everywhere (4+).
-- **Version page**: copy the texts from `ios/AppStore/metadata`, upload the
-  screenshots from `ios/AppStore/screenshots`, and paste
-  `ios/AppStore/review/notes.txt` into *App Review Information → Notes*. App
-  Review needs no demo account: a local vault works without a server.
+  *Yes, we collect data*, because the 2Secret server (`sync.2secret.app`)
+  keeps account data of the people who choose it: **Contact Info → Email
+  Address** and **Name**, **Identifiers → User ID**, and **Other Data**
+  (the names of signed-in devices); for each *App Functionality*, linked to
+  the user, not used for tracking. Vault contents are end-to-end encrypted:
+  the operator cannot access them, so they are not *collected* in Apple's
+  sense. This matches the privacy manifest and the privacy policy.
+- **Age Rating**: no in-app controls or capabilities (no web browser,
+  user-generated content, chat or ads) and *None* for every content
+  descriptor: 4+.
+- **Digital Services Act** (*Business → Agreements → Compliance*): whether
+  you are a *trader* in the EU sense. A trader's address, phone number and
+  e-mail address are shown on the product page in the EU.
+- **Version page**: set the version to the build's version number, copy
+  the texts from `ios/AppStore/metadata`, upload the screenshots from
+  `ios/AppStore/screenshots`, and paste `ios/AppStore/review/notes.txt` into
+  *App Review Information → Notes*. Give App Review a demo account on
+  `sync.2secret.app` with some items and a shared vault (user name: its
+  e-mail address, password: its master password, the Secret Key in the
+  notes): without one, sync and sharing cannot be reviewed.
 
 ## 4. API key and repository secrets
 

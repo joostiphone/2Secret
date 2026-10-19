@@ -8,17 +8,20 @@ VEILIGHEID VOOROP
 • Volledig open source: iedereen kan controleren hoe het werkt.
 
 JOUW DATA, JOUW KEUZE
-• Gebruik 2Secret alleen op dit apparaat – geen account bij ons, geen server nodig.
-• Of synchroniseer tussen je apparaten via je eigen 2Secret-server (een gratis Docker-container op een Raspberry Pi, NAS of VPS). Wij zien of bewaren je kluis nooit.
+• Synchroniseer via de gratis 2Secret-server: niets zelf in te stellen, en hij ziet je wachtwoorden nooit.
+• Of draai je eigen 2Secret-server (een gratis Docker-container op een Raspberry Pi, NAS of VPS).
+• Of houd je kluis alleen op dit apparaat – helemaal zonder server.
 
 ALLES OP ÉÉN PLEK
 • Logins, passkeys, creditcards, bankrekeningen, identiteiten, paspoorten, wifi, SSH-sleutels, API-sleutels, softwarelicenties, beveiligde notities en meer.
-• Ingebouwde authenticator voor eenmalige codes (TOTP).
+• Ingebouwde authenticator voor eenmalige codes (TOTP), ook automatisch ingevuld.
 • Wachtwoorden en passkeys automatisch invullen in Safari en apps.
 • Watchtower vindt zwakke, hergebruikte en gelekte wachtwoorden en verlopende passen.
 • Sterke wachtwoord- en wachtzingenerator.
 • Gedeelde kluizen met de rollen lezer, bewerker en beheerder.
+• Deel één item met wie je wilt via een end-to-end versleutelde link die verloopt.
+• Noodtoegang: mensen die je vertrouwt kunnen toegang tot je kluizen vragen als jij die zelf niet kunt geven.
 • Importeren uit 1Password, Bitwarden, LastPass, KeePass, Chrome, Firefox en meer.
-• Apps voor iPhone, iPad, Mac, Windows, Linux, Android, het web en je browser.
+• Ook voor Mac, Windows, Linux, het web en als browserextensie.
 
 Geen abonnement. Geen advertenties. Geen tracking.

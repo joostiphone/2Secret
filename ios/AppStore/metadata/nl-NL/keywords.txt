@@ -1,1 +1,1 @@
-wachtwoord,passkey,kluis,2fa,authenticator,totp,invullen,zelf hosten,open source,versleuteling
+wachtwoord,passkey,kluis,2fa,authenticator,totp,invullen,zelf hosten,open source,versleuteld,login

@@ -8,17 +8,20 @@ SECURITY FIRST
 • Fully open source: anyone can check how it works.
 
 YOUR DATA, YOUR CHOICE
-• Use 2Secret on this device only – no account with us, no server needed.
-• Or sync between your devices through your own 2Secret server (a free Docker container on a Raspberry Pi, NAS or VPS). We never see or store your vault.
+• Sync through the free 2Secret server: nothing to set up, and it never sees your passwords.
+• Or run your own 2Secret server (a free Docker container on a Raspberry Pi, NAS or VPS).
+• Or keep your vault on this device only – no server at all.
 
 EVERYTHING IN ONE PLACE
 • Logins, passkeys, credit cards, bank accounts, identities, passports, Wi-Fi, SSH keys, API keys, software licenses, secure notes and more.
-• Built-in authenticator for one-time codes (TOTP).
+• Built-in authenticator for one-time codes (TOTP), also filled in by AutoFill.
 • AutoFill passwords and passkeys in Safari and apps.
 • Watchtower finds weak, reused and breached passwords and expiring cards.
 • Strong password and passphrase generator.
 • Shared vaults with viewer, editor and manager roles.
+• Share a single item with anyone through an end-to-end encrypted link that expires.
+• Emergency access: people you trust can ask for access to your vaults when you can't give it yourself.
 • Import from 1Password, Bitwarden, LastPass, KeePass, Chrome, Firefox and more.
-• Apps for iPhone, iPad, Mac, Windows, Linux, Android, the web and your browser.
+• Also on Mac, Windows, Linux, the web and as a browser extension.
 
 No subscription. No ads. No tracking.
