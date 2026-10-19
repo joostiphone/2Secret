@@ -1,0 +1,14 @@
+2Secret 1.9.1
+
+WHAT'S NEW
+- Bigger tap targets: menu items, buttons and other controls are at least 44 points high on iPhone and iPad.
+- Medium-width screens (iPad mini in portrait, iPad in Split View or Slide Over): the list and the item show side by side, and the menu opens next to the list.
+- The app keeps clear of the status bar, camera and home indicator on every side, also in landscape.
+
+PLEASE TEST
+1. Tap through the menu, the list and an item (copy, show password, edit, favorite). Does every tap hit the control you meant, the first time?
+2. Turn your iPhone to landscape, both ways. Nothing may sit under the camera, the rounded corners or the home indicator.
+3. On iPad: try portrait, landscape, Split View at different sizes and Slide Over. Do the list and the item fit side by side, and do the menu and the back button work?
+4. The basics still work: unlock with Face ID, fill a password with AutoFill in Safari, and sync with your server.
+
+Found a problem? Take a screenshot and choose Share Beta Feedback, or open TestFlight and tap Send Beta Feedback.

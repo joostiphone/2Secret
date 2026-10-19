@@ -37,6 +37,11 @@ jobs:
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::Version must look like v1.2.3"; exit 1; }
           grep -q "^version = \"${TAG#v}\"" Cargo.toml || { echo "::error::Cargo.toml has a different version than $TAG"; exit 1; }
+          # What testers see in TestFlight (CONTRIBUTING.md, Releasing).
+          for f in ios/AppStore/testflight/*.txt; do
+            [ "$(head -n 1 "$f")" = "2Secret ${TAG#v}" ] || { echo "::error::$f is not about ${TAG#v}: write what is new and what to test"; exit 1; }
+            [ "$(wc -m < "$f")" -le 4000 ] || { echo "::error::$f is longer than the 4000 characters TestFlight allows"; exit 1; }
+          done
       - name: Create tag
         if: github.event_name == 'workflow_dispatch'
         env:

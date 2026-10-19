@@ -4,7 +4,8 @@ name: TestFlight
 # TestFlight. The Release workflow runs this for every version; start it from
 # the Actions tab ("Run workflow") to upload a version again, for example
 # after setting up the App Store Connect secrets (docs/APP-STORE.md). It
-# then waits until Apple has processed the build.
+# then waits until Apple has processed the build and gives it its "What to
+# Test" text from ios/AppStore/testflight (also with only a build number).
 on:
   workflow_call:
     inputs:

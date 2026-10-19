@@ -38,7 +38,9 @@ suffix keeps the profile names of builds that run at the same time (one per
 architecture) apart.
 
 `wait` waits until App Store Connect has processed an uploaded build and
-says whether it can be tested in TestFlight.
+says whether it can be tested in TestFlight. It then gives the build its
+"What to Test" text from ios/AppStore/testflight/<locale>.txt, whose first
+line must be "2Secret <version>".
 """
 import base64
 import hashlib
@@ -99,7 +101,7 @@ class Api:
         r, s = decode_dss_signature(self.key.sign(signing_input.encode(), ec.ECDSA(hashes.SHA256())))
         return f"{signing_input}.{b64url(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))}"
 
-    def call(self, method: str, path: str, body=None, query=None):
+    def call(self, method: str, path: str, body=None, query=None, fatal=True):
         url = API + path + ("?" + urllib.parse.urlencode(query) if query else "")
         request = urllib.request.Request(
             url,
@@ -111,7 +113,11 @@ class Api:
             with urllib.request.urlopen(request, timeout=60) as response:
                 data = response.read()
         except urllib.error.HTTPError as e:
-            sys.exit(f"App Store Connect API: {method} {path}: HTTP {e.code}\n{e.read().decode(errors='replace')}")
+            message = f"App Store Connect API: {method} {path}: HTTP {e.code}\n{e.read().decode(errors='replace')}"
+            if fatal:
+                sys.exit(message)
+            print(f"::warning::{message}")
+            return None
         return json.loads(data) if data else None
 
 
@@ -257,6 +263,7 @@ def wait(version: str, build: str) -> None:
         time.sleep(30)
     if state != "VALID":
         sys.exit(f"Build {version} ({build}) was not processed: {state}")
+    what_to_test(api, builds[0]["id"], version)
     detail = api.call("GET", f"/builds/{builds[0]['id']}/buildBetaDetail")["data"]["attributes"]
     beta = detail.get("internalBuildState")
     print(f"TestFlight: {beta}")
@@ -266,6 +273,40 @@ def wait(version: str, build: str) -> None:
     if summary:
         with open(summary, "a") as f:
             f.write(f"2Secret {version} ({build}) is processed and in TestFlight: `{beta}`.\n")
+
+
+def what_to_test(api: Api, build_id: str, version: str) -> None:
+    """Give the build the "What to Test" text testers see in TestFlight."""
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ios", "AppStore", "testflight")
+    existing = {
+        item["attributes"]["locale"]: item["id"]
+        for item in api.call("GET", f"/builds/{build_id}/betaBuildLocalizations")["data"]
+    }
+    for name in sorted(n for n in os.listdir(folder) if n.endswith(".txt")):
+        locale = name.removesuffix(".txt")
+        with open(os.path.join(folder, name), encoding="utf-8") as f:
+            text = f.read().strip()
+        if (text.splitlines() or [""])[0] != f"2Secret {version}":
+            print(f"::warning::{name} is not about {version}; the build gets no What to Test text in {locale}.")
+            continue
+        if len(text) > 4000:
+            print(f"::warning::{name} is longer than the 4000 characters TestFlight allows.")
+            continue
+        attributes = {"whatsNew": text}
+        if locale in existing:
+            body = {"data": {"type": "betaBuildLocalizations", "id": existing[locale], "attributes": attributes}}
+            done = api.call("PATCH", f"/betaBuildLocalizations/{existing[locale]}", body, fatal=False)
+        else:
+            body = {
+                "data": {
+                    "type": "betaBuildLocalizations",
+                    "attributes": {"locale": locale, **attributes},
+                    "relationships": {"build": {"data": {"type": "builds", "id": build_id}}},
+                }
+            }
+            done = api.call("POST", "/betaBuildLocalizations", body, fatal=False)
+        if done is not None:
+            print(f"What to Test ({locale}) set.")
 
 
 def signing(out: str) -> None:

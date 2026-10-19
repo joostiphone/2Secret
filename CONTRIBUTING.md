@@ -61,6 +61,11 @@ UI changes and commit the result.
 ## Releasing
 
 1. Update the version in `Cargo.toml` and add a section to `CHANGELOG.md`.
+   Write `ios/AppStore/testflight/en-US.txt` and `nl-NL.txt` for the
+   TestFlight testers: what is new in this build and what to test, with
+   `2Secret <version>` on the first line and at most 4000 characters. The
+   release refuses a version without them; once Apple has processed the
+   build they become its *What to Test* text in TestFlight.
 2. Start the **Release** workflow from the Actions tab (*Run workflow*, enter
    e.g. `v1.2.3`) or push a tag `v1.2.3`.
 3. The workflow builds all installers and the Docker image and publishes the

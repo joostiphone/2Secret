@@ -12,6 +12,7 @@ store listing needs is in `ios/AppStore`:
 | `ios/AppStore/screenshots/<language>/` | The screenshots to upload: iPhone 6.9" (1320 × 2868), iPhone 6.3" (1206 × 2622) and iPad 13" (2064 × 2752) |
 | `ios/AppStore/design/` | Their design: `template.html` (layout), `slides.json` (captions), `screens/` (the app's screens) |
 | `ios/AppStore/review/notes.txt` | Notes for App Review |
+| `ios/AppStore/testflight/<language>.txt` | What is new and what to test in this build, for TestFlight testers; set on every build by the TestFlight workflow |
 | `ios/App/PrivacyInfo.xcprivacy` | Privacy manifest: no tracking; the account data on the 2Secret server |
 
 `scripts/screenshots.sh` takes the app's screens from the web vault with demo
