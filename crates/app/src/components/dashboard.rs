@@ -110,7 +110,7 @@ pub fn DashboardPage() -> Element {
                         }
                     }
                     if !search.is_empty() {
-                        button { class: "icon-btn", style: "width:24px;height:24px", title: t("common.clear"),
+                        button { class: "icon-btn clear", title: t("common.clear"),
                             onclick: move |_| {
                                 query.set(String::new());
                                 reset += 1;

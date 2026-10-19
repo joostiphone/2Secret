@@ -439,7 +439,7 @@ fn ItemList() -> Element {
                     }
                 }
                 if !search.is_empty() {
-                    button { class: "icon-btn", style: "width:24px;height:24px", onclick: move |_| clear_search(),
+                    button { class: "icon-btn clear", onclick: move |_| clear_search(),
                         Icon { name: "x", size: 14 }
                     }
                 }

@@ -109,6 +109,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 /* The generator's options under a password field in the item editor. */
 .gen-panel { margin-top: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
 .icon-btn.on { color: var(--accent); background: var(--accent-soft); }
+/* The button that empties a search field. */
+.icon-btn.clear { width: 24px; height: 24px; }
 .pick-list { max-height: min(320px, 40vh); overflow-y: auto; }
 .banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--accent);
   background: var(--accent-soft); border-radius: 10px; }
@@ -346,6 +348,28 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
   .toolbar { padding: 8px 10px; }
   .field .actions { opacity: 1; }
   .root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Touch screens (the phone and tablet apps, the web vault on them): rows and
+   buttons at least 44 points high, the size Apple and Google advise for a
+   finger. */
+@media (pointer: coarse) {
+  .nav { padding: 4px 10px 16px; }
+  .nav-item { min-height: 46px; padding: 10px 12px; gap: 14px; font-size: 16px; }
+  .nav-item svg { width: 20px; height: 20px; }
+  .nav-item .count { font-size: 14px; }
+  .nav-section { font-size: 12px; padding: 18px 12px 4px; }
+  .nav-section .icon-btn { width: 44px; height: 44px; margin: -14px -10px -14px auto; }
+  .who-btn { padding: 8px; margin: -8px; }
+  .sidebar-foot { min-height: 52px; font-size: 14px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .icon-btn.clear { width: 36px; height: 36px; margin-right: -6px; }
+  .btn { min-height: 44px; }
+  .profile-item { min-height: 52px; }
+  .search input { padding: 12px 0; }
+  .segmented button { padding: 10px 14px; }
+  .chip { padding: 9px 13px; }
+  .lang-switch button { padding: 10px 12px; }
 }
 
 /* The apps on phones and tablets (KEYBOARD_JS in lib.rs): the app covers the

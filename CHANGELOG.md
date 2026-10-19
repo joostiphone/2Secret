@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Phones and tablets: the menu, buttons and other things you tap are at least
+  44 points high, so they are easy to hit with a finger.
+
 ## 1.9.0
 
 - **Quick Access** on the desktop: press Ctrl+Shift+Space (⇧⌘Space on the
