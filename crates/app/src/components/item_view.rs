@@ -49,7 +49,7 @@ pub fn ItemView(id: String) -> Element {
 
     rsx! {
         div { class: "toolbar",
-            button { class: "icon-btn mobile-only", onclick: move |_| *PANE.write() = Pane::List, Icon { name: "chevron-left" } }
+            button { class: "icon-btn mobile-only back", onclick: move |_| *PANE.write() = Pane::List, Icon { name: "chevron-left" } }
             span { class: "spacer" }
             if crate::extension::ENABLED && !trashed && (item.password().is_some() || item.username().is_some()) {
                 button { class: "btn primary small",

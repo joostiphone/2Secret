@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Foldables and medium screens** (the inner display of iPhone Duo, tablets
+  in portrait, small windows): the list and the item show side by side, at
+  equal widths so the fold falls between them; on a foldable that reports its
+  fold, the split is right at the fold. The menu opens next to the list.
+- iPhone and iPad: the app keeps clear of the status bar, camera and home
+  indicator on every side, also in landscape.
 - Phones and tablets: the menu, buttons and other things you tap are at least
   44 points high, so they are easy to hit with a finger.
 

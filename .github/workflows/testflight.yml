@@ -60,6 +60,17 @@ jobs:
           targets: aarch64-apple-ios
       - uses: Swatinem/rust-cache@v2
         if: env.APP_STORE_CONNECT_KEY != ''
+      # The app's window comes from tao 0.34 (through Dioxus 0.7), which does
+      # not use the UIScene life cycle. Built with the iOS 27 SDK an app must
+      # use it or it does not start (Apple TN3187), so build with Xcode 26 until
+      # 2Secret moves to Dioxus 0.8 (tao 0.37). See docs/APP-STORE.md.
+      - name: Xcode 26
+        if: env.APP_STORE_CONNECT_KEY != ''
+        run: |
+          xcode="$(ls -d /Applications/Xcode_26*.app 2> /dev/null | grep -iv beta | sort -V | tail -1)"
+          [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner; see docs/APP-STORE.md, \"iPhone Duo and Xcode 27\""; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
       - name: Build, sign and upload to TestFlight
         id: upload
         if: env.APP_STORE_CONNECT_KEY != ''

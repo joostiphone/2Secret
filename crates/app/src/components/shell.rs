@@ -94,6 +94,12 @@ pub fn Shell() -> Element {
     let class = |p: Pane| if pane == p { "" } else { "pane-hidden" };
     rsx! {
         div { class: if page { "shell pages" } else { "shell" },
+            // Which pane is in front, for the medium layout in style.css.
+            "data-pane": match pane {
+                Pane::Nav => "nav",
+                Pane::List => "list",
+                Pane::Detail => "detail",
+            },
             nav { class: "sidebar {class(Pane::Nav)}", Sidebar {} }
             if page {
                 main { class: if pane == Pane::Nav { "detail-pane pane-hidden" } else { "detail-pane" },

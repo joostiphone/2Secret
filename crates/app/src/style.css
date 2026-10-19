@@ -33,6 +33,10 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 body { font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
 #main { height: 100%; }
 .root { height: 100vh; height: 100dvh; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
+/* Keep clear of the status bar, the camera and the home indicator, on every
+   side and each side on its own: on a foldable such as iPhone Duo they sit
+   at the side, and differ per side and pose. Zero outside phones and tablets. */
+.root { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--accent); }
 .icon { flex-shrink: 0; display: block; }
@@ -337,9 +341,37 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 /* The window a website opens for a passkey fills itself. */
 .root.ext.window { width: 100vw; height: 100vh; }
 
-/* Responsive: one pane at a time on narrow screens (phones, small windows). */
+/* Responsive. Wide: the menu, the list and the item side by side. */
 @media (max-width: 1000px) { .shell { grid-template-columns: 210px 290px 1fr; } .shell.pages { grid-template-columns: 210px 1fr; } }
-@media (max-width: 760px) {
+/* Medium (the inner display of a foldable such as iPhone Duo, a tablet in
+   portrait, a small window): the list and the item side by side at equal
+   widths, so on a foldable the fold falls between them; the menu opens next
+   to the list. Also on any foldable that reports its fold. */
+@media (min-width: 600px) and (max-width: 899px), (min-width: 600px) and (horizontal-viewport-segments: 2) {
+  .root:not(.ext) .shell { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .root:not(.ext) .shell.pages { grid-template-columns: minmax(0, 1fr) !important; }
+  .root:not(.ext) .shell[data-pane="nav"] { grid-template-columns: 280px minmax(0, 1fr) !important; }
+  .root:not(.ext) .shell > .pane-hidden { display: none !important; }
+  .root:not(.ext) .shell:not(.pages)[data-pane="list"] > .detail-pane,
+  .root:not(.ext) .shell:not(.pages)[data-pane="detail"] > .list-pane,
+  .root:not(.ext) .shell:not(.pages)[data-pane="nav"] > .list-pane,
+  .root:not(.ext) .shell.pages[data-pane="nav"] > .detail-pane { display: flex !important; }
+  .mobile-only { display: inline-flex; }
+  .root:not(.ext) .mobile-only.back, .root:not(.ext) .shell[data-pane="nav"] .mobile-only { display: none; }
+  .detail-scroll { padding: 16px 14px 40px; }
+  .toolbar { padding: 8px 10px; }
+}
+/* A foldable that reports where its fold is (CSS Viewport Segments): the list
+   ends at the fold and the item starts after it. */
+@media (min-width: 600px) and (horizontal-viewport-segments: 2) {
+  .root:not(.ext) .shell:not(.pages):not([data-pane="nav"]) {
+    grid-template-columns: env(viewport-segment-width 0 0, 50%) minmax(0, 1fr) !important;
+    column-gap: calc(env(viewport-segment-left 1 0, 0px) - env(viewport-segment-right 0 0, 0px));
+  }
+}
+/* Narrow (phones, the closed iPhone Duo, half a foldable in split view): one
+   pane at a time. */
+@media (max-width: 599px) {
   .shell { grid-template-columns: 1fr !important; }
   .shell > .pane-hidden { display: none !important; }
   .mobile-only { display: inline-flex; }
@@ -347,7 +379,6 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
   .card { padding: 24px 20px; border-radius: 14px; }
   .toolbar { padding: 8px 10px; }
   .field .actions { opacity: 1; }
-  .root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* Touch screens (the phone and tablet apps, the web vault on them): rows and
@@ -370,6 +401,8 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
   .segmented button { padding: 10px 14px; }
   .chip { padding: 9px 13px; }
   .lang-switch button { padding: 10px 12px; }
+  /* No hover on a touch screen: the copy and show buttons are always clear. */
+  .field .actions { opacity: 1; }
 }
 
 /* The apps on phones and tablets (KEYBOARD_JS in lib.rs): the app covers the

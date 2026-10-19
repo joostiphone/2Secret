@@ -95,6 +95,32 @@ variables above in your shell and run `scripts/ios-appstore.sh 1.9.0`
 script only builds for the simulator. It uses a temporary keychain and
 restores your keychain list afterwards.
 
+### iPhone Duo and Xcode 27
+
+iPhone Duo, the folding iPhone, gives an app its whole screen only when the
+app is built with the iOS 27.1 SDK (Xcode 27.1). Built with an older SDK it
+runs at a familiar iPhone size on the inner display, and on the outer display
+to the left of the status bar and camera.
+
+An app built with the iOS 27 SDK must use the UIScene life cycle, or it does
+not start ([TN3187](https://developer.apple.com/documentation/technotes/tn3187-migrating-to-the-uikit-scene-based-life-cycle)).
+2Secret's window comes from tao 0.34 through Dioxus 0.7, which does not use
+it; tao 0.37, which Dioxus 0.8 uses, does. Until 2Secret moves to Dioxus 0.8,
+the TestFlight workflow builds with Xcode 26 and `scripts/ios-appstore.sh`
+refuses the iOS 27 SDK. Then:
+
+1. update Dioxus and add `UIApplicationSceneManifest` to the app's
+   `Info.plist` in `ios/project.yml`;
+2. remove the Xcode 26 step from `.github/workflows/testflight.yml` and the
+   SDK check from `scripts/ios-appstore.sh`;
+3. try every pose (closed, open, partly folded, turned, split view) in the
+   iPhone Duo simulator in Xcode's Device Hub.
+
+The layout is ready for it: the safe areas apply on every side, a medium
+width shows the list and the item side by side with the fold between them,
+and a foldable that reports its fold (CSS Viewport Segments) gets the split
+right at the fold.
+
 ## Export compliance (your decision)
 
 App Store Connect asks about encryption for every build until

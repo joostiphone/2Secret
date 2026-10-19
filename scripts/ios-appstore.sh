@@ -22,6 +22,16 @@ version="${version#v}"
 # Build numbers must go up for every upload of a version.
 build="${2:-$(date -u +%Y%m%d.%H%M)}"
 
+# The app's window comes from tao 0.34 (Dioxus 0.7), which does not use the
+# UIScene life cycle; built with the iOS 27 SDK the app would not start (Apple
+# TN3187). See docs/APP-STORE.md, "iPhone Duo and Xcode 27".
+sdk="$(xcrun --sdk iphoneos --show-sdk-version 2> /dev/null || echo 0)"
+if [ -n "${APP_STORE_CONNECT_KEY:-}" ] && [ "${sdk%%.*}" -ge 27 ]; then
+  echo "The iOS $sdk SDK needs the UIScene life cycle, which the app only gets with Dioxus 0.8." >&2
+  echo "Build with Xcode 26 until then: sudo xcode-select -s /Applications/Xcode_26.x.app" >&2
+  exit 1
+fi
+
 if [ -n "${APP_STORE_CONNECT_KEY:-}" ]; then
   target=aarch64-apple-ios profile=release
 else
