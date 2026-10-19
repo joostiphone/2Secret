@@ -156,9 +156,12 @@ project deliberately leaves to you. The facts you need:
   only HTTPS.
 
 Read Apple's *Complying with encryption export regulations* and answer the
-questions in App Store Connect accordingly; for distribution in France an
-import declaration may be required. When in doubt, ask an export-control
-specialist. Once settled, add your answer to `ios/project.yml` under the
+questions in App Store Connect accordingly. For an industry standard
+algorithm that does not come with the operating system, App Store Connect
+asks for no documentation, except the French encryption declaration when the
+app is distributed in France (*App Information → App Encryption
+Documentation*); France controls secure storage apps such as password
+managers. When in doubt, ask an export-control specialist. Once settled, add your answer to `ios/project.yml` under the
 app's `info.properties` (`ITSAppUsesNonExemptEncryption: false` or `true`
 with your compliance code) so App Store Connect stops asking.
 
