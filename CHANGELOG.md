@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.1
 
 - **Foldables and medium screens** (the inner display of iPhone Duo, tablets
   in portrait, small windows): the list and the item show side by side, at
