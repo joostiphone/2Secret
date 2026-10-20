@@ -1,14 +1,16 @@
-2Secret 1.9.1
+2Secret 1.9.2
 
 WAT IS NIEUW
-- Grotere tikvlakken: menu-items, knoppen en andere bedieningselementen zijn op iPhone en iPad minstens 44 punten hoog.
-- Middelgrote schermen (iPad mini rechtop, iPad in Split View of Slide Over): de lijst en het item staan naast elkaar, en het menu opent naast de lijst.
-- De app blijft aan alle kanten vrij van de statusbalk, de camera en de thuisbalk, ook in liggende stand.
+- Je geheime sleutel gaat niet meer mee in iCloud- en computerback-ups van je iPhone of iPad, zodat een back-up hem nooit naast je versleutelde kluis bevat.
+- Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt (zoals github.io): een inlog wordt alleen op zijn eigen site voorgesteld.
+- 2Secret maakt alleen via https:// verbinding met een synchronisatieserver.
+- Beveiligingsverbeteringen voor synchroniseren en gedeelde kluizen.
 
 TEST ALSJEBLIEFT
-1. Tik door het menu, de lijst en een item (kopiëren, wachtwoord tonen, bewerken, favoriet). Raakt elke tik meteen de knop die je bedoelt?
-2. Draai je iPhone liggend, beide kanten op. Niets mag onder de camera, de ronde hoeken of de thuisbalk vallen.
-3. Op de iPad: probeer rechtop, liggend, Split View in verschillende breedtes en Slide Over. Passen de lijst en het item naast elkaar, en werken het menu en de terugknop?
-4. De basis werkt nog: ontgrendelen met Face ID, een wachtwoord invullen met Automatisch invullen in Safari, en synchroniseren met je server.
+1. Werk bij vanaf 1.9.1 en ontgrendel: al je kluizen en items zijn er nog, en synchroniseren met je server werkt.
+2. Automatisch invullen: vul een wachtwoord in Safari en in een app in. Je inloggegevens staan nog onder "Voorgesteld", ook op subdomeinen (een inlog voor google.com op accounts.google.com).
+3. Een gedeelde kluis: wijzig een item en controleer dat de wijziging op een ander apparaat aankomt, en andersom.
+4. Kopieer een wachtwoord en plak het ergens. Het wordt gewist na de tijd die je hebt ingesteld.
+5. Ontgrendel met Face ID, en vul een eenmalige code in via Automatisch invullen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

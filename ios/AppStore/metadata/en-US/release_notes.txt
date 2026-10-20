@@ -1,1 +1,5 @@
-First version on the App Store.
+Security improvements:
+- Your Secret Key is no longer included in iCloud and computer backups, so a backup never holds it next to your encrypted vault.
+- AutoFill is stricter on websites where everyone gets a subdomain of their own: a login is only suggested on its own site.
+- 2Secret connects to a sync server only over https.
+- Safer syncing of shared vaults.

@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.9.2
+
+Security fixes from a review of the apps, the server and the way releases
+are made.
+
+- iPhone and iPad: the Secret Key is no longer included in iCloud and
+  computer backups, so a backup never holds it next to the encrypted vault.
+- AutoFill (iPhone, iPad, Mac) and the browser extension: on websites where
+  everyone gets a subdomain of their own (such as `github.io`), a login is
+  only offered on its own site, never on someone else's.
+- The apps connect to a sync server only over `https://` (plain `http://`
+  only to a server on the same device).
+- A vault never goes back to a key it had before, so a server cannot give a
+  removed member access to new items again.
+- Copied passwords stay out of Windows' clipboard history and cloud
+  clipboard, and out of clipboard managers on Linux and macOS.
+- Website icons are fetched from public websites only, also when an address
+  is an IP address written in a short form.
+- The server checks the encrypted data it stores, so one account cannot
+  disrupt syncing for others, limits sign-in attempts and password checks
+  per address, and removes invisible characters from names.
+- Updated libraries: rustls, the import of zip and XML files, and SQLite
+  3.53.2 in the server.
+- Every release's `SHA256SUMS` is signed (`SHA256SUMS.sig`), so downloads
+  that do not update themselves can be checked: see *Checking a download*
+  in `docs/UPDATES.md`.
+
+For people who run their own server:
+
+- The invite codes of the examples (`change-me…`) no longer let anyone sign
+  up: choose your own.
+- `install.sh` reads the client's address from `CF-Connecting-IP` only with
+  a Cloudflare Tunnel; set `--ip-header` for another proxy.
+
 ## 1.9.1
 
 - **Foldables and medium screens** (the inner display of iPhone Duo, tablets

@@ -1,14 +1,16 @@
-2Secret 1.9.1
+2Secret 1.9.2
 
 WHAT'S NEW
-- Bigger tap targets: menu items, buttons and other controls are at least 44 points high on iPhone and iPad.
-- Medium-width screens (iPad mini in portrait, iPad in Split View or Slide Over): the list and the item show side by side, and the menu opens next to the list.
-- The app keeps clear of the status bar, camera and home indicator on every side, also in landscape.
+- Your Secret Key is no longer included in iCloud and computer backups of your iPhone or iPad, so a backup never holds it next to your encrypted vault.
+- AutoFill is stricter on websites where everyone gets a subdomain of their own (such as github.io): a login is only suggested on its own site.
+- 2Secret connects to a sync server only over https://.
+- Security fixes for syncing and shared vaults.
 
 PLEASE TEST
-1. Tap through the menu, the list and an item (copy, show password, edit, favorite). Does every tap hit the control you meant, the first time?
-2. Turn your iPhone to landscape, both ways. Nothing may sit under the camera, the rounded corners or the home indicator.
-3. On iPad: try portrait, landscape, Split View at different sizes and Slide Over. Do the list and the item fit side by side, and do the menu and the back button work?
-4. The basics still work: unlock with Face ID, fill a password with AutoFill in Safari, and sync with your server.
+1. Update over 1.9.1 and unlock: all your vaults and items are there, and syncing with your server works.
+2. AutoFill: fill a password in Safari and in an app. Your logins still appear under "Suggested", also on subdomains (a login for google.com on accounts.google.com).
+3. A shared vault: change an item and check that the change arrives on another device, and the other way round.
+4. Copy a password and paste it somewhere. It is cleared after the time you set.
+5. Unlock with Face ID, and fill a one-time code from AutoFill.
 
-Found a problem? Take a screenshot and choose Share Beta Feedback, or open TestFlight and tap Send Beta Feedback.
+Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

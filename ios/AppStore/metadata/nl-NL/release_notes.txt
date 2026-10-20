@@ -1,1 +1,5 @@
-Eerste versie in de App Store.
+Beveiligingsverbeteringen:
+- Je geheime sleutel gaat niet meer mee in iCloud- en computerback-ups, zodat een back-up hem nooit naast je versleutelde kluis bevat.
+- Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt: een inlog wordt alleen op zijn eigen site voorgesteld.
+- 2Secret maakt alleen via https verbinding met een synchronisatieserver.
+- Veiliger synchroniseren van gedeelde kluizen.
