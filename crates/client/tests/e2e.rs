@@ -386,6 +386,35 @@ async fn limits_for_a_public_server() {
 }
 
 #[tokio::test]
+async fn the_server_refuses_what_would_break_other_accounts() {
+    use twosecret_core::api::{ItemChange, SetPqKeyRequest, SyncRequest, UpdateVaultRequest, VaultSyncRequest};
+    let url = start_server(Config::default()).await;
+    let (mut s, _) = client::signup(&url, "M", "m@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let vault = s.default_vault_id().unwrap();
+    client::sync(&mut s).await.unwrap();
+    let api = Client::new(&url).with_token(s.server_token().unwrap());
+
+    // Malformed ciphertext would make every member's vault list fail.
+    let junk: twosecret_core::crypto::EncString = serde_json::from_str("\"not a ciphertext\"").unwrap();
+    let err = api.update_vault(&vault, &UpdateVaultRequest { meta: junk.clone(), key_rev: Some(0) }).await.unwrap_err();
+    assert_eq!(err.status(), Some(400));
+    let change = ItemChange { id: twosecret_core::util::new_id(), base_revision: 0, data: Some(junk) };
+    let req = SyncRequest {
+        vaults: vec![VaultSyncRequest { vault_id: vault.clone(), since: 0, changes: vec![change], key_rev: Some(0) }],
+    };
+    assert_eq!(api.sync(&req).await.unwrap().results[0].rejected.len(), 1);
+    client::sync(&mut s).await.unwrap();
+
+    // The post-quantum key is set once.
+    let own = s.account().keyset.pq_public_key.clone().unwrap();
+    api.set_pq_key(&SetPqKeyRequest { pq_public_key: own }).await.unwrap();
+    let (other, _) = client::signup(&url, "N", "n@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let foreign = other.account().keyset.pq_public_key.clone().unwrap();
+    let err = api.set_pq_key(&SetPqKeyRequest { pq_public_key: foreign }).await.unwrap_err();
+    assert_eq!(err.status(), Some(409));
+}
+
+#[tokio::test]
 async fn login_rate_limiting() {
     let url = start_server(Config::default()).await;
     let (_s, sk) = client::signup(&url, "F", "f@example.com", PW, None, "x", "P", kdf()).await.unwrap();

@@ -32,10 +32,10 @@ const MAX_WRONG: i64 = 10;
 
 /// `/api/v1/shares…`
 pub fn api() -> Router<AppState> {
-    Router::new()
-        .route("/shares", get(list).post(create))
-        .route("/shares/{id}", get(info).delete(revoke))
-        .route("/shares/{id}/open", axum::routing::post(open))
+    Router::new().route("/shares", get(list).post(create)).route("/shares/{id}", get(info).delete(revoke)).route(
+        "/shares/{id}/open",
+        axum::routing::post(open).layer(axum::extract::DefaultBodyLimit::max(crate::routes::PUBLIC_BODY_BYTES)),
+    )
 }
 
 /// The page that opens links.

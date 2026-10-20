@@ -204,7 +204,7 @@ jobs:
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - working-directory: crates/app
         run: dx bundle --platform web --release
-      - run: mkdir out && tar czf "out/2secret-web-${TAG}.tar.gz" -C crates/app/dist/public .
+      - run: mkdir out && tar czf "out/2secret-web-${TAG}.tar.gz" --owner=0 --group=0 --numeric-owner -C crates/app/dist/public .
       - uses: actions/upload-artifact@v4
         with:
           name: dist-web

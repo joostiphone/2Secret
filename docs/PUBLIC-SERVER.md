@@ -79,7 +79,7 @@ both containers a fixed address (`--ip`, or a DHCP reservation). Without
 | `--storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | `100` | Storage per account for the vaults it owns (shared vaults count for their owner); `0` = no limit |
 | `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | `5` | New accounts per address per day (IPv6 per /64) |
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | none | No new accounts beyond this number |
-| `--ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | `CF-Connecting-IP` | Where the client's address comes from; only believed from a proxy on the machine itself or a `--trusted-proxy` |
+| `--ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | `CF-Connecting-IP` with a Cloudflare Tunnel, else none | Where the client's address comes from; only believed from a proxy on the machine itself or a `--trusted-proxy` |
 | `--listen` | `TWOSECRET_BIND` | `127.0.0.1:8743` | Address to listen on |
 | `--trusted-proxy` | `TWOSECRET_TRUSTED_PROXIES` | none | Proxies on other machines whose `--ip-header` is believed |
 | `--no-web` | `TWOSECRET_WEB_DIR` | web vault on | Serve the web vault on the same address |

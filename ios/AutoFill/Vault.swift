@@ -19,9 +19,18 @@ struct Login: Decodable {
     let password: String
     /// Registrable domains of the login's websites, e.g. "example.co.uk".
     let domains: [String]
+    /// Websites whose host is itself a public suffix, e.g. "github.io": that
+    /// host only, never a subdomain (someone else's site).
+    let exactHosts: [String]?
     let passkeys: [Passkey]
     /// The login's one-time password, if it has one.
     let totp: OneTimePassword?
+
+    /// Whether the login is for the page or app: one of its domains is among
+    /// `candidates` (see `Vault.candidates`), or an exact host is in `hosts`.
+    func isFor(candidates: Set<String>, hosts: Set<String>) -> Bool {
+        !Set(domains).isDisjoint(with: candidates) || !Set(exactHosts ?? []).isDisjoint(with: hosts)
+    }
 }
 
 struct Passkey: Decodable {
@@ -170,6 +179,20 @@ enum Vault {
                 out.insert(labels.joined(separator: "."))
                 labels.removeFirst()
             }
+        }
+        return out
+    }
+
+    /// The hosts of a page or app themselves, for logins that only match
+    /// exactly (`Login.exactHosts`).
+    static func hosts(_ identifiers: [ASCredentialServiceIdentifier]) -> Set<String> {
+        var out = Set<String>()
+        for id in identifiers {
+            var host = id.identifier
+            if id.type == .URL, let h = URL(string: id.identifier)?.host {
+                host = h
+            }
+            out.insert(host.lowercased())
         }
         return out
     }

@@ -215,6 +215,7 @@ static TABLE: &[Entry] = &[
     ("err.permission", "You don't have permission to do that in this vault.", "Je hebt geen toestemming om dat in deze kluis te doen."),
     ("err.session_expired", "Your session has expired – please sign in again.", "Je sessie is verlopen – log opnieuw in."),
     ("err.network", "Could not reach the server", "Kan de server niet bereiken"),
+    ("err.insecure_server", "2Secret connects to a server only over https:// (plain http:// only to a server on this device).", "2Secret maakt alleen via https:// verbinding met een server (gewoon http:// alleen met een server op dit apparaat)."),
     ("err.storage_quota", "The storage limit of the server is reached.", "De opslaglimiet van de server is bereikt."),
     ("create.where", "Where should your vault sync?", "Waar wil je je kluis synchroniseren?"),
     ("server.official", "2Secret server", "2Secret-server"),

@@ -80,7 +80,7 @@ impl Ctx {
     }
 
     pub fn kdf_for_new_accounts() -> KdfParams {
-        if std::env::var("TWOSECRET_INSECURE_TEST_KDF").as_deref() == Ok("1") {
+        if test_kdf() {
             KdfParams::insecure_for_tests()
         } else {
             KdfParams::default()
@@ -221,6 +221,12 @@ impl Ctx {
 
 fn aad(account_id: &str) -> String {
     format!("2secret/v1/cli-session/{account_id}")
+}
+
+/// Fast, weak key derivation for the CLI's own tests
+/// (`TWOSECRET_INSECURE_TEST_KDF=1`); never in a release build.
+pub fn test_kdf() -> bool {
+    cfg!(debug_assertions) && std::env::var("TWOSECRET_INSECURE_TEST_KDF").as_deref() == Ok("1")
 }
 
 /// Read a secret without echo. Falls back to a plain line from stdin when no

@@ -18,7 +18,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::crypto::SymmetricKey;
 use crate::session::Session;
 use crate::totp::Totp;
-use crate::util::{b64url, base_domain, now, random_bytes, url_host};
+use crate::util::{b64url, base_domain, is_public_suffix, now, random_bytes, web_host};
 use crate::{Error, Result};
 
 /// Associated data of the sealed cache.
@@ -44,6 +44,10 @@ pub struct AutofillLogin {
     /// Registrable domains of the item's websites (`example.co.uk`), so the
     /// extension needs no public suffix list.
     pub domains: Vec<String>,
+    /// Websites whose host is itself a public suffix (`github.io`): they
+    /// match that host only, never a subdomain (someone else's site).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exact_hosts: Vec<String>,
     pub passkeys: Vec<AutofillPasskey>,
     /// The login's one-time password, for filling verification codes (iOS 18,
     /// macOS 15).
@@ -97,17 +101,22 @@ impl Session {
             .map(|(_, i)| (i, i.totp_secret().and_then(|t| Totp::parse(t).ok())))
             .filter(|(i, totp)| i.password().is_some_and(|p| !p.is_empty()) || !i.passkeys.is_empty() || totp.is_some())
             .map(|(i, totp)| {
-                let mut domains: Vec<String> =
-                    i.urls.iter().filter_map(|u| url_host(u)).map(|h| base_domain(&h)).collect();
+                let hosts: Vec<String> = i.urls.iter().filter_map(|u| web_host(u)).collect();
+                let (mut exact_hosts, hosts): (Vec<String>, Vec<String>) =
+                    hosts.into_iter().partition(|h| is_public_suffix(h));
+                let mut domains: Vec<String> = hosts.iter().map(|h| base_domain(h)).collect();
                 domains.extend(i.passkeys.iter().map(|p| base_domain(&p.rp_id)));
                 domains.sort();
                 domains.dedup();
+                exact_hosts.sort();
+                exact_hosts.dedup();
                 AutofillLogin {
                     id: i.id.clone(),
                     title: i.title.clone(),
                     username: i.username().unwrap_or("").to_string(),
                     password: i.password().unwrap_or("").to_string(),
                     domains,
+                    exact_hosts,
                     passkeys: i
                         .passkeys
                         .iter()
@@ -184,6 +193,9 @@ mod tests {
         s.add_item(&v, codes).unwrap();
         let trashed = s.add_item(&v, Item::login("Old", "old", "pw-2", Some("https://old.example.com"))).unwrap();
         s.trash_item(&trashed).unwrap();
+        let mut tenant = Item::login("Tenants", "t", "pw-3", Some("https://www.pythonanywhere.com/login"));
+        tenant.urls.push("https://github.io".into());
+        s.add_item(&v, tenant).unwrap();
         let options = CreationOptions {
             rp_id: None,
             rp_name: "GitHub".into(),
@@ -200,8 +212,11 @@ mod tests {
         let cache = s.autofill_cache(123);
         assert_eq!(cache.password_entered_at, 123);
         let titles: Vec<&str> = cache.logins.iter().map(|l| l.title.as_str()).collect();
-        assert_eq!(titles, ["Bank", "Codes", "GitHub"]);
+        assert_eq!(titles, ["Bank", "Codes", "GitHub", "Tenants"]);
         assert_eq!(cache.logins[0].domains, ["mybank.co.uk"]);
+        // A tenant's site is not its neighbour's: no "pythonanywhere.com".
+        assert_eq!(cache.logins[3].domains, ["www.pythonanywhere.com"]);
+        assert_eq!(cache.logins[3].exact_hosts, ["github.io"]);
         assert!(cache.logins[0].totp.is_none());
         let totp = cache.logins[1].totp.as_ref().unwrap();
         assert_eq!(totp.secret, b64url(b"12345678901234567890"));

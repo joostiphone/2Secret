@@ -2,14 +2,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use rusqlite::params;
 use serde::Deserialize;
 use twosecret_core::api::*;
-use twosecret_core::crypto::{hkdf32, EncString, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
+use twosecret_core::crypto::{constant_time_eq, hkdf32, EncString, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
 use twosecret_core::profile::Role;
 use twosecret_core::util::{b64, normalize_email, now};
 
@@ -19,12 +19,17 @@ use crate::db::{self, AccountRow};
 use crate::error::{ApiError, ApiResult};
 use crate::{AppState, SignupMode};
 
+/// Requests anyone may send without signing in are small; a large body would
+/// cost parsing before any limit applies.
+pub const PUBLIC_BODY_BYTES: usize = 64 * 1024;
+
 pub fn api_router() -> Router<AppState> {
+    let small = || DefaultBodyLimit::max(PUBLIC_BODY_BYTES);
     Router::new()
         .route("/health", get(health))
-        .route("/prelogin", post(prelogin))
-        .route("/register", post(register))
-        .route("/login", post(login))
+        .route("/prelogin", post(prelogin).layer(small()))
+        .route("/register", post(register).layer(small()))
+        .route("/login", post(login).layer(small()))
         .route("/logout", post(logout))
         .route("/account", get(get_account).put(update_account).delete(delete_account))
         .route("/account/password", post(change_password))
@@ -45,6 +50,27 @@ pub fn api_router() -> Router<AppState> {
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
+
+/// Run a password hash (Argon2id) on the blocking pool, waiting for one of
+/// the [`AppState::hash_slots`]; when none frees up in time the request is
+/// turned away (429) instead of piling up.
+async fn hash_job<T: Send + 'static>(state: &AppState, job: impl FnOnce() -> T + Send + 'static) -> ApiResult<T> {
+    let slot = tokio::time::timeout(std::time::Duration::from_secs(10), state.hash_slots.clone().acquire_owned())
+        .await
+        .map_err(|_| ApiError::too_many_requests())?
+        .map_err(ApiError::internal)?;
+    Ok(tokio::task::spawn_blocking(move || {
+        let _slot = slot;
+        job()
+    })
+    .await?)
+}
+
+/// Whether a ciphertext is well-formed. The server cannot decrypt it, but a
+/// malformed one would make every member's vault list and sync fail.
+fn valid_enc(data: &EncString) -> bool {
+    EncString::parse(data.as_str()).is_ok()
+}
 
 fn valid_pq_key(key: Option<&str>) -> ApiResult<()> {
     match key {
@@ -167,14 +193,21 @@ async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<Json<SessionResponse>> {
     let limiter_key = format!("signup:{}", client.0);
-    if !state.signup_limiter.allowed(&limiter_key, now()) {
+    let attempt_key = format!("attempt:{}", client.0);
+    if !state.signup_limiter.allowed(&limiter_key, now()) || !state.attempt_limiter.allowed(&attempt_key, now()) {
         return Err(ApiError::too_many_requests());
     }
     match state.config.signups {
         SignupMode::Closed => return Err(ApiError::forbidden("sign-ups are closed on this server")),
         SignupMode::Invite => {
             let code = req.invite_code.as_deref().unwrap_or("").trim();
-            if code.is_empty() || !state.config.invite_codes.iter().any(|c| c == code) {
+            let known = state
+                .config
+                .invite_codes
+                .iter()
+                .fold(false, |found, c| found | constant_time_eq(c.as_bytes(), code.as_bytes()));
+            if code.is_empty() || !known {
+                state.attempt_limiter.record_failure(&attempt_key, now());
                 return Err(ApiError::forbidden("a valid invite code is required"));
             }
         }
@@ -189,7 +222,26 @@ async fn register(
     valid_pq_key(req.keyset.pq_public_key.as_deref())?;
     let name: String = req.name.chars().filter(|c| !c.is_control()).take(100).collect();
 
-    let auth_hash = tokio::task::spawn_blocking(move || hash_auth_key(&auth_key)).await??;
+    // The cheap refusals first: hashing is what costs the server.
+    let max_accounts = state.config.max_accounts;
+    let (lookup_email, lookup_id) = (email.clone(), req.account_id.clone());
+    state
+        .db
+        .run(move |c| {
+            if max_accounts.is_some_and(|max| db::count_accounts(c).unwrap_or(0) as u64 >= max) {
+                return Err(ApiError::forbidden("this server has no room for new accounts"));
+            }
+            if db::account_by_email(c, &lookup_email)?.is_some() {
+                return Err(ApiError::conflict("an account with this e-mail address already exists"));
+            }
+            if db::account_by_id(c, &lookup_id)?.is_some() {
+                return Err(ApiError::conflict("account id already in use"));
+            }
+            Ok(())
+        })
+        .await
+        .inspect_err(|_| state.attempt_limiter.record_failure(&attempt_key, now()))?;
+    let auth_hash = hash_job(&state, move || hash_auth_key(&auth_key)).await??;
     let account = AccountRow {
         id: req.account_id.clone(),
         email,
@@ -202,7 +254,6 @@ async fn register(
         created_at: now(),
     };
     let session_days = state.config.session_days;
-    let max_accounts = state.config.max_accounts;
     let device = device_name(req.device_name);
     let (token, token_hash) = new_token();
     let info = state
@@ -238,19 +289,27 @@ async fn register(
     Ok(Json(SessionResponse { token, account: info }))
 }
 
-async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> ApiResult<Json<SessionResponse>> {
+async fn login(
+    State(state): State<AppState>,
+    client: ClientIp,
+    Json(req): Json<LoginRequest>,
+) -> ApiResult<Json<SessionResponse>> {
     let email = valid_email(&req.email)?;
     let auth_key = decode_auth_key(&req.auth_key)?;
-    let limiter_key = format!("login:{email}");
+    // Per address and e-mail address, so a stranger who knows someone's
+    // e-mail address cannot lock them out; the auth key is far too long to
+    // guess, so these limits only keep the effort down.
+    let limiter_key = format!("login:{email}:{}", client.0);
+    let attempt_key = format!("attempt:{}", client.0);
     let ts = now();
-    if !state.login_limiter.allowed(&limiter_key, ts) {
+    if !state.login_limiter.allowed(&limiter_key, ts) || !state.attempt_limiter.allowed(&attempt_key, ts) {
         return Err(ApiError::too_many_requests());
     }
     let lookup = email.clone();
     let account = state.db.run(move |c| Ok(db::account_by_email(c, &lookup)?)).await?;
     let verified = {
         let account = account.clone();
-        tokio::task::spawn_blocking(move || match &account {
+        hash_job(&state, move || match &account {
             Some(a) => verify_auth_key(&auth_key, &a.auth_hash),
             None => {
                 dummy_verify(&auth_key);
@@ -261,6 +320,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
     };
     let Some(account) = account.filter(|_| verified) else {
         state.login_limiter.record_failure(&limiter_key, ts);
+        state.attempt_limiter.record_failure(&attempt_key, ts);
         return Err(ApiError::invalid_credentials());
     };
     state.login_limiter.reset(&limiter_key);
@@ -350,7 +410,7 @@ async fn verify_current(state: &AppState, account_id: &str, auth_key_b64: &str) 
         return Err(ApiError::too_many_requests());
     }
     let hash = account.auth_hash.clone();
-    let ok = tokio::task::spawn_blocking(move || verify_auth_key(&key, &hash)).await?;
+    let ok = hash_job(state, move || verify_auth_key(&key, &hash)).await?;
     if !ok {
         state.login_limiter.record_failure(&limiter_key, now());
         return Err(ApiError::invalid_credentials());
@@ -368,7 +428,7 @@ async fn change_password(
     valid_kdf(&req.kdf)?;
     valid_pq_key(req.keyset.pq_public_key.as_deref())?;
     let new_key = decode_auth_key(&req.new_auth_key)?;
-    let auth_hash = tokio::task::spawn_blocking(move || hash_auth_key(&new_key)).await??;
+    let auth_hash = hash_job(&state, move || hash_auth_key(&new_key)).await??;
     let mut new_ks = req.keyset.clone();
     let kdf = serde_json::to_string(&req.kdf)?;
     state
@@ -382,9 +442,15 @@ async fn change_password(
             if new_ks.public_key != current_pk {
                 return Err(ApiError::bad_request("the keyset's public key cannot change"));
             }
-            // Clients from before post-quantum sharing do not know the ML-KEM key: keep it.
-            if new_ks.pq_public_key.is_none() {
-                new_ks.pq_public_key = serde_json::from_str::<EncryptedKeyset>(&current_ks)?.pq_public_key;
+            // Clients from before post-quantum sharing do not know the ML-KEM
+            // key: keep it. Once set it never changes (see set_pq_key).
+            let current_pq = serde_json::from_str::<EncryptedKeyset>(&current_ks)?.pq_public_key;
+            match (&current_pq, &new_ks.pq_public_key) {
+                (_, None) => new_ks.pq_public_key = current_pq,
+                (Some(current), Some(new)) if current != new => {
+                    return Err(ApiError::bad_request("the keyset's post-quantum key cannot change"));
+                }
+                _ => {}
             }
             let keyset = serde_json::to_string(&new_ks)?;
             tx.execute(
@@ -510,7 +576,13 @@ async fn set_pq_key(
             let keyset: String =
                 tx.query_row("SELECT keyset FROM accounts WHERE id = ?1", [&auth.account_id], |r| r.get(0))?;
             let mut keyset: EncryptedKeyset = serde_json::from_str(&keyset)?;
-            keyset.pq_public_key = Some(req.pq_public_key);
+            // Set once: the key follows from the account key, which never
+            // changes, so a different one would be someone else's.
+            match &keyset.pq_public_key {
+                Some(current) if *current == req.pq_public_key => return Ok(()),
+                Some(_) => return Err(ApiError::conflict("the account's post-quantum key cannot change")),
+                None => keyset.pq_public_key = Some(req.pq_public_key),
+            }
             tx.execute(
                 "UPDATE accounts SET keyset = ?1, updated_at = ?2 WHERE id = ?3",
                 params![serde_json::to_string(&keyset)?, now(), auth.account_id],
@@ -536,8 +608,8 @@ async fn create_vault(
     Json(req): Json<CreateVaultRequest>,
 ) -> ApiResult<Json<VaultDto>> {
     valid_id(&req.id)?;
-    if req.meta.len() > MAX_VAULT_META {
-        return Err(ApiError::bad_request("vault metadata too large"));
+    if req.meta.len() > MAX_VAULT_META || !valid_enc(&req.meta) {
+        return Err(ApiError::bad_request("invalid vault metadata"));
     }
     let quota = state.config.account_quota_bytes;
     let dto = state
@@ -602,8 +674,8 @@ async fn update_vault(
     Path(id): Path<String>,
     Json(req): Json<UpdateVaultRequest>,
 ) -> ApiResult<StatusCode> {
-    if req.meta.len() > MAX_VAULT_META {
-        return Err(ApiError::bad_request("vault metadata too large"));
+    if req.meta.len() > MAX_VAULT_META || !valid_enc(&req.meta) {
+        return Err(ApiError::bad_request("invalid vault metadata"));
     }
     let quota = state.config.account_quota_bytes;
     state
@@ -752,8 +824,11 @@ async fn rotate_vault_key(
 ) -> ApiResult<StatusCode> {
     valid_id(&id)?;
     let max_item = state.config.max_item_bytes;
-    if req.items.iter().any(|i| i.data.len() > max_item) {
-        return Err(ApiError::bad_request("item too large"));
+    if req.items.iter().any(|i| i.data.len() > max_item || !valid_enc(&i.data)) {
+        return Err(ApiError::bad_request("invalid or too large item"));
+    }
+    if req.meta.len() > MAX_VAULT_META || !valid_enc(&req.meta) {
+        return Err(ApiError::bad_request("invalid vault metadata"));
     }
     state
         .db
@@ -900,7 +975,7 @@ async fn sync(
                         }
                         if valid_id(&change.id).is_err()
                             || !vault.role.can_write()
-                            || change.data.as_ref().is_some_and(|d| d.len() > max_item)
+                            || change.data.as_ref().is_some_and(|d| d.len() > max_item || !valid_enc(d))
                         {
                             rejected.push(change.id.clone());
                             continue;

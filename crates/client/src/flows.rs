@@ -598,7 +598,8 @@ pub async fn breach_check_hashes(entries: Vec<(String, String, String)>) -> Resu
     for (id, prefix, suffix) in entries {
         by_prefix.entry(prefix).or_default().push((id, suffix));
     }
-    let http = reqwest::Client::new();
+    // With time limits, like every request to the sync server.
+    let http = crate::build_http();
     let mut out = HashMap::new();
     for (prefix, entries) in by_prefix {
         let body = http

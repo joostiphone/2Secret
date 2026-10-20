@@ -280,9 +280,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         _ = view
         let query = searchField.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
         let wanted = Vault.candidates(serviceIdentifiers)
+        let hosts = Vault.hosts(serviceIdentifiers)
         let matchesQuery: (Login) -> Bool = { login in
             query.isEmpty || login.title.lowercased().contains(query) || login.username.lowercased().contains(query)
-                || login.domains.contains { $0.contains(query) }
+                || (login.domains + (login.exactHosts ?? [])).contains { $0.contains(query) }
         }
         var rows: [Row] = []
 
@@ -301,8 +302,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         // Logins with a password, or with a one-time password for a code field.
         let listed = cache.logins.filter { (oneTimeCodes ? $0.totp != nil : !$0.password.isEmpty) && matchesQuery($0) }
         let row: (Login) -> Row = oneTimeCodes ? Row.code : Row.login
-        let suggested = listed.filter { !Set($0.domains).isDisjoint(with: wanted) }
-        let others = listed.filter { Set($0.domains).isDisjoint(with: wanted) }
+        let suggested = listed.filter { $0.isFor(candidates: wanted, hosts: hosts) }
+        let others = listed.filter { !$0.isFor(candidates: wanted, hosts: hosts) }
         if !suggested.isEmpty { rows += [Row.header(L.suggested)] + suggested.map(row) }
         if !others.isEmpty { rows += [Row.header(L.all)] + others.map(row) }
         self.rows = rows

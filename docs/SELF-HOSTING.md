@@ -68,7 +68,7 @@ Every option can be given as a command line flag or environment variable.
 | `--data-dir` | `TWOSECRET_DATA_DIR` | `./2secret-data` | Database location |
 | `--web-dir` | `TWOSECRET_WEB_DIR` | – | Serve the web vault from this directory |
 | `--signups` | `TWOSECRET_SIGNUPS` | `open` | `open`, `invite` or `closed` |
-| `--invite-codes` | `TWOSECRET_INVITE_CODES` | – | Comma separated invite codes (for `invite`) |
+| `--invite-codes` | `TWOSECRET_INVITE_CODES` | – | Comma separated invite codes (for `invite`); the placeholders of the examples (`change-me…`) never work |
 | `--session-days` | `TWOSECRET_SESSION_DAYS` | `30` | Sign out devices after this many idle days |
 | `--cors-origins` | `TWOSECRET_CORS_ORIGINS` | – | Extra origins allowed to call the API from a browser (`*` for any) |
 | `--account-storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | – | Storage per account for the vaults it owns; what does not fit stays on the device |

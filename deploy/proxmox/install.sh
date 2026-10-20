@@ -13,7 +13,8 @@
 #   --signups-per-ip N    New accounts per address per day (default 5, 0 = no limit)
 #   --max-accounts N      Accept no new accounts after N (default: no limit)
 #   --ip-header NAME      Header with the client's address, set by the proxy
-#                         (default CF-Connecting-IP; "none" if there is no proxy)
+#                         (default CF-Connecting-IP with a Cloudflare Tunnel,
+#                         else none: a client could set the header itself)
 #   --listen ADDR         Address to listen on (default 127.0.0.1:8743). With
 #                         cloudflared in another container: 0.0.0.0:8743
 #   --trusted-proxy IPS   Proxies on other machines whose --ip-header is believed,
@@ -41,7 +42,7 @@ BACKUPS=/var/backups/2secret
 SELF=/usr/local/sbin/2secret-install
 
 tunnel_token="" version=latest signups=open invite_codes="" storage_mb=100 signups_per_ip=5
-max_accounts="" ip_header=CF-Connecting-IP web=1 auto_update=1 mode=install download_dir=""
+max_accounts="" ip_header="" web=1 auto_update=1 mode=install download_dir=""
 listen=127.0.0.1:8743 trusted_proxies=""
 
 die() {
@@ -76,6 +77,13 @@ case "$signups" in open | invite | closed) ;; *) die "--signups must be open, in
 for n in "$storage_mb" "$signups_per_ip" ${max_accounts:+"$max_accounts"}; do
   [[ "$n" =~ ^[0-9]+$ ]] || die "not a number: $n"
 done
+if [ -z "$ip_header" ]; then
+  if [ -n "$tunnel_token" ] || systemctl is-enabled --quiet cloudflared 2> /dev/null; then
+    ip_header=CF-Connecting-IP
+  else
+    ip_header=none
+  fi
+fi
 
 download() { curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$2" "$1"; }
 
@@ -147,13 +155,15 @@ installed_version() {
 install_release() {
   local tmp="$1" dir
   mkdir -p "$tmp/server"
-  tar -xzf "$server_archive" -C "$tmp/server"
+  tar --no-same-owner -xzf "$server_archive" -C "$tmp/server"
   dir="$(find "$tmp/server" -name 2secret-server -type f -print -quit)"
   [ -n "$dir" ] || die "no 2secret-server in the archive"
   install -m 0755 "$dir" "$BIN.new" && mv -f "$BIN.new" "$BIN"
   if [ "$web" = 1 ] && [ -n "${web_archive:-}" ]; then
     rm -rf "$WEB.new" && mkdir -p "$WEB.new"
-    tar -xzf "$web_archive" -C "$WEB.new"
+    # Owned by root, not by whoever built the archive.
+    tar --no-same-owner --no-same-permissions -xzf "$web_archive" -C "$WEB.new"
+    chown -R root:root "$WEB.new" && chmod -R u=rwX,go=rX "$WEB.new"
     rm -rf "$WEB.old" && { [ ! -d "$WEB" ] || mv "$WEB" "$WEB.old"; } && mv "$WEB.new" "$WEB" && rm -rf "$WEB.old"
   fi
 }

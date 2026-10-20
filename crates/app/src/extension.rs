@@ -29,12 +29,14 @@ export async function activeTabUrl() {
 }
 
 // Is a page location allowed to receive an item's credentials? `rules` are
-// the item's registrable domains, with the https and port requirements.
+// the item's registrable domains, with the https and port requirements; an
+// `exact` domain is a public suffix (github.io), whose subdomains are other
+// people's sites.
 function twosecretAllowed(loc, rules) {
   const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
   if (!host || !/^https?:$/.test(loc.protocol)) return false;
   return rules.some((r) =>
-    (host === r.domain || host.endsWith("." + r.domain))
+    (host === r.domain || (!r.exact && host.endsWith("." + r.domain)))
     && (!r.https || loc.protocol === "https:")
     && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
 }
@@ -48,7 +50,7 @@ function twosecretFill(username, password, code, rules) {
     const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
     if (!host || !/^https?:$/.test(loc.protocol)) return false;
     return rules.some((r) =>
-      (host === r.domain || host.endsWith("." + r.domain))
+      (host === r.domain || (!r.exact && host.endsWith("." + r.domain)))
       && (!r.https || loc.protocol === "https:")
       && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
   };

@@ -207,6 +207,19 @@ pub struct VaultRecord {
     /// Generation of the vault key (see `VaultDto::key_rev`).
     #[serde(default)]
     pub key_rev: u64,
+    /// Fingerprints of keys this vault had before (see
+    /// [`retired_key_id`]): a server that offers one of those again is
+    /// refused, so a removed member's old key cannot come back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retired_keys: Vec<String>,
+}
+
+/// How many replaced keys a vault remembers.
+pub const RETIRED_KEYS: usize = 16;
+
+/// The fingerprint of a vault key in [`VaultRecord::retired_keys`].
+pub fn retired_key_id(key: &crate::crypto::SymmetricKey) -> String {
+    crate::util::b64(&crate::crypto::sha256(key.as_bytes())[..16])
 }
 
 fn one() -> u32 {

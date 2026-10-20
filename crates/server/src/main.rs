@@ -75,9 +75,19 @@ async fn main() -> anyhow::Result<()> {
     if args.signups == SignupMode::Invite && args.invite_codes.is_empty() {
         anyhow::bail!("--signups invite requires at least one --invite-codes value");
     }
+    // The examples' placeholders are public: they never let anyone in.
+    const PLACEHOLDERS: [&str; 2] = ["change-me", "change-me-to-something-secret"];
+    let invite_codes: Vec<String> =
+        args.invite_codes.into_iter().filter(|c| !c.trim().is_empty() && !PLACEHOLDERS.contains(&c.trim())).collect();
+    if args.signups == SignupMode::Invite && invite_codes.is_empty() {
+        tracing::warn!("every invite code is a placeholder from the examples: choose your own; nobody can sign up");
+    }
+    if invite_codes.iter().any(|c| c.trim().chars().count() < 12) {
+        tracing::warn!("an invite code shorter than 12 characters is easy to guess");
+    }
     let config = Config {
         signups: args.signups,
-        invite_codes: args.invite_codes.into_iter().filter(|c| !c.trim().is_empty()).collect(),
+        invite_codes,
         session_days: args.session_days.max(1),
         web_dir: args.web_dir.clone(),
         cors_origins: args.cors_origins,

@@ -336,7 +336,7 @@ impl SecretKey {
                 cleaned.len()
             )));
         }
-        if let Some(bad) = cleaned.chars().find(|c| !SK_ALPHABET.contains(&(*c as u8))) {
+        if let Some(bad) = cleaned.chars().find(|c| !c.is_ascii() || !SK_ALPHABET.contains(&(*c as u8))) {
             return Err(Error::InvalidSecretKey(format!("character '{bad}' is not allowed")));
         }
         let (body, check) = cleaned.split_at(cleaned.len() - 1);
@@ -1031,6 +1031,8 @@ mod tests {
         let _ = SecretKey::parse(&typo); // may or may not be caught (1/32)
         assert!(SecretKey::parse("2S-0000").is_err());
         assert!(SecretKey::parse(&f.replace(&f[4..5], "0")).is_err());
+        // Two bytes, and 'Ł' as a byte is 'A': refused, not a crash.
+        assert!(SecretKey::parse(&format!("{}Ł", &f[..f.len() - 2])).is_err());
     }
 
     #[test]

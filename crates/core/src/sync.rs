@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ItemChange, ItemDto, SyncRequest, SyncResponse, VaultDto, VaultSyncRequest};
 use crate::crypto::SymmetricKey;
 use crate::item::{Item, PasswordHistoryEntry, MAX_PASSWORD_HISTORY};
-use crate::profile::{aad, ItemRecord, SyncState, VaultRecord};
+use crate::profile::{aad, retired_key_id, ItemRecord, SyncState, VaultRecord, RETIRED_KEYS};
 use crate::session::Session;
 use crate::util::now;
 use crate::Result;
@@ -37,6 +37,10 @@ pub struct SyncReport {
     /// The profile photo was changed on another device.
     #[serde(default)]
     pub avatar_changed: bool,
+    /// Vault keys the server offered and this device refused: keys the vault
+    /// had before.
+    #[serde(default)]
+    pub keys_refused: usize,
     /// Emergency access as the server sees it (none: not supported there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emergency: Option<crate::api::EmergencyOverview>,
@@ -53,6 +57,7 @@ impl SyncReport {
         self.over_quota = other.over_quota;
         self.vaults_added += other.vaults_added;
         self.vaults_removed += other.vaults_removed;
+        self.keys_refused += other.keys_refused;
         self.needs_another_round = other.needs_another_round;
         self.avatar_changed |= other.avatar_changed;
     }
@@ -154,7 +159,7 @@ impl Session {
                 // The server refused our change (e.g. we lost write access):
                 // drop the local edit and re-download the server version.
                 report.rejected += 1;
-                self.profile_mut().items.retain(|i| &i.id != id);
+                self.profile_mut().items.retain(|i| &i.id != id || i.vault_id != vault_id);
                 refetch = true;
             }
 
@@ -200,18 +205,35 @@ impl Session {
 
     fn apply_vault_list(&mut self, vaults: &[VaultDto], report: &mut SyncReport) -> Result<()> {
         // Vaults whose key someone replaced: re-encrypt our copies with the
-        // new key while we still have the old one.
-        let replaced: Vec<(String, SymmetricKey)> = vaults
-            .iter()
-            .filter_map(|dto| {
-                let local = self.profile().vault(&dto.id)?;
-                if local.wrapped_key == dto.wrapped_key {
-                    return None;
+        // new key while we still have the old one. A key the vault had before
+        // (a server going back to the key a removed member still knows) is
+        // refused, and the vault keeps its key.
+        let mut refused: Vec<String> = Vec::new();
+        let mut replaced: Vec<(String, SymmetricKey)> = Vec::new();
+        for dto in vaults {
+            let Some(local) = self.profile().vault(&dto.id) else { continue };
+            if local.wrapped_key == dto.wrapped_key {
+                continue;
+            }
+            let Ok(new_key) = dto.wrapped_key.unwrap(self.keyset(), &aad::vault_key(&dto.id)) else { continue };
+            let Some(old_key) = self.vault_key(&dto.id) else { continue };
+            if old_key == &new_key {
+                continue;
+            }
+            if local.retired_keys.contains(&retired_key_id(&new_key)) {
+                refused.push(dto.id.clone());
+            } else {
+                let retired = retired_key_id(old_key);
+                if let Some(v) = self.profile_mut().vault_mut(&dto.id) {
+                    v.retired_keys.retain(|k| *k != retired);
+                    v.retired_keys.push(retired);
+                    let excess = v.retired_keys.len().saturating_sub(RETIRED_KEYS);
+                    v.retired_keys.drain(..excess);
                 }
-                let new_key = dto.wrapped_key.unwrap(self.keyset(), &aad::vault_key(&dto.id)).ok()?;
-                (self.vault_key(&dto.id)? != &new_key).then(|| (dto.id.clone(), new_key))
-            })
-            .collect();
+                replaced.push((dto.id.clone(), new_key));
+            }
+        }
+        report.keys_refused += refused.len();
         for (vault_id, key) in &replaced {
             self.reencrypt_vault(vault_id, key);
         }
@@ -232,6 +254,9 @@ impl Session {
         for dto in vaults {
             match p.vault_mut(&dto.id) {
                 Some(local) => {
+                    if refused.contains(&dto.id) {
+                        continue;
+                    }
                     if local.sync_state != SyncState::PendingUpdate {
                         local.meta = dto.meta.clone();
                     }
@@ -260,6 +285,7 @@ impl Session {
                         member_count: dto.member_count,
                         created_at: dto.created_at,
                         key_rev: dto.key_rev,
+                        retired_keys: Vec::new(),
                     });
                 }
             }
@@ -272,6 +298,9 @@ impl Session {
         match p.items.iter().position(|i| i.id == remote.id) {
             Some(pos) => {
                 let local = &p.items[pos];
+                if local.vault_id != remote.vault_id {
+                    return; // Another vault's item with the same ID: not ours to replace.
+                }
                 if remote.revision <= local.revision {
                     return; // Already have this (e.g. our own accepted write).
                 }
@@ -383,6 +412,7 @@ fn merge_password_history(item: &mut Item, other: &Item) {
 mod tests {
     use super::*;
     use crate::api::{Accepted, MemberDto, RotateVaultKeyRequest, VaultSyncResult};
+    use crate::crypto::{decrypt_json, encrypt_json, WrappedKey};
     use crate::profile::Role;
     use crate::session::tests::new_session;
 
@@ -504,6 +534,56 @@ mod tests {
             public_key: s.public_key().to_b64(),
             pq_public_key: None,
         }
+    }
+
+    #[test]
+    fn an_item_of_another_vault_with_the_same_id_is_not_ours() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let w = a.create_vault("Work", "").unwrap();
+        let id = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        let other = a.add_item(&w, Item::login("Other", "o", "p2", None)).unwrap();
+        server.full_sync(&mut a);
+        let data = server.items.iter().find(|i| i.id == other).unwrap().data.clone();
+        server.items.push(ItemDto { id: id.clone(), vault_id: w.clone(), revision: 100, data });
+        server.vaults.iter_mut().find(|d| d.id == w).unwrap().revision = 100;
+        server.full_sync(&mut a);
+        assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
+        assert!(a.undecryptable().is_empty());
+    }
+
+    #[test]
+    fn a_server_cannot_bring_back_an_old_vault_key() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let id = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        server.full_sync(&mut a);
+        let old_wrapped = server.vaults[0].wrapped_key.clone();
+        let req = a.rotate_vault_key_request(&v, &[me(&a)]).unwrap();
+        server.rotate(&v, req);
+        server.full_sync(&mut a);
+        let key = a.vault_key(&v).unwrap().clone();
+        assert_eq!(a.profile().vault(&v).unwrap().retired_keys.len(), 1);
+
+        // The key from before the rotation (which a removed member may
+        // still know), even as a newer generation.
+        server.vaults[0].wrapped_key = old_wrapped;
+        server.vaults[0].key_rev += 1;
+        assert_eq!(server.full_sync(&mut a).keys_refused, 1);
+        assert_eq!(a.vault_key(&v), Some(&key));
+        assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
+
+        // A key rotated in later is taken, and the one before it retired.
+        let newer = SymmetricKey::generate();
+        let meta_aad = aad::vault_meta(&v);
+        let meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
+        server.vaults[0].meta = encrypt_json(&newer, &meta, &meta_aad).unwrap();
+        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &newer, &aad::vault_key(&v));
+        assert_eq!(server.full_sync(&mut a).keys_refused, 0);
+        assert_eq!(a.vault_key(&v), Some(&newer));
+        assert_eq!(a.profile().vault(&v).unwrap().retired_keys.len(), 2);
     }
 
     #[test]

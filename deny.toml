@@ -1,0 +1,20 @@
+# `cargo deny check advisories` (CI): the RustSec advisories for Cargo.lock.
+# Every ignored advisory says why it does not affect 2Secret; remove it once
+# the fixed version is in.
+[advisories]
+ignore = [
+    # rsa: Marvin timing side channel; no fixed version yet. Only the desktop
+    # SSH agent signs with RSA keys, over a local socket, each signature
+    # after consent. Ed25519 keys are not affected.
+    { id = "RUSTSEC-2023-0071", reason = "no fix upstream; local SSH agent only" },
+    # glib 0.18: VariantStrIter is never used. gtk-rs 0.18 comes with
+    # wry/tao in Dioxus 0.7; gone with Dioxus 0.8.
+    { id = "RUSTSEC-2024-0429", reason = "not called; comes with Dioxus 0.7" },
+    # rand 0.7: build time only (phf_generator in wry), needs a custom logger.
+    { id = "RUSTSEC-2026-0097", reason = "build-time only, through wry" },
+    # Unmaintained, no known issue: fxhash (through wry), paste and
+    # proc-macro-error (compile-time macros).
+    { id = "RUSTSEC-2025-0057", reason = "unmaintained; through wry" },
+    { id = "RUSTSEC-2024-0436", reason = "unmaintained; compile-time macro" },
+    { id = "RUSTSEC-2024-0370", reason = "unmaintained; compile-time macro through glib" },
+]

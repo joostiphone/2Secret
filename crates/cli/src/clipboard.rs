@@ -39,12 +39,20 @@ pub fn daemon(clear_after_secs: u64) -> Result<()> {
     #[cfg(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))))]
     {
         use arboard::SetExtLinux;
-        // Blocks while we own the clipboard, until the deadline.
-        cb.set().wait_until(deadline).text(secret.clone())?;
+        // Blocks while we own the clipboard, until the deadline; clipboard
+        // managers leave it out of their history.
+        cb.set().wait_until(deadline).exclude_from_history().text(secret.clone())?;
     }
     #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten")))))]
     {
-        cb.set_text(secret.clone())?;
+        let set = cb.set();
+        // Not in Windows' clipboard history or cloud clipboard, nor in
+        // clipboard managers on macOS.
+        #[cfg(windows)]
+        let set = arboard::SetExtWindows::exclude_from_cloud(arboard::SetExtWindows::exclude_from_history(set));
+        #[cfg(target_os = "macos")]
+        let set = arboard::SetExtApple::exclude_from_history(set);
+        set.text(secret.clone())?;
         std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
     }
     if cb.get_text().map(|t| t == secret).unwrap_or(false) {

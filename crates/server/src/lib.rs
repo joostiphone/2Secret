@@ -100,6 +100,11 @@ pub struct AppState {
     pub signup_limiter: Arc<ratelimit::RateLimiter>,
     /// Counts attempts to open share links per client address.
     pub share_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts failed sign-ins and wrong invite codes per client address.
+    pub attempt_limiter: Arc<ratelimit::RateLimiter>,
+    /// Password hashes (Argon2id, memory-hard) running at the same time: one
+    /// per processor, so a flood of sign-ins cannot exhaust the server.
+    pub hash_slots: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -112,6 +117,10 @@ impl AppState {
             login_limiter: Arc::new(ratelimit::RateLimiter::new(10, 15 * 60)),
             signup_limiter: Arc::new(ratelimit::RateLimiter::new(signups_per_ip, 24 * 3600)),
             share_limiter: Arc::new(ratelimit::RateLimiter::new(60, 15 * 60)),
+            attempt_limiter: Arc::new(ratelimit::RateLimiter::new(30, 15 * 60)),
+            hash_slots: Arc::new(tokio::sync::Semaphore::new(
+                std::thread::available_parallelism().map_or(2, |n| n.get()).max(2),
+            )),
         }
     }
 

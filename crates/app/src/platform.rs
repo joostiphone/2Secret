@@ -122,10 +122,79 @@ mod imp {
 
     pub(super) fn make_storage() -> Box<dyn Storage> {
         match FileStorage::new(data_dir()) {
+            #[cfg(target_os = "ios")]
+            Ok(fs) => Box::new(ios_backup::NoBackupSecrets::new(fs)),
+            #[cfg(not(target_os = "ios"))]
             Ok(fs) => Box::new(fs),
             Err(e) => {
                 eprintln!("2Secret: cannot use data directory ({e}); data will not be saved");
                 Box::new(MemoryStorage::new())
+            }
+        }
+    }
+
+    /// iCloud and computer backups of the iPhone must not hold the Secret
+    /// Key next to the encrypted vault: together they would only need the
+    /// master password guessed. So `device*.json` stays out of backups (on
+    /// Android everything is in the no-backup directory).
+    #[cfg(target_os = "ios")]
+    mod ios_backup {
+        use std::path::Path;
+
+        use objc2::runtime::AnyObject;
+        use objc2_foundation::{NSNumber, NSString, NSURLIsExcludedFromBackupKey, NSURL};
+        use twosecret_core::profile::DEVICE_KEY;
+        use twosecret_core::storage::{FileStorage, Storage};
+
+        pub struct NoBackupSecrets(FileStorage);
+
+        impl NoBackupSecrets {
+            pub fn new(fs: FileStorage) -> Self {
+                // Also the files of versions that did not do this yet.
+                if let Ok(entries) = std::fs::read_dir(fs.dir()) {
+                    for entry in entries.flatten() {
+                        if entry.file_name().to_string_lossy().starts_with(DEVICE_KEY) {
+                            exclude(&entry.path());
+                        }
+                    }
+                }
+                Self(fs)
+            }
+        }
+
+        fn is_secret(key: &str) -> bool {
+            key == DEVICE_KEY || key.strip_prefix(DEVICE_KEY).is_some_and(|rest| rest.starts_with('-'))
+        }
+
+        fn exclude(path: &Path) {
+            if !path.exists() {
+                return;
+            }
+            let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+            let yes = NSNumber::numberWithBool(true);
+            let value: &AnyObject = &yes;
+            if let Err(e) = unsafe { url.setResourceValue_forKey_error(Some(value), NSURLIsExcludedFromBackupKey) } {
+                eprintln!("2Secret: cannot keep {} out of backups: {e:?}", path.display());
+            }
+        }
+
+        impl Storage for NoBackupSecrets {
+            fn read(&self, key: &str) -> twosecret_core::Result<Option<String>> {
+                self.0.read(key)
+            }
+
+            fn write(&self, key: &str, value: &str) -> twosecret_core::Result<()> {
+                self.0.write(key, value)?;
+                if is_secret(key) {
+                    // A new file (written atomically) and the copy of the old one.
+                    exclude(&self.0.dir().join(format!("{key}.json")));
+                    exclude(&self.0.dir().join(format!("{key}.json.bak")));
+                }
+                Ok(())
+            }
+
+            fn delete(&self, key: &str) -> twosecret_core::Result<()> {
+                self.0.delete(key)
             }
         }
     }
@@ -180,10 +249,24 @@ mod imp {
         })
     }
 
+    /// Copies are secrets: Windows' clipboard history and cloud clipboard,
+    /// and clipboard managers on Linux and macOS, leave them out.
+    #[cfg(all(feature = "desktop", not(target_os = "ios"), not(target_os = "android")))]
+    fn set_secret(cb: &mut arboard::Clipboard, text: String) -> Result<(), arboard::Error> {
+        let set = cb.set();
+        #[cfg(windows)]
+        let set = arboard::SetExtWindows::exclude_from_cloud(arboard::SetExtWindows::exclude_from_history(set));
+        #[cfg(target_os = "macos")]
+        let set = arboard::SetExtApple::exclude_from_history(set);
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let set = arboard::SetExtLinux::exclude_from_history(set);
+        set.text(text)
+    }
+
     pub async fn copy_text(text: &str) -> bool {
         #[cfg(all(feature = "desktop", not(target_os = "ios"), not(target_os = "android")))]
         {
-            if with_clipboard(|cb| cb.set_text(text.to_string()).is_ok()) == Some(true) {
+            if with_clipboard(|cb| set_secret(cb, text.to_string()).is_ok()) == Some(true) {
                 return true;
             }
         }

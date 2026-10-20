@@ -292,7 +292,7 @@ pub struct ItemOpts {
 
 fn main() {
     let cli = Cli::parse();
-    if std::env::var("TWOSECRET_INSECURE_TEST_KDF").as_deref() == Ok("1") {
+    if context::test_kdf() {
         twosecret_core::crypto::KdfParams::allow_weak_for_tests();
     }
     if let Command::ClipboardDaemon { seconds } = cli.command {

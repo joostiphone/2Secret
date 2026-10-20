@@ -662,6 +662,7 @@ pub fn client_error(e: &twosecret_client::Error) -> String {
         E::Api { message, .. } => message.clone(),
         E::NotLinked => t("err.not_linked").into(),
         E::Protocol(m) => m.clone(),
+        E::InsecureServer => t("err.insecure_server").into(),
     }
 }
 

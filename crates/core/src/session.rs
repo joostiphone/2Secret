@@ -539,9 +539,14 @@ impl Session {
                 return Some(id.clone());
             }
         }
+        // Only a vault whose key is wrapped with our own account key surely
+        // is our own: a server can list any vault as ours.
+        let own_key =
+            |id: &str| self.profile.vault(id).is_some_and(|r| matches!(r.wrapped_key, WrappedKey::Symmetric { .. }));
         vaults
             .iter()
-            .find(|v| v.is_owner && !v.is_shared())
+            .find(|v| v.is_owner && !v.is_shared() && own_key(&v.id))
+            .or_else(|| vaults.iter().find(|v| v.is_owner && !v.is_shared()))
             .or_else(|| vaults.iter().find(|v| v.role.can_write()))
             .map(|v| v.id.clone())
     }
@@ -570,6 +575,7 @@ impl Session {
             member_count: 1,
             created_at: now(),
             key_rev: 0,
+            retired_keys: Vec::new(),
         };
         self.profile.vaults.push(record);
         self.vaults.insert(id.clone(), OpenVault { key, meta });

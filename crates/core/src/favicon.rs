@@ -86,16 +86,22 @@ pub fn icon_host(item: &Item) -> Option<String> {
     public_host(&host).then_some(host)
 }
 
-/// Whether a host is a public DNS name the apps may fetch icons from.
+/// Whether a host is a public DNS name the apps may fetch icons from. The
+/// host is read the way a request reads it, so `127.1` and `0x7f.1` are the
+/// IP addresses they stand for, and `nas.local.` is `nas.local`.
 pub fn public_host(host: &str) -> bool {
-    let host = host.trim_matches(|c| c == '[' || c == ']');
-    if host.parse::<std::net::IpAddr>().is_ok() || !host.contains('.') {
+    if host.is_empty() || host.contains(['/', '\\', '@', ':', '?', '#']) {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(&format!("https://{host}/")) else { return false };
+    let Some(url::Host::Domain(name)) = url.host() else { return false };
+    let name = name.trim_end_matches('.');
+    if !name.contains('.') {
         return false;
     }
     const PRIVATE: [&str; 6] = [".local", ".localhost", ".internal", ".lan", ".home.arpa", ".test"];
-    let lower = host.to_lowercase();
-    !PRIVATE.iter().any(|suffix| lower.ends_with(suffix))
-        && psl::suffix_str(&lower).is_some_and(|suffix| suffix != lower && psl::domain_str(&lower).is_some())
+    !PRIVATE.iter().any(|suffix| name.ends_with(suffix))
+        && psl::suffix_str(name).is_some_and(|suffix| suffix != name && psl::domain_str(name).is_some())
 }
 
 /// Whether an item should get a (new) icon: it has a public website and no
@@ -245,6 +251,21 @@ mod tests {
         }
         assert_eq!(icon_host(&login("https://co.uk")), None);
         assert_eq!(icon_host(&Item::new(Category::Login, "No website")), None);
+        // Short and hexadecimal IPv4 forms, as a request would read them.
+        for private in ["foo://169.254.43518", "ssh://0x7f.1", "foo://192.168.1", "foo://127.1"] {
+            assert_eq!(icon_host(&login(private)), None, "{private}");
+        }
+    }
+
+    #[test]
+    fn public_hosts_only() {
+        assert!(public_host("example.com"));
+        assert!(public_host("Example.COM."));
+        for private in
+            ["nas.local.", "printer.lan.", "0x7f.1", "127.1", "2130706433", "[::1]", "a.com:8080", "a@b.com", ""]
+        {
+            assert!(!public_host(private), "{private}");
+        }
     }
 
     #[test]

@@ -37,8 +37,8 @@ unicode-normalization = "0.1"
 data-encoding = "2"
 zxcvbn = "3"
 csv = "1.3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-quick-xml = "0.37"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+quick-xml = "0.41"
 ssh-key = { version = "0.6", default-features = false, features = ["alloc", "ed25519", "rand_core"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem", "std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }

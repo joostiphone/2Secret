@@ -612,10 +612,17 @@ fn onepux_value(value: &Value) -> Option<(FieldKind, String)> {
 fn import_1pux(data: &[u8]) -> Result<ImportResult> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(data))
         .map_err(|e| Error::Import(format!("not a valid .1pux file: {e}")))?;
+    // At most this much unpacked: a small file can unpack to gigabytes.
+    const MAX_EXPORT_DATA: u64 = 256 * 1024 * 1024;
     let mut json = String::new();
-    zip.by_name("export.data")
+    let read = zip
+        .by_name("export.data")
         .map_err(|_| Error::Import("export.data missing from .1pux file".into()))?
+        .take(MAX_EXPORT_DATA + 1)
         .read_to_string(&mut json)?;
+    if read as u64 > MAX_EXPORT_DATA {
+        return Err(Error::Import("export.data is too large".into()));
+    }
     let root: Value = serde_json::from_str(&json)?;
     let mut vaults = Vec::new();
     let mut warnings = Vec::new();
@@ -733,8 +740,9 @@ fn import_keepass_xml(data: &[u8]) -> Result<ImportResult> {
     use quick_xml::Reader;
 
     let s = text(data)?;
+    // Text is kept whole (entities arrive as separate events) and trimmed
+    // per element below.
     let mut reader = Reader::from_str(&s);
-    reader.config_mut().trim_text(true);
 
     let mut items = Vec::new();
     let mut groups: Vec<String> = Vec::new();
@@ -767,7 +775,17 @@ fn import_keepass_xml(data: &[u8]) -> Result<ImportResult> {
                 let _ = e;
             }
             Ok(Event::Text(t)) => {
-                buf_text.push_str(&t.unescape().map(|c| c.into_owned()).unwrap_or_default());
+                buf_text.push_str(&t.decode().unwrap_or_default());
+            }
+            Ok(Event::GeneralRef(r)) => {
+                let name = r.decode().unwrap_or_default().into_owned();
+                match r.resolve_char_ref() {
+                    Ok(Some(c)) => buf_text.push(c),
+                    _ => match quick_xml::escape::resolve_predefined_entity(&name) {
+                        Some(text) => buf_text.push_str(text),
+                        None => buf_text.push_str(&format!("&{name};")),
+                    },
+                }
             }
             Ok(Event::CData(t)) => {
                 buf_text.push_str(&String::from_utf8_lossy(&t.into_inner()));
@@ -775,17 +793,18 @@ fn import_keepass_xml(data: &[u8]) -> Result<ImportResult> {
             Ok(Event::End(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 let parent = path.len().checked_sub(2).and_then(|i| path.get(i)).cloned();
+                let value = buf_text.trim().to_string();
                 match name.as_str() {
                     "Name" if parent.as_deref() == Some("Group") => {
                         if let Some(g) = groups.last_mut() {
-                            *g = buf_text.clone();
+                            *g = value.clone();
                         }
-                        if buf_text == "Recycle Bin" && recycle_bin_depth.is_none() {
+                        if value == "Recycle Bin" && recycle_bin_depth.is_none() {
                             recycle_bin_depth = Some(groups.len());
                         }
                     }
-                    "Key" if parent.as_deref() == Some("String") => cur_key = buf_text.clone(),
-                    "Value" if parent.as_deref() == Some("String") => cur_value = buf_text.clone(),
+                    "Key" if parent.as_deref() == Some("String") => cur_key = value.clone(),
+                    "Value" if parent.as_deref() == Some("String") => cur_value = value.clone(),
                     "String" => {
                         if in_history == 0 {
                             if let Some(e) = entry.as_mut() {
@@ -1099,7 +1118,7 @@ mod tests {
     <String><Key>Password</Key><Value ProtectInMemory="True">r&amp;ut3r</Value></String><String><Key>URL</Key><Value>http://192.168.1.1</Value></String>
     <String><Key>otp</Key><Value>otpauth://totp/x?secret=JBSWY3DPEHPK3PXP</Value></String>
     <History><Entry><String><Key>Title</Key><Value>Old</Value></String></Entry></History></Entry>
-  <Group><Name>Email</Name><Entry><String><Key>Title</Key><Value>Mail</Value></String><String><Key>Password</Key><Value>m</Value></String><String><Key>Security Q</Key><Value>blue</Value></String></Entry></Group>
+  <Group><Name>Email</Name><Entry><String><Key>Title</Key><Value>Mail</Value></String><String><Key>Password</Key><Value>m &lt;3 &#65;&#x42;</Value></String><String><Key>Security Q</Key><Value>blue</Value></String></Entry></Group>
   <Group><Name>Recycle Bin</Name><Entry><String><Key>Title</Key><Value>Deleted</Value></String></Entry></Group>
 </Group></Root></KeePassFile>"#;
         assert_eq!(detect("db.xml", xml.as_bytes()), Some(ImportFormat::KeePassXml));
@@ -1109,6 +1128,7 @@ mod tests {
         assert_eq!(items[0].password(), Some("r&ut3r"));
         assert!(items[0].totp_secret().is_some());
         assert_eq!(items[1].tags, vec!["Email"]);
+        assert_eq!(items[1].password(), Some("m <3 AB"));
         assert_eq!(items[1].value("Security Q"), Some("blue"));
     }
 

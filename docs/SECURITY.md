@@ -16,7 +16,9 @@ limitations. The implementation lives in
 2. **A stolen device file is protected by the master password.** The profile
    on disk is fully encrypted; without the master password it is useless.
 3. **Network attackers learn nothing.** TLS protects transport, but all
-   sensitive payloads are additionally end-to-end encrypted.
+   sensitive payloads are additionally end-to-end encrypted. The apps talk
+   to a server only over `https://` (plain `http://` only to a server on
+   the same device).
 4. **Members of a shared vault only get access to that vault.**
 
 2Secret does **not** protect against malware running as your user on an
@@ -210,6 +212,12 @@ that device receives the new key on its next sync, re-encrypts its pending
 changes and sends them again, so no edit is lost. Managers can also replace
 a vault's key on request, for example after someone left on their own.
 
+A device never takes back a key a vault had before: it remembers the keys
+it replaced, so a server cannot bring back the key a removed person still
+knows. (After restoring a server backup from before a key was replaced, such
+a vault does not sync on the devices that have the newer key; export it there
+and import it into a new vault.)
+
 What rotation cannot undo: the removed person may have kept copies of what
 they could already see. Change the passwords that matter after removing
 someone.
@@ -307,6 +315,9 @@ conflict never silently loses a password. Deletions are tombstones.
   owner-only permissions (`0600`), with one backup copy.
 - **Device secrets** (`device.json`): the Secret Key. Kept separate so the
   profile can be backed up or synced by other means without the Secret Key.
+  On iPhone and iPad it is excluded from iCloud and computer backups (on
+  Android everything is in the app's no-backup storage), so a backup never
+  holds the Secret Key next to the encrypted vault.
 - Web vault and extension: both live in the browser's IndexedDB for the
   vault (or extension) origin.
 - Decrypted keys and items exist only in memory while unlocked and are wiped
@@ -361,7 +372,9 @@ conflict never silently loses a password. Deletions are tombstones.
   Wayland the screenshot portal saves a file, which 2Secret deletes right
   after reading it.
 - **Clipboard**: copied secrets are cleared after a configurable time
-  (default 90 s) if the clipboard still contains them. Browsers only allow
+  (default 90 s) if the clipboard still contains them. The desktop apps and
+  the CLI mark them as secret, so Windows' clipboard history and cloud
+  clipboard and clipboard managers on Linux and macOS leave them out. Browsers only allow
   reading the clipboard after a permission prompt, so the web vault and the
   extension clear it without checking.
 - **CLI sessions** (`eval "$(2secret unlock)"`) store the account key
@@ -377,8 +390,10 @@ conflict never silently loses a password. Deletions are tombstones.
   reach a frame from another site (an ad, a hostile embed) or a page the tab
   navigated to after the popup opened. Websites are matched by registrable
   domain using the Public Suffix List (`alice.github.io` never matches
-  `mallory.github.io`), an `https` item is never filled into an `http` page,
-  and an item URL with a port only matches that port.
+  `mallory.github.io`; an item for `github.io` itself only matches
+  `github.io`), an `https` item is never filled into an `http` page, and an
+  item URL with a port only matches that port. AutoFill on iPhone, iPad and
+  Mac suggests logins by the same registrable domains.
 
 ## Updates
 
@@ -404,8 +419,8 @@ touching the other profile.
 When a login is saved, the apps fetch the icon of its website straight from
 that website over HTTPS: the home page for the icons it links to, else
 `/favicon.ico`. No icon service is involved and no cookies are sent. Only
-public host names are contacted, never IP addresses or local names, also not
-after a redirect, so an item someone shares with you cannot make your device
+public host names are contacted, never IP addresses (in any notation, such
+as `127.1`) or local names, also not after a redirect, so an item someone shares with you cannot make your device
 contact your own network. The website learns your IP address, as when you
 visit it. The bytes must be an image by their content and at most 24 KB;
 the icon is then stored encrypted with the item, so other devices (the web

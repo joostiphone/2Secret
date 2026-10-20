@@ -38,6 +38,8 @@ pub enum Error {
     Core(#[from] twosecret_core::Error),
     #[error("unexpected response from server: {0}")]
     Protocol(String),
+    #[error("2Secret connects to a server only over https:// (plain http:// only on this device)")]
+    InsecureServer,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -75,6 +77,20 @@ pub fn normalize_server_url(url: &str) -> String {
         format!("http://{url}")
     } else {
         format!("https://{url}")
+    }
+}
+
+/// Whether the apps may talk to a server address: `https://`, or plain
+/// `http://` on this device only (a server under development). Over a
+/// network, plain HTTP would show the sign-in key and the session token to
+/// anyone on the way.
+pub fn secure_server_url(url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(url) else { return false };
+    let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']);
+    match url.scheme() {
+        "https" => true,
+        "http" => host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()),
+        _ => false,
     }
 }
 
@@ -134,6 +150,11 @@ impl Client {
         path: &str,
         body: Option<&B>,
     ) -> Result<reqwest::Response> {
+        // The web vault talks to the server it was loaded from.
+        #[cfg(not(target_arch = "wasm32"))]
+        if !secure_server_url(&self.base) {
+            return Err(Error::InsecureServer);
+        }
         let mut req = self.http.request(method, self.url(path));
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
@@ -345,5 +366,24 @@ impl Client {
 
     pub async fn remove_emergency_contact(&self, id: &str) -> Result<EmergencyRevoked> {
         self.json(Method::DELETE, &format!("/emergency/{id}"), None::<&()>).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_http_only_on_this_device() {
+        for ok in ["https://vault.example.com", "http://localhost:8743", "http://127.0.0.1:8743", "http://[::1]:8743"] {
+            assert!(secure_server_url(ok), "{ok}");
+        }
+        for bad in
+            ["http://vault.example.com", "http://192.168.1.10:8743", "http://127.0.0.1.example.com", "ftp://x.com", ""]
+        {
+            assert!(!secure_server_url(bad), "{bad}");
+        }
+        assert!(secure_server_url(&normalize_server_url("vault.example.com")));
+        assert!(secure_server_url(&normalize_server_url("localhost:8743")));
     }
 }

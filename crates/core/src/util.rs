@@ -162,6 +162,19 @@ pub fn base_domain(host: &str) -> String {
     psl::domain_str(&host).unwrap_or(&host).to_string()
 }
 
+/// Whether a host is itself a public suffix, like `github.io` or `carrd.co`:
+/// every subdomain belongs to someone else, so it only matches exactly.
+pub fn is_public_suffix(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_lowercase();
+    host.contains('.') && host.parse::<std::net::IpAddr>().is_err() && psl::domain_str(&host).is_none()
+}
+
+/// The lowercase host of an item's web address (`www.` kept: on some
+/// domains `www` is a site of its own).
+pub fn web_host(raw: &str) -> Option<String> {
+    parse_web_url(raw).and_then(|u| u.host_str().map(|h| h.trim_end_matches('.').to_lowercase()))
+}
+
 fn parse_web_url(raw: &str) -> Option<url::Url> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -199,6 +212,9 @@ pub struct FillRule {
     pub https: bool,
     /// The item's URL names this port explicitly.
     pub port: Option<u16>,
+    /// `domain` is a public suffix (see [`is_public_suffix`]): the page host
+    /// must equal it, a subdomain is someone else's site.
+    pub exact: bool,
 }
 
 /// Fill rules for an item's URLs (same semantics as [`url_matches`]).
@@ -208,10 +224,12 @@ pub fn fill_rules(item_urls: &[String]) -> Vec<FillRule> {
         .filter_map(|u| parse_web_url(u))
         .filter(|u| matches!(u.scheme(), "https" | "http"))
         .filter_map(|u| {
+            let host = u.host_str()?.to_lowercase();
             Some(FillRule {
-                domain: base_domain(&u.host_str()?.to_lowercase()),
+                domain: base_domain(&host),
                 https: u.scheme() == "https",
                 port: u.port(),
+                exact: is_public_suffix(&host),
             })
         })
         .collect();
@@ -255,8 +273,12 @@ mod tests {
         assert!(!url_matches("https://10.0.0.1", "https://10.0.0.2"));
         assert_eq!(
             fill_rules(&["https://www.github.com/login".into(), "gist.github.com".into(), "ftp://x.org".into()]),
-            vec![FillRule { domain: "github.com".into(), https: true, port: None }]
+            vec![FillRule { domain: "github.com".into(), https: true, port: None, exact: false }]
         );
+        // A public suffix as the item's host matches only that host.
+        let rules = fill_rules(&["https://github.io".into(), "https://alice.github.io".into()]);
+        assert_eq!((rules[0].domain.as_str(), rules[0].exact), ("alice.github.io", false));
+        assert_eq!((rules[1].domain.as_str(), rules[1].exact), ("github.io", true));
         assert_eq!(fill_rules(&["http://10.0.0.1:8080".into()])[0].port, Some(8080));
     }
 
@@ -276,6 +298,14 @@ mod tests {
         assert_eq!(base_domain("www.bbc.co.uk"), "bbc.co.uk");
         assert!(url_matches("https://github.com", "https://gist.github.com/x"));
         assert!(!url_matches("https://github.com", "https://gitlab.com"));
+        assert!(!url_matches("https://github.io", "https://mallory.github.io"));
+        for suffix in ["github.io", "pythonanywhere.com", "co.uk", "Carrd.co."] {
+            assert!(is_public_suffix(suffix), "{suffix}");
+        }
+        for host in ["www.pythonanywhere.com", "alice.github.io", "example.com", "localhost", "10.0.0.1"] {
+            assert!(!is_public_suffix(host), "{host}");
+        }
+        assert_eq!(web_host("https://www.PythonAnywhere.com/login").as_deref(), Some("www.pythonanywhere.com"));
     }
 
     #[test]
