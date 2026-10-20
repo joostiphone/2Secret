@@ -53,6 +53,11 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: io.github.joostiphone.twosecret.otpauth
             CFBundleURLSchemes: [otpauth]
+        # How App Store Connect classified 1.9.1 after its encryption
+        # questions (no documentation needed), so it stops asking for every
+        # build. Distribution in France needs a French encryption declaration
+        # and changes this (docs/APP-STORE.md, Export compliance).
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: App/2Secret.entitlements
       properties:

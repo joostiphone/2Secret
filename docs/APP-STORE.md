@@ -142,11 +142,11 @@ width shows the list and the item side by side with the fold between them,
 and a foldable that reports its fold (CSS Viewport Segments) gets the split
 right at the fold.
 
-## Export compliance (your decision)
+## Export compliance
 
 App Store Connect asks about encryption for every build until
-`ITSAppUsesNonExemptEncryption` is set in the app's Info.plist, which this
-project deliberately leaves to you. The facts you need:
+`ITSAppUsesNonExemptEncryption` is set in the app's Info.plist. The answers
+are the publisher's to give; the facts they need:
 
 - 2Secret encrypts user data with standard, published algorithms
   (XChaCha20-Poly1305, Argon2id, HKDF-SHA-256, X25519, ML-KEM-768 / FIPS 203,
@@ -162,9 +162,13 @@ algorithm that does not come with the operating system, App Store Connect
 asks for no documentation, except the French encryption declaration when the
 app is distributed in France (*App Information → App Encryption
 Documentation*); France controls secure storage apps such as password
-managers. When in doubt, ask an export-control specialist. Once settled, add your answer to `ios/project.yml` under the
-app's `info.properties` (`ITSAppUsesNonExemptEncryption: false` or `true`
-with your compliance code) so App Store Connect stops asking.
+managers. When in doubt, ask an export-control specialist.
+
+App Store Connect classified 1.9.1 as not needing documentation, so the app's
+`info.properties` in `ios/project.yml` set `ITSAppUsesNonExemptEncryption:
+false` and App Store Connect no longer asks. If that changes, for example for
+France, set it to `true` and add `ITSEncryptionExportComplianceCode` with the
+code Apple gives after approving the documentation.
 
 ## How AutoFill works
 
