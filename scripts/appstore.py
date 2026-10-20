@@ -4,6 +4,7 @@
     scripts/appstore.py signing <output folder>
     scripts/appstore.py developer-id <output folder> <certificate SHA-1> [name suffix]
     scripts/appstore.py wait <version> <build number>
+    scripts/appstore.py status
 
 `signing` makes sure there is an Apple Distribution certificate and App
 Store provisioning profiles for the app and its AutoFill extension, and
@@ -41,6 +42,9 @@ architecture) apart.
 says whether it can be tested in TestFlight. It then gives the build its
 "What to Test" text from ios/AppStore/testflight/<locale>.txt, whose first
 line must be "2Secret <version>".
+
+`status` shows where the app's App Store versions are (in review, ready for
+sale, ...) and the app's address in the App Store.
 """
 import base64
 import hashlib
@@ -309,6 +313,25 @@ def what_to_test(api: Api, build_id: str, version: str) -> None:
             print(f"What to Test ({locale}) set.")
 
 
+def status() -> None:
+    api = Api(api_key_der())
+    apps = api.call("GET", "/apps", query={"filter[bundleId]": APP_BUNDLE})["data"]
+    app = next((a for a in apps if a["attributes"]["bundleId"] == APP_BUNDLE), None)
+    if app is None:
+        sys.exit(f"There is no app with bundle ID {APP_BUNDLE} in App Store Connect.")
+    url = f"https://apps.apple.com/app/id{app['id']}"
+    versions = api.call("GET", f"/apps/{app['id']}/appStoreVersions", query={"filter[platform]": "IOS", "limit": "5"})["data"]
+    lines = [f"App Store: {url}"]
+    for v in versions:
+        a = v["attributes"]
+        lines.append(f"Version {a['versionString']}: {a.get('appVersionState') or a.get('appStoreState')}")
+    print("\n".join(lines))
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write("\n\n".join(lines) + "\n")
+
+
 def signing(out: str) -> None:
     os.makedirs(out, exist_ok=True)
     key_der = api_key_der()
@@ -369,6 +392,8 @@ def main() -> None:
             developer_id(out, sha1, suffix)
         case ["wait", version, build]:
             wait(version.removeprefix("v"), build)
+        case ["status"]:
+            status()
         case _:
             sys.exit(__doc__)
 
