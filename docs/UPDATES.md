@@ -50,6 +50,25 @@ Release workflow, or who has the private key, can sign an update; keep the
 `UPDATE_SIGNING_KEY` secret and the repository's write access to people you
 trust, and require two-factor authentication on GitHub.
 
+## Checking a download
+
+Downloads that do not update themselves (`.deb`, `.rpm`, the browser
+extension, the CLI and server archives) can be checked by hand. Every
+release has `SHA256SUMS`, signed with the same Ed25519 key as `update.json`
+into `SHA256SUMS.sig`. With OpenSSL 3, in the folder with the downloads:
+
+```sh
+# The public key from crates/core/src/update_keys.txt, as a PEM file.
+{ printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'
+  printf '%s' szLMLOdfhjWs5oMdLfeXR23tZEpjEjn1D+lJFRDBWFY= | openssl base64 -d -A; } > 2secret.der
+openssl base64 -d -A -in SHA256SUMS.sig > SHA256SUMS.bin
+openssl pkeyutl -verify -pubin -keyform DER -inkey 2secret.der -rawin \
+  -in SHA256SUMS -sigfile SHA256SUMS.bin          # "Signature Verified Successfully"
+sha256sum --check --ignore-missing SHA256SUMS     # every file you downloaded: OK
+```
+
+Releases up to 1.9.1 have no `SHA256SUMS.sig`.
+
 ## For maintainers: the signing key
 
 The **Release** workflow writes `update.json`

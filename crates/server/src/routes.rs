@@ -90,13 +90,26 @@ pub(crate) fn valid_id(id: &str) -> ApiResult<()> {
     }
 }
 
+/// Characters that change how text around them looks without being visible
+/// (direction overrides, zero-width): in a name or e-mail address shown to
+/// other people they could make one account look like another.
+fn invisible(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+}
+
+/// A name as other people see it: no invisible characters, at most 100.
+fn clean_name(name: &str) -> String {
+    name.chars().filter(|c| !invisible(*c)).take(100).collect()
+}
+
 fn valid_email(email: &str) -> ApiResult<String> {
     let e = normalize_email(email);
     let ok = e.len() <= 254
         && e.contains('@')
         && !e.starts_with('@')
         && !e.ends_with('@')
-        && !e.chars().any(|c| c.is_whitespace() || c.is_control());
+        && !e.chars().any(|c| c.is_whitespace() || invisible(c));
     if ok {
         Ok(e)
     } else {
@@ -116,7 +129,7 @@ fn valid_kdf(kdf: &KdfParams) -> ApiResult<()> {
 }
 
 fn device_name(name: Option<String>) -> String {
-    let n: String = name.unwrap_or_default().chars().filter(|c| !c.is_control()).take(100).collect();
+    let n = clean_name(&name.unwrap_or_default());
     if n.trim().is_empty() {
         "Unknown device".into()
     } else {
@@ -220,7 +233,7 @@ async fn register(
     let auth_key = decode_auth_key(&req.auth_key)?;
     PublicKey::from_b64(&req.keyset.public_key).map_err(|_| ApiError::bad_request("invalid public key"))?;
     valid_pq_key(req.keyset.pq_public_key.as_deref())?;
-    let name: String = req.name.chars().filter(|c| !c.is_control()).take(100).collect();
+    let name = clean_name(&req.name);
 
     // The cheap refusals first: hashing is what costs the server.
     let max_accounts = state.config.max_accounts;
@@ -387,7 +400,7 @@ async fn update_account(
     auth: Auth,
     Json(req): Json<UpdateAccountRequest>,
 ) -> ApiResult<StatusCode> {
-    let name: String = req.name.chars().filter(|c| !c.is_control()).take(100).collect();
+    let name = clean_name(&req.name);
     state
         .db
         .run(move |c| {
@@ -1056,4 +1069,17 @@ async fn sync(
         })
         .await?;
     Ok(Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_and_addresses_without_invisible_characters() {
+        assert_eq!(clean_name("Ali\u{202E}ec\u{200B}e\n"), "Aliece");
+        assert_eq!(clean_name(&"x".repeat(150)).len(), 100);
+        assert!(valid_email("alice@example.com").is_ok());
+        assert!(valid_email("ali\u{200B}ce@example.com").is_err());
+    }
 }

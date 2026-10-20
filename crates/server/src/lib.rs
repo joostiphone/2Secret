@@ -163,6 +163,8 @@ pub fn app(state: AppState) -> Router {
 
     let security_headers = [
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        // Browsers only take it over HTTPS, the only way to use a server.
+        (header::STRICT_TRANSPORT_SECURITY, "max-age=31536000"),
         (header::X_FRAME_OPTIONS, "DENY"),
         (header::REFERRER_POLICY, "no-referrer"),
         (

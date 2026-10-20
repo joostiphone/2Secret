@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Writes update.json for the release files in a folder and signs it with the
-# Ed25519 private key (PEM) in $UPDATE_SIGNING_KEY, into update.json.sig. The
+# Ed25519 private key (PEM) in $UPDATE_SIGNING_KEY, into update.json.sig, and
+# SHA256SUMS (if there) into SHA256SUMS.sig. The
 # signature is then checked against the public keys built into the apps
 # (crates/core/src/update_keys.txt): a release is never signed with a key the
 # apps would reject. Needs OpenSSL 3. See docs/UPDATES.md.
@@ -17,6 +18,11 @@ trap 'rm -rf "$tmp"' EXIT
 python3 "$root/scripts/update-manifest.py" "$dir" "$tag" > "$tmp/update.json"
 (umask 077 && printf '%s\n' "$UPDATE_SIGNING_KEY" > "$tmp/key.pem")
 openssl pkeyutl -sign -inkey "$tmp/key.pem" -rawin -in "$tmp/update.json" -out "$tmp/signature"
+# The checksums of every file, for the downloads that are no update (.deb,
+# .rpm, the extension, the CLI): docs/UPDATES.md, "Checking a download".
+if [ -f "$dir/SHA256SUMS" ]; then
+  openssl pkeyutl -sign -inkey "$tmp/key.pem" -rawin -in "$dir/SHA256SUMS" -out "$tmp/sums.sig"
+fi
 rm "$tmp/key.pem"
 
 valid=""
@@ -36,5 +42,6 @@ fi
 
 cp "$tmp/update.json" "$dir/update.json"
 openssl base64 -A -in "$tmp/signature" > "$dir/update.json.sig"
+[ ! -f "$tmp/sums.sig" ] || openssl base64 -A -in "$tmp/sums.sig" > "$dir/SHA256SUMS.sig"
 cat "$dir/update.json"
 echo "Signed: $dir/update.json.sig"

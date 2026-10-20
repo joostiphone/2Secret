@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   DX_VERSION: 0.7.10
@@ -85,7 +88,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - name: Bundle web app
         working-directory: crates/app
@@ -104,7 +107,7 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - run: ./extension/build.sh
       - uses: actions/setup-node@v4
@@ -148,7 +151,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: Swatinem/rust-cache@v2
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       # The runner image ships the Android SDK and NDK.
       - name: Build (debug signed, for testing)

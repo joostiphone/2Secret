@@ -11,10 +11,16 @@
 # The web vault is WebAssembly and the same for every architecture: build it
 # once, natively on the build machine.
 FROM --platform=$BUILDPLATFORM rust:1-trixie AS web
+# dx with the checksums of its release (change them with DX_VERSION).
 ARG DX_VERSION=0.7.10
+ARG DX_SHA256_X86_64=4363e4ed2a3f1eb7f4d38d2d59aed59ce43271c44c16b425e92c89a64761fbe7
+ARG DX_SHA256_AARCH64=8f1a17d3218700ffbe15e6540d936a178b2556fc801121a31082e3ba4ab9ef55
 RUN rustup target add wasm32-unknown-unknown \
- && curl -sSfL "https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-$(uname -m)-unknown-linux-gnu.tar.gz" \
-    | tar xz -C /usr/local/cargo/bin
+ && arch="$(uname -m)" \
+ && case "$arch" in x86_64) sum="$DX_SHA256_X86_64" ;; aarch64) sum="$DX_SHA256_AARCH64" ;; *) exit 1 ;; esac \
+ && curl -sSfL -o /tmp/dx.tar.gz "https://github.com/DioxusLabs/dioxus/releases/download/v${DX_VERSION}/dx-${arch}-unknown-linux-gnu.tar.gz" \
+ && echo "$sum  /tmp/dx.tar.gz" | sha256sum -c - \
+ && tar xzf /tmp/dx.tar.gz -C /usr/local/cargo/bin && rm /tmp/dx.tar.gz
 WORKDIR /src
 COPY . .
 RUN cd crates/app && dx bundle --platform web --release

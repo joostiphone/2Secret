@@ -39,44 +39,57 @@ jobs:
     outputs:
       build: ${{ steps.upload.outputs.build }}
     env:
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
-      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      # Only whether there is a key; the secrets themselves only in the steps
+      # that use them, not in third-party actions or tools.
+      HAS_KEY: ${{ secrets.APP_STORE_CONNECT_KEY != '' }}
     steps:
       - name: App Store Connect key
-        if: env.APP_STORE_CONNECT_KEY == ''
+        if: env.HAS_KEY != 'true'
         run: echo "::warning::No App Store Connect API key (APP_STORE_CONNECT_KEY etc.); the iOS app is not uploaded"
       - uses: actions/checkout@v4
-        if: env.APP_STORE_CONNECT_KEY != ''
+        if: env.HAS_KEY == 'true'
+        with:
+          persist-credentials: false
       - name: Check version
-        if: env.APP_STORE_CONNECT_KEY != ''
+        if: env.HAS_KEY == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           grep -q "^version = \"${TAG#v}\"" Cargo.toml || { echo "::error::Cargo.toml has a different version than $TAG"; exit 1; }
           [ -n "$APPLE_TEAM_ID" ] && [ -n "$APP_STORE_CONNECT_KEY_ID" ] && [ -n "$APP_STORE_CONNECT_ISSUER_ID" ] ||
             { echo "::error::Set all four secrets: APPLE_TEAM_ID, APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APP_STORE_CONNECT_KEY"; exit 1; }
-      - uses: dtolnay/rust-toolchain@stable
-        if: env.APP_STORE_CONNECT_KEY != ''
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        if: env.HAS_KEY == 'true'
         with:
+          toolchain: stable
           targets: aarch64-apple-ios
-      - uses: Swatinem/rust-cache@v2
-        if: env.APP_STORE_CONNECT_KEY != ''
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: env.HAS_KEY == 'true'
       # The app's window comes from tao 0.34 (through Dioxus 0.7), which does
       # not use the UIScene life cycle. Built with the iOS 27 SDK an app must
       # use it or it does not start (Apple TN3187), so build with Xcode 26 until
       # 2Secret moves to Dioxus 0.8 (tao 0.37). See docs/APP-STORE.md.
       - name: Xcode 26
-        if: env.APP_STORE_CONNECT_KEY != ''
+        if: env.HAS_KEY == 'true'
         run: |
           xcode="$(ls -d /Applications/Xcode_26*.app 2> /dev/null | grep -iv beta | sort -V | tail -1)"
           [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner; see docs/APP-STORE.md, \"iPhone Duo and Xcode 27\""; exit 1; }
           sudo xcode-select -s "$xcode"
           xcodebuild -version
+      - name: XcodeGen
+        if: env.HAS_KEY == 'true'
+        run: brew install xcodegen
       - name: Build, sign and upload to TestFlight
         id: upload
-        if: env.APP_STORE_CONNECT_KEY != ''
+        if: env.HAS_KEY == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
-          brew install xcodegen
           # Build numbers must go up for every upload of a version.
           build="$(date -u +%Y%m%d.%H%M)"
           scripts/ios-appstore.sh "$TAG" "$build"
@@ -89,13 +102,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
-      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       BUILD: ${{ needs.ios.outputs.build || inputs.build }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install --quiet cryptography==50.0.2
       - name: Wait until the build is in TestFlight
-        run: |
-          python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install --quiet cryptography
-          "$RUNNER_TEMP/venv/bin/python" scripts/appstore.py wait "$TAG" "$BUILD"
+        env:
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: '"$RUNNER_TEMP/venv/bin/python" scripts/appstore.py wait "$TAG" "$BUILD"'

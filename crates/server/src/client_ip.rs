@@ -96,7 +96,9 @@ impl FromRequestParts<AppState> for ClientIp {
             .config
             .client_ip_header
             .as_deref()
-            .and_then(|name| parts.headers.get(name))
+            // A proxy that adds its own header line instead of appending to
+            // the client's puts it last.
+            .and_then(|name| parts.headers.get_all(name).iter().next_back())
             .and_then(|v| v.to_str().ok());
         Ok(ClientIp::from_parts(peer, header, &state.config.trusted_proxies))
     }

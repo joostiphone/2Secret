@@ -18,9 +18,10 @@ on:
         type: boolean
         default: false
 
+# Each job gets only what it needs (below): the build jobs run third-party
+# tools and must not be able to change the repository or its releases.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,6 +32,8 @@ jobs:
   tag:
     name: Version ${{ inputs.tag || github.ref_name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Check version
@@ -75,10 +78,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }} -p twosecret-cli -p twosecret-server
@@ -114,18 +120,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       - name: Install GUI libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.name }}
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       # The dx for the runner itself: with the Intel target installed and the
       # GitHub API rate-limited, binstall took the Intel dx on Apple silicon,
       # which does not start there (v1.9.1).
@@ -196,11 +205,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - working-directory: crates/app
         run: dx bundle --platform web --release
@@ -217,11 +229,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: cargo-bins/cargo-binstall@main
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
       - run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - run: ./extension/build.sh && mkdir out && cp extension/2secret-extension.zip "out/2secret-extension-${TAG}.zip"
       - uses: actions/upload-artifact@v4
@@ -235,36 +250,43 @@ jobs:
     needs: tag
     runs-on: ubuntu-latest
     env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # Only whether there is a key; the key itself only in the step that
+      # signs.
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - name: Signing key
-        if: env.ANDROID_KEYSTORE_BASE64 == ''
+        if: env.HAS_KEY != 'true'
         run: echo "::warning::No Android signing key (ANDROID_KEYSTORE_BASE64 etc.); the release has no Android app"
       - uses: actions/checkout@v4
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
-      - uses: dtolnay/rust-toolchain@stable
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: env.HAS_KEY == 'true'
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        if: env.HAS_KEY == 'true'
+        with:
+          toolchain: stable
           targets: aarch64-linux-android
       - uses: actions/setup-java@v4
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: env.HAS_KEY == 'true'
         with:
           distribution: temurin
           java-version: 17
-      - uses: Swatinem/rust-cache@v2
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
-      - uses: cargo-bins/cargo-binstall@main
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
-      - if: env.ANDROID_KEYSTORE_BASE64 != ''
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: env.HAS_KEY == 'true'
+      - uses: cargo-bins/cargo-binstall@8a2045612414e945291083f820cd50b4d8fc2218 # v1.26.0
+        if: env.HAS_KEY == 'true'
+      - if: env.HAS_KEY == 'true'
         run: cargo binstall -y --force dioxus-cli@${{ env.DX_VERSION }}
       - name: Build and sign
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: env.HAS_KEY == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/android.sh "$TAG" out
       - uses: actions/upload-artifact@v4
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: env.HAS_KEY == 'true'
         with:
           name: dist-android
           path: out/*
@@ -274,6 +296,8 @@ jobs:
     name: iOS app
     needs: tag
     uses: ./.github/workflows/testflight.yml
+    permissions:
+      contents: read
     with:
       tag: ${{ inputs.tag || github.ref_name }}
     secrets: inherit
@@ -282,13 +306,26 @@ jobs:
     name: Publish release
     needs: [tag, binaries, desktop, web, extension, android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
           path: out
           merge-multiple: true
+      - name: Not published yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The files of a published version never change (a moved tag or a
+          # re-run must not replace what people already downloaded).
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; then
+            echo "::error::$TAG is already published; release a new version instead"; exit 1
+          fi
       - name: Checksums, update manifest and release notes
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
@@ -303,7 +340,7 @@ jobs:
           fi
           awk '/^## /{if (seen) exit; seen=1; next} seen' CHANGELOG.md > notes.md
           cat .github/release-notes.md >> notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: false
           make_latest: ${{ !contains(env.TAG, '-') }}
@@ -316,12 +353,18 @@ jobs:
 
   docker:
     name: Docker image
-    needs: tag
+    # Only once the release is out: the image is the same version.
+    needs: [tag, release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
