@@ -37,15 +37,30 @@ running() {
   limit 30 xcrun simctl spawn "$1" launchctl list | grep -F "UIKitApplication:$bundle" | awk '{print $1}' | grep -qE '^[0-9]+$'
 }
 
-# Saves a screenshot and prints a small JPEG of it in the log.
-screenshot() {
-  local udid="$1" name="$2" title="$3"
-  limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null
+# Prints a small JPEG of a saved screenshot in the log.
+show() {
+  local name="$1" title="$2"
   sips -Z 480 -s format jpeg -s formatOptions 60 "$shots/$name.png" --out "$shots/$name.jpg" > /dev/null
   echo "--- screenshot $title (base64 JPEG) ---"
   base64 < "$shots/$name.jpg" | tr -d '\n'
   echo
   echo "--- end of screenshot ---"
+}
+
+# Saves a screenshot of every display (iPhone Duo has two) and shows it.
+screenshot() {
+  local udid="$1" name="$2" title="$3" out display displays
+  if out="$(limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" 2>&1)"; then
+    show "$name" "$title"
+    return
+  fi
+  # "Cannot choose between 2 displays" lists them as "--display=3  LCD-1 ...".
+  displays="$(printf '%s\n' "$out" | sed -n 's/^ *--display=\([0-9][0-9]*\) .*/\1/p')"
+  [ -n "$displays" ] || { printf '%s\n' "$out" >&2; return 1; }
+  for display in $displays; do
+    limit 60 xcrun simctl io "$udid" screenshot --display="$display" "$shots/$name-$display.png" > /dev/null
+    show "$name-$display" "$title, $(printf '%s\n' "$out" | sed -n "s/^ *--display=$display  *//p")"
+  done
 }
 
 check() {
