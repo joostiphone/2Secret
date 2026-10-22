@@ -163,9 +163,14 @@ jobs:
 
   ios:
     name: iOS app
-    runs-on: macos-latest
+    # Xcode 27.1, as for TestFlight (testflight.yml).
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
+      - name: Xcode 27.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.1.app
+          xcodebuild -version
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim
@@ -176,6 +181,10 @@ jobs:
         run: |
           brew install xcodegen
           scripts/ios-appstore.sh
+      # The app starts on the UIScene life cycle (vendor/README.md) and handles
+      # otpauth:// links, on a phone and a tablet.
+      - name: Start the app in the simulator
+        run: scripts/ios-simulator-check.sh "iPhone 17" "iPad Air 11-inch (M4)"
       - name: macOS AutoFill extension (Xcode)
         working-directory: macos
         run: |

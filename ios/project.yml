@@ -38,6 +38,10 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchStoryboardName: LaunchScreen
         UIRequiredDeviceCapabilities: [arm64]
+        # The UIScene life cycle, which apps built with the iOS 27 SDK need;
+        # tao's application delegate names the scene delegate (vendor/README.md).
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

@@ -35,7 +35,8 @@ jobs:
   ios:
     name: iOS app (App Store Connect)
     if: inputs.build == ''
-    runs-on: macos-latest
+    # The image with Xcode 27 (a preview while macos-latest has Xcode 26).
+    runs-on: xcode-27
     outputs:
       build: ${{ steps.upload.outputs.build }}
     env:
@@ -67,16 +68,14 @@ jobs:
           targets: aarch64-apple-ios
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: env.HAS_KEY == 'true'
-      # The app's window comes from tao 0.34 (through Dioxus 0.7), which does
-      # not use the UIScene life cycle. Built with the iOS 27 SDK an app must
-      # use it or it does not start (Apple TN3187), so build with Xcode 26 until
-      # 2Secret moves to Dioxus 0.8 (tao 0.37). See docs/APP-STORE.md.
-      - name: Xcode 26
+      # The iOS 27.1 SDK gives the app the whole screen of iPhone Duo. Apps
+      # built with the iOS 27 SDK must use the UIScene life cycle, which
+      # vendor/tao adds (vendor/README.md, docs/APP-STORE.md).
+      - name: Xcode 27.1
         if: env.HAS_KEY == 'true'
         run: |
-          xcode="$(ls -d /Applications/Xcode_26*.app 2> /dev/null | grep -iv beta | sort -V | tail -1)"
-          [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner; see docs/APP-STORE.md, \"iPhone Duo and Xcode 27\""; exit 1; }
-          sudo xcode-select -s "$xcode"
+          [ -d /Applications/Xcode_27.1.app ] || { echo "::error::No Xcode 27.1 on this runner; see docs/APP-STORE.md, \"iPhone Duo and Xcode 27\""; exit 1; }
+          sudo xcode-select -s /Applications/Xcode_27.1.app
           xcodebuild -version
       - name: XcodeGen
         if: env.HAS_KEY == 'true'

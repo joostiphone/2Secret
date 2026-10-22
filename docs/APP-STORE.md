@@ -126,16 +126,20 @@ to the left of the status bar and camera.
 An app built with the iOS 27 SDK must use the UIScene life cycle, or it does
 not start ([TN3187](https://developer.apple.com/documentation/technotes/tn3187-migrating-to-the-uikit-scene-based-life-cycle)).
 2Secret's window comes from tao 0.34 through Dioxus 0.7, which does not use
-it; tao 0.37, which Dioxus 0.8 uses, does. Until 2Secret moves to Dioxus 0.8,
-the TestFlight workflow builds with Xcode 26 and `scripts/ios-appstore.sh`
-refuses the iOS 27 SDK. Then:
+it; `vendor/tao` is tao 0.34.8 with the UIScene support of tao 0.37
+([vendor/README.md](../vendor/README.md)), and `ios/project.yml` declares the
+scene manifest. So:
 
-1. update Dioxus and add `UIApplicationSceneManifest` to the app's
-   `Info.plist` in `ios/project.yml`;
-2. remove the Xcode 26 step from `.github/workflows/testflight.yml` and the
-   SDK check from `scripts/ios-appstore.sh`;
-3. try every pose (closed, open, partly folded, turned, split view) in the
-   iPhone Duo simulator in Xcode's Device Hub.
+- the TestFlight workflow and the iOS job of CI build with Xcode 27.1, on
+  GitHub's `xcode-27` runner image (a preview while `macos-latest` has
+  Xcode 26). When `macos-latest` has Xcode 27.1, go back to it;
+- CI starts the app in the simulator on a phone and a tablet and opens it with
+  an `otpauth://` link (`scripts/ios-simulator-check.sh`);
+- `scripts/ios-appstore.sh` warns when the SDK is older than 27.1.
+
+Try every pose (closed, open, partly folded, turned, split view) on iPhone Duo
+in TestFlight, or in the iPhone Duo simulator in Xcode's Device Hub. With the
+move to Dioxus 0.8 (tao 0.37) `vendor/tao` and its `[patch.crates-io]` go.
 
 The layout is ready for it: the safe areas apply on every side, a medium
 width shows the list and the item side by side with the fold between them,

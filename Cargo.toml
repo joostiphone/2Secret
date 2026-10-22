@@ -7,6 +7,8 @@ members = [
     "crates/server",
     "crates/app",
 ]
+# tao with the UIScene life cycle for iOS, see vendor/README.md.
+exclude = ["vendor/tao"]
 
 [workspace.package]
 version = "1.9.2"
@@ -64,3 +66,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.rsa]
 opt-level = 3
+
+# The iOS app must use the UIScene life cycle when it is built with the iOS 27
+# SDK. tao 0.34, which Dioxus 0.7 uses, does not; vendor/tao is tao 0.34.8
+# with the UIScene support of tao 0.37 (vendor/README.md). Remove this with
+# the move to Dioxus 0.8.
+[patch.crates-io]
+tao = { path = "vendor/tao" }

@@ -22,14 +22,11 @@ version="${version#v}"
 # Build numbers must go up for every upload of a version.
 build="${2:-$(date -u +%Y%m%d.%H%M)}"
 
-# The app's window comes from tao 0.34 (Dioxus 0.7), which does not use the
-# UIScene life cycle; built with the iOS 27 SDK the app would not start (Apple
-# TN3187). See docs/APP-STORE.md, "iPhone Duo and Xcode 27".
+# iPhone Duo gives an app its whole screen only when it is built with the
+# iOS 27.1 SDK (Xcode 27.1); see docs/APP-STORE.md.
 sdk="$(xcrun --sdk iphoneos --show-sdk-version 2> /dev/null || echo 0)"
-if [ -n "${APP_STORE_CONNECT_KEY:-}" ] && [ "${sdk%%.*}" -ge 27 ]; then
-  echo "The iOS $sdk SDK needs the UIScene life cycle, which the app only gets with Dioxus 0.8." >&2
-  echo "Build with Xcode 26 until then: sudo xcode-select -s /Applications/Xcode_26.x.app" >&2
-  exit 1
+if [ "$(printf '%s\n' 27.1 "$sdk" | sort -V | head -1)" != 27.1 ]; then
+  echo "warning: built with the iOS $sdk SDK; iPhone Duo shows the app at iPhone size (Xcode 27.1 or later fixes that)" >&2
 fi
 
 if [ -n "${APP_STORE_CONNECT_KEY:-}" ]; then
@@ -58,9 +55,10 @@ settings=(
 )
 
 if [ "$profile" = debug ]; then
+  # scripts/ios-simulator-check.sh starts this build.
   xcodebuild build -project TwoSecret.xcodeproj -scheme 2Secret -configuration Debug \
     -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
-    CODE_SIGNING_ALLOWED=NO "${settings[@]}"
+    -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO "${settings[@]}"
   echo "Built for the simulator (no App Store Connect key, nothing uploaded)."
   exit 0
 fi
