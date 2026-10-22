@@ -1,3 +1,5 @@
+iPhone Duo: 2Secret vult nu het hele scherm, opengeklapt en dichtgeklapt.
+
 Beveiligingsverbeteringen:
 - Je geheime sleutel gaat niet meer mee in iCloud- en computerback-ups, zodat een back-up hem nooit naast je versleutelde kluis bevat.
 - Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt: een inlog wordt alleen op zijn eigen site voorgesteld.

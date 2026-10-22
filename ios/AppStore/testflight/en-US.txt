@@ -1,16 +1,15 @@
-2Secret 1.9.2
+2Secret 1.9.3
 
 WHAT'S NEW
-- Your Secret Key is no longer included in iCloud and computer backups of your iPhone or iPad, so a backup never holds it next to your encrypted vault.
-- AutoFill is stricter on websites where everyone gets a subdomain of their own (such as github.io): a login is only suggested on its own site.
-- 2Secret connects to a sync server only over https://.
-- Security fixes for syncing and shared vaults.
+- iPhone Duo: 2Secret now fills the whole screen, on the inner and the outer display. Until now it ran there at the size of a regular iPhone.
+- Built with Xcode 27.1 for iOS 27. The app now starts the way iOS 27 asks of apps (the scene life cycle), so please check that everything works as before.
 
 PLEASE TEST
-1. Update over 1.9.1 and unlock: all your vaults and items are there, and syncing with your server works.
-2. AutoFill: fill a password in Safari and in an app. Your logins still appear under "Suggested", also on subdomains (a login for google.com on accounts.google.com).
-3. A shared vault: change an item and check that the change arrives on another device, and the other way round.
-4. Copy a password and paste it somewhere. It is cleared after the time you set.
-5. Unlock with Face ID, and fill a one-time code from AutoFill.
+1. Update over 1.9.2 and open the app: it starts normally and all your vaults and items are there. Unlock with Face ID.
+2. iPhone Duo: use 2Secret closed and open, partly folded and turned. It fills the screen, nothing is hidden behind the camera, and open, the list and the item show side by side with the fold between them.
+3. Switch to another app and back, and lock and unlock your iPhone: 2Secret is where you left it, or asks you to unlock, depending on your settings.
+4. Open an otpauth:// link, or scan the QR code of a one-time code with the Camera app: 2Secret opens and offers to save the code, also when it was not running.
+5. AutoFill: fill a password and a passkey in Safari.
+6. iPad: use 2Secret full screen and in a window next to another app.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

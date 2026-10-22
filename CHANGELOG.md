@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.3
+
+Only the iPhone and iPad app changes.
+
+- **iPhone Duo**: 2Secret fills the whole screen, open and closed. Until
+  now iPhone Duo showed it at the size of a regular iPhone. Open, the list
+  and the item show side by side with the fold between them.
+- The app is built with Xcode 27.1 and starts with the scene life cycle
+  that iOS 27 asks of apps.
+
 ## 1.9.2
 
 Security fixes from a review of the apps, the server and the way releases
