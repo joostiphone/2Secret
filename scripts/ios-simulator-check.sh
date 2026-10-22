@@ -8,7 +8,8 @@
 #   scripts/ios-simulator-check.sh ["iPhone 17" ["iPad Air 11-inch (M4)" ...]]
 #
 # For each device it saves a screenshot in ios/build/screenshots and prints a
-# small JPEG of it as base64 between "screenshot" markers in the log.
+# small JPEG of it as base64 between "screenshot" markers in the log. A device
+# the simulator has no runtime for is skipped with a warning.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,18 +40,31 @@ check() {
   if ! running "$udid"; then
     echo "::error::2Secret stopped on $device ($step)" >&2
     find "$HOME/Library/Logs/DiagnosticReports" -name '2Secret*' -mmin -10 -exec cat {} + 2> /dev/null | head -200 >&2 || true
+    limit 120 xcrun simctl spawn "$udid" log show --last 2m --style compact \
+      --predicate 'process == "2Secret" OR eventMessage CONTAINS[c] "twosecret"' 2>&1 | tail -80 >&2 || true
     return 1
   fi
   echo "2Secret runs on $device ($step)"
 }
 
-status=0
+# Boot all devices first; a first boot takes minutes.
+devices=() udids=()
 for device in "$@"; do
+  if udid="$(xcrun simctl create "2Secret check" "$device")"; then
+    xcrun simctl boot "$udid"
+    devices+=("$device") udids+=("$udid")
+  else
+    echo "::warning::No simulator runtime for $device; skipped"
+  fi
+done
+[ ${#udids[@]} -gt 0 ] || { echo "::error::No device to start the app on" >&2; exit 1; }
+
+status=0
+for i in "${!udids[@]}"; do
+  device="${devices[$i]}" udid="${udids[$i]}"
   echo "== $device"
-  udid="$(xcrun simctl create "2Secret check" "$device")"
   echo "Booting"
-  xcrun simctl boot "$udid"
-  limit 600 xcrun simctl bootstatus "$udid" -b > /dev/null
+  limit 900 xcrun simctl bootstatus "$udid" -b > /dev/null
   echo "Installing"
   limit 300 xcrun simctl install "$udid" "$app"
   name="$(echo "$device" | tr -c 'A-Za-z0-9\n' '-')"
@@ -75,6 +89,7 @@ for device in "$@"; do
   if [ "$ok" = 1 ]; then
     echo "Starting with a link"
     limit 60 xcrun simctl terminate "$udid" "$bundle" || true
+    for _ in $(seq 15); do running "$udid" || break; sleep 1; done
     limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
     [ "$ok" = 0 ] || check "$udid" "started by a link" || ok=0
   fi
