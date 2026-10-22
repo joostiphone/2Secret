@@ -47,23 +47,17 @@ check() {
   echo "2Secret runs on $device ($step)"
 }
 
-# Boot all devices first; a first boot takes minutes.
-devices=() udids=()
+# One device at a time: a runner cannot boot several at once.
+status=0 checked=0
 for device in "$@"; do
-  if udid="$(xcrun simctl create "2Secret check" "$device")"; then
-    xcrun simctl boot "$udid"
-    devices+=("$device") udids+=("$udid")
-  else
-    echo "::warning::No simulator runtime for $device; skipped"
-  fi
-done
-[ ${#udids[@]} -gt 0 ] || { echo "::error::No device to start the app on" >&2; exit 1; }
-
-status=0
-for i in "${!udids[@]}"; do
-  device="${devices[$i]}" udid="${udids[$i]}"
   echo "== $device"
+  if ! udid="$(xcrun simctl create "2Secret check" "$device")"; then
+    echo "::warning::No simulator runtime for $device; skipped"
+    continue
+  fi
+  checked=$((checked + 1))
   echo "Booting"
+  xcrun simctl boot "$udid"
   limit 900 xcrun simctl bootstatus "$udid" -b > /dev/null
   echo "Installing"
   limit 300 xcrun simctl install "$udid" "$app"
@@ -98,4 +92,5 @@ for i in "${!udids[@]}"; do
   limit 120 xcrun simctl shutdown "$udid" || true
   limit 60 xcrun simctl delete "$udid" || true
 done
+[ "$checked" -gt 0 ] || { echo "::error::No device to start the app on" >&2; exit 1; }
 exit "$status"

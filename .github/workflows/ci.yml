@@ -182,10 +182,11 @@ jobs:
           brew install xcodegen
           scripts/ios-appstore.sh
       # The app starts on the UIScene life cycle (vendor/README.md) and handles
-      # otpauth:// links, on a phone, a tablet and iPhone Duo.
+      # otpauth:// links, on iPhone Duo (iOS 27.1) and iPhone 17 (iOS 27.0).
+      # Each simulator takes minutes to set up, so no iPad here.
       - name: Start the app in the simulator
         timeout-minutes: 40
-        run: scripts/ios-simulator-check.sh "iPhone 17" "iPhone Duo" "iPad Air 11-inch (M4)"
+        run: scripts/ios-simulator-check.sh "iPhone Duo" "iPhone 17"
       - name: macOS AutoFill extension (Xcode)
         working-directory: macos
         run: |

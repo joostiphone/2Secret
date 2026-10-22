@@ -133,8 +133,9 @@ scene manifest. So:
 - the TestFlight workflow and the iOS job of CI build with Xcode 27.1, on
   GitHub's `xcode-27` runner image (a preview while `macos-latest` has
   Xcode 26). When `macos-latest` has Xcode 27.1, go back to it;
-- CI starts the app in the simulator on a phone and a tablet and opens it with
-  an `otpauth://` link (`scripts/ios-simulator-check.sh`);
+- CI starts the app in the simulator on iPhone Duo (iOS 27.1) and iPhone 17
+  (iOS 27.0) and opens it with an `otpauth://` link
+  (`scripts/ios-simulator-check.sh`);
 - `scripts/ios-appstore.sh` warns when the SDK is older than 27.1.
 
 Try every pose (closed, open, partly folded, turned, split view) on iPhone Duo
