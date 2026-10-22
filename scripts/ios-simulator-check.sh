@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the simulator build of the iOS app on simulated devices and checks
-# that it keeps running, also when it is opened with an otpauth:// link. This
+# that it keeps running, also when an otpauth:// link is opened. This
 # checks the UIScene life cycle, without which an app built with the iOS 27
 # SDK does not start (vendor/README.md). Runs on macOS after
 # `scripts/ios-appstore.sh` without an App Store Connect key.
@@ -11,8 +11,10 @@
 # small JPEG of it as base64 between "screenshot" markers in the log. A device
 # the simulator has no runtime for is skipped with a warning.
 #
-# A link that starts the app is not a check: the simulator then asks "Open in
-# 2Secret?", which nobody taps here. The log shows the screen instead.
+# iOS opens otpauth:// links in the app chosen under Settings → General →
+# AutoFill & Passwords → Set Up Codes In, on a new simulator Apple's Passwords
+# app. So the check cannot tell whether 2Secret got a link; it checks that
+# 2Secret keeps running, and the log shows the screen after a link.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -102,15 +104,7 @@ for device in "$@"; do
     link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
     limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
     [ "$ok" = 0 ] || check "$udid" "link while running" || ok=0
-  fi
-  if [ "$ok" = 1 ]; then
-    # Not a check (see the top): what the screen shows after a link that
-    # should start the app.
-    limit 60 xcrun simctl terminate "$udid" "$bundle" || true
-    for _ in $(seq 15); do running "$udid" || break; sleep 1; done
-    limit 60 xcrun simctl openurl "$udid" "$link" || true
-    sleep 10
-    screenshot "$udid" "$name-link" "$device after a link that should start the app"
+    [ "$ok" = 0 ] || screenshot "$udid" "$name-link" "$device after a link"
   fi
   [ "$ok" = 1 ] || status=1
 

@@ -8,7 +8,7 @@ TEST ALSJEBLIEFT
 1. Werk bij vanaf 1.9.2 en open de app: hij start gewoon en al je kluizen en items zijn er. Ontgrendel met Face ID.
 2. iPhone Duo: gebruik 2Secret dichtgeklapt en opengeklapt, half gevouwen en gedraaid. De app vult het scherm, niets valt weg achter de camera, en opengeklapt staan de lijst en het item naast elkaar met de vouw ertussen.
 3. Wissel naar een andere app en terug, en vergrendel en ontgrendel je iPhone: 2Secret staat waar je was, of vraagt om te ontgrendelen, afhankelijk van je instellingen.
-4. Open een otpauth://-link, of scan de QR-code van een eenmalige code met de Camera-app: 2Secret opent en biedt aan de code te bewaren, ook als de app nog niet draaide.
+4. Eenmalige codes: kies 2Secret als app voor verificatiecodes bij Instellingen → Algemeen → Automatisch invullen en wachtwoorden. Open daarna een otpauth://-link, of scan de QR-code van een eenmalige code met de Camera-app: 2Secret opent en biedt aan de code te bewaren, ook als de app nog niet draaide.
 5. Automatisch invullen: vul een wachtwoord en een passkey in Safari in.
 6. iPad: gebruik 2Secret schermvullend en in een venster naast een andere app.
 

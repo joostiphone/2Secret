@@ -8,7 +8,7 @@ PLEASE TEST
 1. Update over 1.9.2 and open the app: it starts normally and all your vaults and items are there. Unlock with Face ID.
 2. iPhone Duo: use 2Secret closed and open, partly folded and turned. It fills the screen, nothing is hidden behind the camera, and open, the list and the item show side by side with the fold between them.
 3. Switch to another app and back, and lock and unlock your iPhone: 2Secret is where you left it, or asks you to unlock, depending on your settings.
-4. Open an otpauth:// link, or scan the QR code of a one-time code with the Camera app: 2Secret opens and offers to save the code, also when it was not running.
+4. One-time codes: choose 2Secret under Settings → General → AutoFill & Passwords → Set Up Codes In. Then open an otpauth:// link, or scan the QR code of a one-time code with the Camera app: 2Secret opens and offers to save the code, also when it was not running.
 5. AutoFill: fill a password and a passkey in Safari.
 6. iPad: use 2Secret full screen and in a window next to another app.
 
