@@ -44,6 +44,11 @@ jobs:
         run: |
           xcrun simctl list runtimes | grep -q "iOS $RUNTIME " || xcodebuild -downloadPlatform iOS -buildVersion "$RUNTIME"
           xcrun simctl list runtimes
+      # What simctl can do with a foldable (poses, displays) in this Xcode.
+      - name: Simulator commands
+        run: |
+          xcrun simctl help | sed -n '/Subcommands/,$p'
+          xcrun simctl help io
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios-sim

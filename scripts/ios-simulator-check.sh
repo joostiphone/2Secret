@@ -49,20 +49,21 @@ show() {
   echo "--- end of screenshot ---"
 }
 
-# Saves a screenshot of every display (iPhone Duo has two) and shows it.
+# Saves a screenshot of every display (iPhone Duo has two, numbered 1 and 3)
+# and shows it. A missing screenshot is a warning, not a failure.
 screenshot() {
-  local udid="$1" name="$2" title="$3" out display displays
-  if out="$(limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" 2>&1)"; then
-    show "$name" "$title"
-    return
-  fi
-  # "Cannot choose between 2 displays" lists them as "--display=3  LCD-1 ...".
-  displays="$(printf '%s\n' "$out" | sed -n 's/^ *--display=\([0-9][0-9]*\) .*/\1/p')"
-  [ -n "$displays" ] || { printf '%s\n' "$out" >&2; return 1; }
-  for display in $displays; do
-    limit 60 xcrun simctl io "$udid" screenshot --display="$display" "$shots/$name-$display.png" > /dev/null
-    show "$name-$display" "$title, $(printf '%s\n' "$out" | sed -n "s/^ *--display=$display  *//p")"
+  local udid="$1" name="$2" title="$3" display shot=0
+  for display in 1 2 3 4; do
+    if limit 120 xcrun simctl io "$udid" screenshot --display="$display" "$shots/$name-$display.png" > /dev/null 2>&1; then
+      show "$name-$display" "$title, display $display"
+      shot=1
+    fi
   done
+  if [ "$shot" = 0 ] && limit 120 xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null 2>&1; then
+    show "$name" "$title"
+    shot=1
+  fi
+  [ "$shot" = 1 ] || echo "::warning::No screenshot of $title"
 }
 
 check() {
