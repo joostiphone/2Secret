@@ -22,8 +22,15 @@ mkdir -p "$shots"
 echo "Device types with a fold or a second display:"
 xcrun simctl list devicetypes | grep -iE 'duo|fold' || echo "  (none)"
 
+# Runs a command, but stops it after a number of seconds (macOS has no timeout).
+limit() {
+  local seconds="$1"
+  shift
+  perl -e 'alarm shift; exec @ARGV' "$seconds" "$@"
+}
+
 running() {
-  xcrun simctl spawn "$1" launchctl list | grep -F "UIKitApplication:$bundle" | awk '{print $1}' | grep -qE '^[0-9]+$'
+  limit 30 xcrun simctl spawn "$1" launchctl list | grep -F "UIKitApplication:$bundle" | awk '{print $1}' | grep -qE '^[0-9]+$'
 }
 
 check() {
@@ -39,17 +46,21 @@ check() {
 
 status=0
 for device in "$@"; do
+  echo "== $device"
   udid="$(xcrun simctl create "2Secret check" "$device")"
+  echo "Booting"
   xcrun simctl boot "$udid"
-  xcrun simctl bootstatus "$udid" -b > /dev/null
-  xcrun simctl install "$udid" "$app"
+  limit 600 xcrun simctl bootstatus "$udid" -b > /dev/null
+  echo "Installing"
+  limit 300 xcrun simctl install "$udid" "$app"
   name="$(echo "$device" | tr -c 'A-Za-z0-9\n' '-')"
 
   ok=1
-  xcrun simctl launch "$udid" "$bundle" > /dev/null
-  check "$udid" "started" || ok=0
+  echo "Starting"
+  limit 120 xcrun simctl launch "$udid" "$bundle" > /dev/null || ok=0
+  [ "$ok" = 0 ] || check "$udid" "started" || ok=0
   if [ "$ok" = 1 ]; then
-    xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null
+    limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null
     sips -Z 480 -s format jpeg -s formatOptions 60 "$shots/$name.png" --out "$shots/$name.jpg" > /dev/null
     echo "--- screenshot $device (base64 JPEG) ---"
     base64 < "$shots/$name.jpg" | tr -d '\n'
@@ -57,17 +68,19 @@ for device in "$@"; do
     echo "--- end of screenshot ---"
     # A link while the app runs, and one that starts it.
     link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
-    xcrun simctl openurl "$udid" "$link"
-    check "$udid" "link while running" || ok=0
+    echo "Opening a link"
+    limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
+    [ "$ok" = 0 ] || check "$udid" "link while running" || ok=0
   fi
   if [ "$ok" = 1 ]; then
-    xcrun simctl terminate "$udid" "$bundle"
-    xcrun simctl openurl "$udid" "$link"
-    check "$udid" "started by a link" || ok=0
+    echo "Starting with a link"
+    limit 60 xcrun simctl terminate "$udid" "$bundle" || true
+    limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
+    [ "$ok" = 0 ] || check "$udid" "started by a link" || ok=0
   fi
   [ "$ok" = 1 ] || status=1
 
-  xcrun simctl shutdown "$udid" || true
-  xcrun simctl delete "$udid" || true
+  limit 120 xcrun simctl shutdown "$udid" || true
+  limit 60 xcrun simctl delete "$udid" || true
 done
 exit "$status"
