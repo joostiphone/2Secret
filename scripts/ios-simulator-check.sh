@@ -10,6 +10,9 @@
 # For each device it saves a screenshot in ios/build/screenshots and prints a
 # small JPEG of it as base64 between "screenshot" markers in the log. A device
 # the simulator has no runtime for is skipped with a warning.
+#
+# A link that starts the app is not a check: the simulator then asks "Open in
+# 2Secret?", which nobody taps here. The log shows the screen instead.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,6 +35,17 @@ limit() {
 
 running() {
   limit 30 xcrun simctl spawn "$1" launchctl list | grep -F "UIKitApplication:$bundle" | awk '{print $1}' | grep -qE '^[0-9]+$'
+}
+
+# Saves a screenshot and prints a small JPEG of it in the log.
+screenshot() {
+  local udid="$1" name="$2" title="$3"
+  limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null
+  sips -Z 480 -s format jpeg -s formatOptions 60 "$shots/$name.png" --out "$shots/$name.jpg" > /dev/null
+  echo "--- screenshot $title (base64 JPEG) ---"
+  base64 < "$shots/$name.jpg" | tr -d '\n'
+  echo
+  echo "--- end of screenshot ---"
 }
 
 check() {
@@ -68,24 +82,20 @@ for device in "$@"; do
   limit 120 xcrun simctl launch "$udid" "$bundle" > /dev/null || ok=0
   [ "$ok" = 0 ] || check "$udid" "started" || ok=0
   if [ "$ok" = 1 ]; then
-    limit 60 xcrun simctl io "$udid" screenshot "$shots/$name.png" > /dev/null
-    sips -Z 480 -s format jpeg -s formatOptions 60 "$shots/$name.png" --out "$shots/$name.jpg" > /dev/null
-    echo "--- screenshot $device (base64 JPEG) ---"
-    base64 < "$shots/$name.jpg" | tr -d '\n'
-    echo
-    echo "--- end of screenshot ---"
-    # A link while the app runs, and one that starts it.
-    link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
+    screenshot "$udid" "$name" "$device"
     echo "Opening a link"
+    link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
     limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
     [ "$ok" = 0 ] || check "$udid" "link while running" || ok=0
   fi
   if [ "$ok" = 1 ]; then
-    echo "Starting with a link"
+    # Not a check (see the top): what the screen shows after a link that
+    # should start the app.
     limit 60 xcrun simctl terminate "$udid" "$bundle" || true
     for _ in $(seq 15); do running "$udid" || break; sleep 1; done
-    limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
-    [ "$ok" = 0 ] || check "$udid" "started by a link" || ok=0
+    limit 60 xcrun simctl openurl "$udid" "$link" || true
+    sleep 10
+    screenshot "$udid" "$name-link" "$device after a link that should start the app"
   fi
   [ "$ok" = 1 ] || status=1
 

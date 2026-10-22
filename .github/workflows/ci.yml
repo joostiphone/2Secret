@@ -182,8 +182,9 @@ jobs:
           brew install xcodegen
           scripts/ios-appstore.sh
       # The app starts on the UIScene life cycle (vendor/README.md) and handles
-      # otpauth:// links, on iPhone Duo (iOS 27.1) and iPhone 17 (iOS 27.0).
-      # Each simulator takes minutes to set up, so no iPad here.
+      # otpauth:// links, on iPhone 17 (iOS 27.0) and, when the runner has the
+      # iOS 27.1 runtime, iPhone Duo. Each simulator takes minutes to set up,
+      # so no iPad here; the "iOS simulator" workflow takes any device.
       - name: Start the app in the simulator
         timeout-minutes: 40
         run: scripts/ios-simulator-check.sh "iPhone Duo" "iPhone 17"

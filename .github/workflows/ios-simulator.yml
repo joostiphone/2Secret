@@ -1,0 +1,61 @@
+name: iOS simulator
+
+# Starts the simulator build of the iOS app on the chosen devices, opens it
+# with an otpauth:// link and prints screenshots in the log
+# (scripts/ios-simulator-check.sh). Downloads the simulator runtime when the
+# runner does not have it, such as iOS 27.1 for iPhone Duo. CI does the same
+# on the devices the runner has.
+on:
+  workflow_dispatch:
+    inputs:
+      devices:
+        description: "Simulated devices, comma-separated"
+        required: true
+        type: string
+        default: "iPhone Duo"
+      runtime:
+        description: "iOS simulator runtime to download when missing"
+        required: true
+        type: string
+        default: "27.1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  simulator:
+    name: Start the app in the simulator
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Xcode 27.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.1.app
+          xcodebuild -version
+      - name: iOS simulator runtime
+        env:
+          RUNTIME: ${{ inputs.runtime }}
+        run: |
+          xcrun simctl list runtimes | grep -q "iOS $RUNTIME " || xcodebuild -downloadPlatform iOS -buildVersion "$RUNTIME"
+          xcrun simctl list runtimes
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - name: App and AutoFill extension for the simulator (Xcode)
+        run: |
+          brew install xcodegen
+          scripts/ios-appstore.sh
+      - name: Start the app
+        env:
+          DEVICES: ${{ inputs.devices }}
+        run: |
+          IFS=, read -ra devices <<< "$DEVICES"
+          for i in "${!devices[@]}"; do devices[i]="$(echo "${devices[i]}" | xargs)"; done
+          scripts/ios-simulator-check.sh "${devices[@]}"
