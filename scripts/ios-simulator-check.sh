@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Starts the simulator build of the iOS app on simulated devices and checks
-# that it keeps running, also when an otpauth:// link is opened and, on a
-# device with two displays such as iPhone Duo, when it is opened. This
+# that it keeps running, also when an otpauth:// link is opened. This
 # checks the UIScene life cycle, without which an app built with the iOS 27
 # SDK does not start (vendor/README.md). Runs on macOS after
 # `scripts/ios-appstore.sh` without an App Store Connect key.
@@ -50,8 +49,10 @@ show() {
   echo "--- end of screenshot ---"
 }
 
-# Saves a screenshot of every display (iPhone Duo has two, numbered 1 and 3)
-# and shows it. A missing screenshot is a warning, not a failure.
+# Saves a screenshot of every display and shows it. A missing screenshot is a
+# warning, not a failure. iPhone Duo has two: 1 is the outer display, 3 the
+# inner one, which stays off because the simulator starts it folded; simctl
+# cannot open it (screenConfig power only sends the app to the background).
 screenshot() {
   local udid="$1" name="$2" title="$3" display shot=0
   for display in 1 2 3 4; do
@@ -102,16 +103,6 @@ for device in "$@"; do
   [ "$ok" = 0 ] || check "$udid" "started" || ok=0
   if [ "$ok" = 1 ]; then
     screenshot "$udid" "$name" "$device"
-    # Two displays (iPhone Duo starts folded, on the outer one): turn the
-    # inner display on and the outer one off, as when it is opened.
-    if [ "$(find "$shots" -name "$name-[0-9].png" | wc -l)" -gt 1 ]; then
-      limit 60 xcrun simctl io "$udid" enumerate | grep -iE 'display|screen|name|power' | head -40 || true
-      echo "Opening the fold"
-      limit 60 xcrun simctl io "$udid" screenConfig --display=3 power on || true
-      limit 60 xcrun simctl io "$udid" screenConfig --display=1 power off || true
-      check "$udid" "opened" || ok=0
-      screenshot "$udid" "$name-open" "$device opened"
-    fi
     echo "Opening a link"
     link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
     limit 60 xcrun simctl openurl "$udid" "$link" || ok=0

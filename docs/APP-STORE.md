@@ -140,8 +140,11 @@ scene manifest. So:
   prints screenshots in the log;
 - `scripts/ios-appstore.sh` warns when the SDK is older than 27.1.
 
-Try every pose (closed, open, partly folded, turned, split view) on iPhone Duo
-in TestFlight, or in the iPhone Duo simulator in Xcode's Device Hub. With the
+The simulator starts iPhone Duo folded, and simctl cannot open it, so the
+checks only see the outer display (where 2Secret fills the screen beside the
+status bar). Try every pose (closed, open, partly folded, turned, split view)
+on iPhone Duo in TestFlight, or in the iPhone Duo simulator in Xcode's Device
+Hub. With the
 move to Dioxus 0.8 (tao 0.37) `vendor/tao` and its `[patch.crates-io]` go.
 
 The layout is ready for it: the safe areas apply on every side, a medium
