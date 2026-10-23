@@ -14,7 +14,7 @@ TEST ALSJEBLIEFT
 2. De menubalk: tik op Dashboard, Items en Watchtower. Scroll door een lange lijst: de inhoud loopt onder de balk door en het laatste item komt er nog boven.
 3. Zoeken: tik op de zoekknop rechtsonder; de lijst opent met het toetsenbord al open. Zoek op iets dat ook in je favorieten staat: de favoriet staat bovenaan.
 4. Bovenin: scroll omhoog; de inhoud vervaagt onder de knoppen en de Dynamic Island. Kies bij Instellingen → Weergave → Thema licht en donker: de tijd en de batterij blijven leesbaar.
-5. Druk lang op een item en probeer de opties, zoals naam wijzigen en wachtwoord kopiëren. Na het loslaten opent het item niet ook nog. Scrollen opent geen menu.
+5. Druk lang op een item en probeer de opties, zoals naam wijzigen en wachtwoord kopiëren. Na het loslaten opent het item niet ook nog en wordt er geen tekst geselecteerd. Scrollen opent geen menu.
 6. Druk lang op een kluis in het menu linksboven: nieuw item, bewerken, delen.
 7. Tik op de knop met het vinkje, kies een paar items en zet ze in de prullenbak; zet ze daar terug.
 8. Klap in het menu de labels open en dicht; na het herstarten van de app is dat onthouden.

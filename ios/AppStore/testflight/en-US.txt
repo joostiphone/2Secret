@@ -14,7 +14,7 @@ PLEASE TEST
 2. The tab bar: tap Dashboard, Items and Watchtower. Scroll through a long list: the content runs on under the bar and the last item still comes above it.
 3. Search: tap the search button at the bottom right; the list opens with the keyboard already up. Search for something that is also in your favorites: the favorite comes first.
 4. At the top: scroll up; the content blurs under the buttons and the Dynamic Island. Choose light and dark under Settings → Appearance → Theme: the time and the battery stay readable.
-5. Long-press an item and try its options, such as rename and copy password. Letting go does not also open the item. Scrolling opens no menu.
+5. Long-press an item and try its options, such as rename and copy password. Letting go does not also open the item or select any text. Scrolling opens no menu.
 6. Long-press a vault in the menu at the top left: new item, edit, share.
 7. Tap the check button, pick a few items and move them to the trash; restore them there.
 8. Fold the tags in the menu open and closed; after restarting the app it is remembered.

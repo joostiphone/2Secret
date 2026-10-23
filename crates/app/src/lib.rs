@@ -328,6 +328,11 @@ const LONG_PRESS_JS: &str = r#"
     if (timer) { cancel(); longPress = true; return; }
     if (longPress) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
+  // iOS goes on with its own long press under the finger, which by then
+  // rests on the menu: it selects no text there.
+  document.addEventListener("selectstart", function (e) {
+    if (longPress || Date.now() - releasedAt < 600) e.preventDefault();
+  }, true);
   document.addEventListener("click", function (e) {
     if (longPress || Date.now() - releasedAt < 600) {
       e.preventDefault();
