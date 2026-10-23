@@ -297,9 +297,12 @@ fn rank(entry: &Entry, query: &str) -> Option<u8> {
 fn results(entries: &[Entry], query: &str) -> Vec<Entry> {
     let query = query.trim().to_lowercase();
     let mut found: Vec<(u8, &Entry)> = entries.iter().filter_map(|e| Some((rank(e, &query)?, e))).collect();
+    // Favorites first, as in the item list.
     found.sort_by(|(ra, a), (rb, b)| {
-        ra.cmp(rb)
-            .then(b.summary.favorite.cmp(&a.summary.favorite))
+        b.summary
+            .favorite
+            .cmp(&a.summary.favorite)
+            .then(ra.cmp(rb))
             .then(a.summary.title.to_lowercase().cmp(&b.summary.title.to_lowercase()))
     });
     found.into_iter().take(50).map(|(_, e)| e.clone()).collect()
@@ -535,18 +538,19 @@ mod tests {
     }
 
     #[test]
-    fn search_ranks_titles_first() {
+    fn search_ranks_favorites_then_titles() {
         let entries = vec![
             entry("My Bank", "https://bank.example", false),
             entry("Banking app", "https://other.example", false),
             entry("Mail", "https://bankmail.example", false),
             entry("Shop", "https://shop.example", true),
+            entry("Savings", "https://bank.example/savings", true),
         ];
         let titles = |q: &str| results(&entries, q).into_iter().map(|e| e.summary.title).collect::<Vec<_>>();
-        assert_eq!(titles("bank"), ["Banking app", "My Bank", "Mail"]);
+        assert_eq!(titles("bank"), ["Savings", "Banking app", "My Bank", "Mail"]);
         assert_eq!(titles("BANKING"), ["Banking app"]);
         // No search: favourites first.
-        assert_eq!(titles("")[0], "Shop");
+        assert_eq!(titles("")[..2], ["Savings", "Shop"]);
         assert!(titles("nothing like this").is_empty());
     }
 }

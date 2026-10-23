@@ -5,6 +5,9 @@ use twosecret_core::item::Category;
 use twosecret_core::session::ItemFilter;
 use twosecret_core::util::now;
 
+use std::collections::HashSet;
+
+use crate::components::actions::{open_menu, toggle_pick, PickBar};
 use crate::components::{
     dashboard::DashboardPage, generator::GeneratorPage, item_edit::ItemEditor, item_view::ItemView,
     settings::SettingsPage, watchtower::WatchtowerPage,
@@ -138,6 +141,9 @@ pub fn go(nav: Nav) {
     *SELECTED.write() = None;
     *EDITING.write() = None;
     *PANE.write() = Pane::List;
+    if PICKED.peek().is_some() {
+        *PICKED.write() = None;
+    }
 }
 
 /// Shows the item list with the cursor in its search field (Ctrl/Cmd+F, the
@@ -160,11 +166,11 @@ pub fn open_search() {
 /// Phones: the main sections at the bottom of the screen, within reach of a
 /// thumb, and a search button, in glass like iOS 26's tab bar. style.css only
 /// shows it on narrow touch screens; it hides while the menu is open, an
-/// item is edited or the keyboard is up.
+/// item is edited, items are picked or the keyboard is up.
 #[component]
 fn TabBar() -> Element {
     let nav = NAV.read().clone();
-    let hidden = PANE() == Pane::Nav || EDITING.read().is_some();
+    let hidden = PANE() == Pane::Nav || EDITING.read().is_some() || PICKED.read().is_some();
     // Every list of items (a category, a vault, the trash) is under Items;
     // the generator and the settings are in the menu.
     let tab = match nav {
@@ -209,8 +215,19 @@ fn NavButton(
     #[props(default)] badge: Option<usize>,
 ) -> Element {
     let active = *NAV.read() == target || matches!((&*NAV.read(), &target), (Nav::Watchtower(_), Nav::Watchtower(_)));
+    // A vault has a menu (long press or right click).
+    let vault = match &target {
+        Nav::Vault(id) => Some(id.clone()),
+        _ => None,
+    };
     rsx! {
         button { class: if active { "nav-item active" } else { "nav-item" },
+            "data-menu": vault.is_some().then_some("true"),
+            oncontextmenu: move |e| {
+                if let Some(id) = vault.clone() {
+                    open_menu(MenuFor::Vault(id), &e);
+                }
+            },
             onclick: move |_| go(target.clone()),
             Icon { name: icon, size: 17 }
             span { class: "label", "{label}" }
@@ -319,6 +336,10 @@ fn Sidebar() -> Element {
     drop(session);
 
     let (dot, sync_text) = sync_summary(linked, last_sync);
+    // A folded section still shows what is open in it.
+    let nav = NAV.read().clone();
+    let folded = PREFS.read().folded.clone();
+    let open = |id: &str| !folded.iter().any(|f| f == id);
 
     rsx! {
         div { class: "sidebar-head",
@@ -332,24 +353,34 @@ fn Sidebar() -> Element {
             NavButton { target: Nav::Watchtower(None), icon: "shield", label: t("nav.watchtower"), badge: issues }
             NavButton { target: Nav::Generator, icon: "zap", label: t("nav.generator") }
             if !categories.is_empty() {
-                div { class: "nav-section", {t("nav.categories")} }
+                div { class: "nav-section",
+                    SectionToggle { id: "categories", label: t("nav.categories"), count: categories.len() }
+                }
                 for (c , n) in categories {
-                    NavButton { key: "{c.id()}", target: Nav::Category(c), icon: category_icon(c), label: category_name(c), count: n }
+                    if open("categories") || nav == Nav::Category(c) {
+                        NavButton { key: "{c.id()}", target: Nav::Category(c), icon: category_icon(c), label: category_name(c), count: n }
+                    }
                 }
             }
             div { class: "nav-section",
-                span { {t("nav.vaults")} }
+                SectionToggle { id: "vaults", label: t("nav.vaults"), count: vaults.len() }
                 button { class: "icon-btn", title: t("vault.new"), onclick: move |_| *MODAL.write() = Some(Modal::NewVault),
                     Icon { name: "plus", size: 14 }
                 }
             }
             for v in vaults {
-                NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: vault_icon(&v.icon, v.is_shared()), label: v.name.clone(), count: v.item_count }
+                if open("vaults") || nav == Nav::Vault(v.id.clone()) {
+                    NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: vault_icon(&v.icon, v.is_shared()), label: v.name.clone(), count: v.item_count }
+                }
             }
             if !tags.is_empty() {
-                div { class: "nav-section", {t("nav.tags")} }
+                div { class: "nav-section",
+                    SectionToggle { id: "tags", label: t("nav.tags"), count: tags.len() }
+                }
                 for (tag , n) in tags {
-                    NavButton { key: "tag-{tag}", target: Nav::Tag(tag.clone()), icon: "tag", label: tag.clone(), count: n }
+                    if open("tags") || nav == Nav::Tag(tag.clone()) {
+                        NavButton { key: "tag-{tag}", target: Nav::Tag(tag.clone()), icon: "tag", label: tag.clone(), count: n }
+                    }
                 }
             }
             div { class: "nav-section" }
@@ -373,6 +404,33 @@ fn Sidebar() -> Element {
             span { class: "grow", "{sync_text}" }
             if linked {
                 Icon { name: "refresh", size: 14 }
+            }
+        }
+    }
+}
+
+/// The heading of a section of the menu, which folds it away or opens it
+/// (remembered in [`Prefs::folded`]); folded, it shows how many entries the
+/// section has.
+#[component]
+fn SectionToggle(id: &'static str, label: String, count: usize) -> Element {
+    let open = !PREFS.read().folded.iter().any(|f| f == id);
+    rsx! {
+        button { class: either(open, "section-toggle", "section-toggle folded"), aria_expanded: open,
+            onclick: move |_| {
+                let mut prefs = PREFS.write();
+                if open {
+                    prefs.folded.push(id.to_string());
+                } else {
+                    prefs.folded.retain(|f| f != id);
+                }
+                drop(prefs);
+                save_prefs();
+            },
+            Icon { name: "chevron-down", size: 13 }
+            span { "{label}" }
+            if !open {
+                span { class: "folded-count", "{count}" }
             }
         }
     }
@@ -463,9 +521,24 @@ fn ItemList() -> Element {
     let title = nav_title(&nav);
     let is_trash = nav == Nav::Trash;
     let can_add = vault.as_ref().is_none_or(|v| v.role.can_write()) && !is_trash;
+    let picking = PICKED.read().clone();
+    let shown: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    let all_picked = picking.as_ref().is_some_and(|p| !shown.is_empty() && shown.iter().all(|id| p.contains(id)));
 
     rsx! {
         div { class: "list-head",
+            if let Some(p) = picking.as_ref() {
+                div { class: "title-row",
+                    button { class: "btn small", onclick: move |_| *PICKED.write() = None, {t("common.cancel")} }
+                    h2 { class: "pick-count", {t("pick.count").replace("{n}", &p.len().to_string())} }
+                    button { class: "btn small",
+                        onclick: move |_| {
+                            *PICKED.write() = Some(if all_picked { HashSet::new() } else { shown.iter().cloned().collect() });
+                        },
+                        {either(all_picked, t("pick.none"), t("pick.all"))}
+                    }
+                }
+            } else {
             div { class: "title-row",
                 button { class: "icon-btn mobile-only", onclick: move |_| *PANE.write() = Pane::Nav, Icon { name: "menu" } }
                 h2 { "{title}" }
@@ -495,6 +568,12 @@ fn ItemList() -> Element {
                         {t("trash.empty")}
                     }
                 }
+                if !items.is_empty() && !crate::extension::ENABLED {
+                    button { class: "icon-btn", title: t("pick.select"),
+                        onclick: move |_| *PICKED.write() = Some(HashSet::new()),
+                        Icon { name: "check-square", size: 17 }
+                    }
+                }
                 if can_add {
                     button { class: "btn primary small", title: t("item.new"),
                         onclick: move |_| *MODAL.write() = Some(Modal::NewItem),
@@ -502,6 +581,7 @@ fn ItemList() -> Element {
                         span { {t("item.new_short")} }
                     }
                 }
+            }
             }
             crate::components::emergency::EmergencyBanner {}
             BackupReminder {}
@@ -575,16 +655,33 @@ fn ItemList() -> Element {
             for item in items {
                 {
                     let id = item.id.clone();
+                    let menu_id = item.id.clone();
                     let is_sel = selected.as_deref() == Some(item.id.as_str());
+                    let picked = picking.as_ref().map(|p| p.contains(&item.id));
                     rsx! {
                         div {
                             key: "{item.id}",
-                            class: if is_sel { "item-row selected" } else { "item-row" },
-                            onclick: move |_| {
+                            class: match (picked, is_sel) {
+                                (Some(true), _) => "item-row picked",
+                                (None, true) => "item-row selected",
+                                _ => "item-row",
+                            },
+                            "data-menu": "true",
+                            onclick: move |e: MouseEvent| {
+                                // Picking, or Ctrl/Cmd+click: pick or drop it.
+                                let m = e.modifiers();
+                                if PICKED.peek().is_some() || m.ctrl() || m.meta() {
+                                    toggle_pick(&id);
+                                    return;
+                                }
                                 *SELECTED.write() = Some(id.clone());
                                 *EDITING.write() = None;
                                 *PANE.write() = Pane::Detail;
                             },
+                            oncontextmenu: move |e| open_menu(MenuFor::Item(menu_id.clone()), &e),
+                            if let Some(on) = picked {
+                                span { class: either(on, "pick on", "pick"), Icon { name: "check", size: 14 } }
+                            }
                             ItemAvatar { category: item.category, title: item.title.clone(), icon: item.icon.clone() }
                             div { class: "grow",
                                 div { class: "t", "{item.title}" }
@@ -597,6 +694,9 @@ fn ItemList() -> Element {
                     }
                 }
             }
+        }
+        if picking.is_some() {
+            PickBar { trash: is_trash }
         }
     }
 }

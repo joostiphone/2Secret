@@ -137,14 +137,34 @@ pub enum Modal {
     ShareVault(String),
     DeleteVault(String),
     MoveItem(String),
+    /// Move several items (picked in the list) to another vault.
+    MoveItems(Vec<String>),
+    RenameItem(String),
     /// Share an item at a link for someone without 2Secret.
     ShareItem(String),
     DeleteItem(String),
+    /// Delete several items in the trash for good.
+    DeleteItems(Vec<String>),
     Reauth,
     ForgetDevice,
     Backup,
     /// Add a one-time password from an `otpauth://` link to a login.
     SetUpCode(String),
+}
+
+/// What a menu opened with a long press or a right click is for.
+#[derive(Clone, PartialEq, Debug)]
+pub enum MenuFor {
+    Item(String),
+    Vault(String),
+}
+
+/// A menu of an item or a vault, at the point where it was opened.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Menu {
+    pub target: MenuFor,
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
@@ -197,6 +217,10 @@ pub struct Prefs {
     pub quick_access: bool,
     /// Desktop: the SSH agent (`ssh_agent`).
     pub ssh_agent: bool,
+    /// The sections of the menu that are folded away ("categories",
+    /// "vaults", "tags"); never the names in them, which are not stored
+    /// unencrypted.
+    pub folded: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -217,6 +241,8 @@ impl Default for Prefs {
             tray: true,
             quick_access: true,
             ssh_agent: false,
+            // Tags can be many: folded until opened.
+            folded: vec!["tags".to_string()],
         }
     }
 }
@@ -238,6 +264,11 @@ pub static ACTIVITY: GlobalSignal<i64> = Signal::global(now);
 pub static MODAL: GlobalSignal<Option<Modal>> = Signal::global(|| None);
 pub static BUSY: GlobalSignal<Option<String>> = Signal::global(|| None);
 pub static PANE: GlobalSignal<Pane> = Signal::global(|| Pane::List);
+/// The menu of an item or a vault, opened with a long press or a right click
+/// (`ContextMenu`).
+pub static MENU: GlobalSignal<Option<Menu>> = Signal::global(|| None);
+/// The items picked in the list to act on together; `None`: not picking.
+pub static PICKED: GlobalSignal<Option<std::collections::HashSet<String>>> = Signal::global(|| None);
 /// URL of the active browser tab (extension only).
 pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
 /// Emergency access as the server said at the last sync (none: not
@@ -370,6 +401,8 @@ pub fn add_profile() {
 fn reset_view() {
     *EDITING.write() = None;
     *SELECTED.write() = None;
+    *MENU.write() = None;
+    *PICKED.write() = None;
     clear_search();
     *MODAL.write() = None;
     *NAV.write() = start_nav();
@@ -533,20 +566,69 @@ pub fn refresh_autofill() {
 /// do not let other pages read their icons.
 pub const FETCHES_ICONS: bool = cfg!(not(target_arch = "wasm32"));
 
-/// Fetch website icons for these items, one website after the other, if they
-/// have a public website without an icon for it (and the setting is on).
-/// Each icon is saved, encrypted, with its item; other devices get it
-/// through sync.
+/// Fetch website icons for these items, if they have a public website
+/// without an icon for it (and the setting is on). Each website is asked
+/// once, however many logins it has, a few websites at a time, and goes on
+/// when the screen that asked is left (Settings shows how far it is). Each
+/// icon is saved, encrypted, with its item; other devices get it through
+/// sync.
 pub fn fetch_icons(ids: Vec<String>) {
     #[cfg(not(target_arch = "wasm32"))]
-    {
+    icons::fetch(ids);
+    #[cfg(target_arch = "wasm32")]
+    let _ = ids;
+}
+
+/// How far fetching website icons is: websites done and websites in all.
+pub static ICON_PROGRESS: GlobalSignal<Option<(usize, usize)>> = Signal::global(|| None);
+
+#[cfg(not(target_arch = "wasm32"))]
+mod icons {
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+
+    use dioxus::prelude::*;
+    use twosecret_core::favicon::WebsiteIcon;
+
+    use super::{persist, request_sync, toast, ICON_PROGRESS, PREFS, SESSION};
+    use crate::i18n::t;
+
+    /// Websites asked at the same time.
+    const WORKERS: usize = 6;
+
+    /// A website to ask, for the items of one account.
+    struct Site {
+        account: String,
+        host: String,
+        ids: Vec<String>,
+    }
+
+    #[derive(Default)]
+    struct Queue {
+        sites: VecDeque<Site>,
+        workers: usize,
+        done: usize,
+        total: usize,
+        /// Icons waiting to be saved with their items.
+        fetched: Vec<(String, WebsiteIcon)>,
+        /// Items given an icon since the last save to storage, and in all.
+        unsaved: usize,
+        found: usize,
+    }
+
+    thread_local! {
+        static QUEUE: RefCell<Queue> = RefCell::new(Queue::default());
+    }
+
+    pub fn fetch(ids: Vec<String>) {
         if !PREFS.peek().website_icons {
             return;
         }
-        let wanted: Vec<(String, String)> = {
+        let (account, wanted): (String, Vec<(String, String)>) = {
             let session = SESSION.peek();
             let Some(session) = session.as_ref() else { return };
-            ids.into_iter()
+            let wanted = ids
+                .into_iter()
                 .filter_map(|id| {
                     let item = session.item(&id)?;
                     let writable =
@@ -554,34 +636,114 @@ pub fn fetch_icons(ids: Vec<String>) {
                     if !writable || item.is_trashed() || !twosecret_core::favicon::wants_icon(item) {
                         return None;
                     }
-                    Some((id, twosecret_core::favicon::icon_host(item)?))
+                    Some((twosecret_core::favicon::icon_host(item)?, id))
                 })
-                .collect()
+                .collect();
+            (session.account().id.clone(), wanted)
         };
         if wanted.is_empty() {
             return;
         }
-        spawn(async move {
-            let mut unsaved = 0;
-            let total = wanted.len();
-            for (i, (id, host)) in wanted.into_iter().enumerate() {
-                if let Some(icon) = twosecret_client::favicon::fetch(&host).await {
-                    let saved = SESSION.write().as_mut().map(|s| s.set_icon(&id, icon));
-                    if matches!(saved, Some(Ok(()))) {
-                        unsaved += 1;
+        let start = QUEUE.with_borrow_mut(|q| {
+            // What another profile still had to fetch goes.
+            q.sites.retain(|site| site.account == account);
+            for (host, id) in wanted {
+                match q.sites.iter_mut().find(|site| site.host == host) {
+                    Some(site) if !site.ids.contains(&id) => site.ids.push(id),
+                    Some(_) => {}
+                    None => {
+                        q.total += 1;
+                        q.sites.push_back(Site { account: account.clone(), host, ids: vec![id] });
                     }
                 }
-                // Save now and then, not after every icon of a long list.
-                if unsaved > 0 && (unsaved >= 20 || i + 1 == total) {
-                    unsaved = 0;
-                    persist();
-                    request_sync();
+            }
+            let start = WORKERS.saturating_sub(q.workers).min(q.sites.len());
+            q.workers += start;
+            start
+        });
+        show_progress();
+        for _ in 0..start {
+            // `spawn_forever`: fetching goes on when the screen is left.
+            dioxus::core::spawn_forever(work());
+        }
+    }
+
+    async fn work() {
+        while let Some(site) = QUEUE.with_borrow_mut(|q| q.sites.pop_front()) {
+            // Locked, or the other profile: its websites are left for later.
+            let current = SESSION.peek().as_ref().map(|s| s.account().id.clone());
+            let icon = if current.as_deref() == Some(site.account.as_str()) {
+                twosecret_client::favicon::fetch(&site.host).await
+            } else {
+                None
+            };
+            QUEUE.with_borrow_mut(|q| {
+                q.done += 1;
+                if let Some(icon) = icon {
+                    q.fetched.extend(site.ids.into_iter().map(|id| (id, icon.clone())));
                 }
+            });
+            save(false);
+            show_progress();
+        }
+        let last = QUEUE.with_borrow_mut(|q| {
+            q.workers -= 1;
+            q.workers == 0
+        });
+        if last {
+            save(true);
+            let (found, total) = QUEUE.with_borrow_mut(|q| {
+                let summary = (q.found, q.total);
+                *q = Queue::default();
+                summary
+            });
+            *ICON_PROGRESS.write() = None;
+            if total > 1 {
+                toast(&t("settings.website_icons_done").replace("{n}", &found.to_string()));
+            }
+        }
+    }
+
+    /// Saves the fetched icons with their items, ten websites at a time (each
+    /// save draws the list again) and to storage now and then.
+    fn save(finished: bool) {
+        let batch = QUEUE.with_borrow_mut(|q| {
+            if finished || q.fetched.len() >= 10 {
+                std::mem::take(&mut q.fetched)
+            } else {
+                Vec::new()
             }
         });
+        let saved = if batch.is_empty() {
+            0
+        } else {
+            SESSION
+                .write()
+                .as_mut()
+                .map(|s| batch.into_iter().filter(|(id, icon)| s.set_icon(id, icon.clone()).is_ok()).count())
+                .unwrap_or(0)
+        };
+        let store = QUEUE.with_borrow_mut(|q| {
+            q.found += saved;
+            q.unsaved += saved;
+            let store = q.unsaved > 0 && (finished || q.unsaved >= 50);
+            if store {
+                q.unsaved = 0;
+            }
+            store
+        });
+        if store {
+            persist();
+            request_sync();
+        }
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = ids;
+
+    fn show_progress() {
+        let progress = QUEUE.with_borrow(|q| (q.done, q.total));
+        if progress.1 > 0 && *ICON_PROGRESS.peek() != Some(progress) {
+            *ICON_PROGRESS.write() = Some(progress);
+        }
+    }
 }
 
 /// Show an item from outside the list (the dashboard, a dialog).

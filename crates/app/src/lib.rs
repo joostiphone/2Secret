@@ -33,6 +33,7 @@ mod updater;
 
 use dioxus::prelude::*;
 
+use components::actions::ContextMenu;
 use components::modals::ModalHost;
 use components::onboarding::{CreateAccount, LockScreen, NewAccount, SignIn, Welcome};
 use components::passkey::PasskeyPrompt;
@@ -162,9 +163,20 @@ pub extern "C" fn twosecret_main() {
 /// Escape closes dialogs.
 fn shortcut(e: KeyboardEvent) {
     let m = e.modifiers();
-    if e.key() == Key::Escape && MODAL.peek().is_some() {
-        *MODAL.write() = None;
-        return;
+    // Escape closes a menu, then a dialog, then stops picking items.
+    if e.key() == Key::Escape {
+        if MENU.peek().is_some() {
+            *MENU.write() = None;
+            return;
+        }
+        if MODAL.peek().is_some() {
+            *MODAL.write() = None;
+            return;
+        }
+        if PICKED.peek().is_some() {
+            *PICKED.write() = None;
+            return;
+        }
     }
     if !(m.ctrl() || m.meta()) || *PHASE.peek() != Phase::Unlocked || BUSY.peek().is_some() {
         return;
@@ -272,6 +284,60 @@ const TAB_BAR_JS: &str = r#"
 })();
 "#;
 
+/// Phones and tablets: a long press on an item or a vault (`data-menu`)
+/// opens its menu, as a right click does on a computer; iOS sends no
+/// `contextmenu` event for a long press. Android does: the first of the two
+/// counts. The tap that ends a long press, however long the finger stays,
+/// does not also open the item or close the menu, and moving the finger
+/// (scrolling) is no long press.
+#[cfg(feature = "mobile")]
+const LONG_PRESS_JS: &str = r#"
+(function () {
+  if (window.twosecretLongPress) return;
+  window.twosecretLongPress = true;
+  var timer = null, start = null, longPress = false, releasedAt = 0;
+  function cancel() { clearTimeout(timer); timer = null; }
+  function release() {
+    cancel();
+    if (longPress) { longPress = false; releasedAt = Date.now(); }
+  }
+  document.addEventListener("touchstart", function (e) {
+    // A new touch: the click of the last one has come (or not) by now.
+    cancel();
+    longPress = false;
+    releasedAt = 0;
+    var el = e.target.closest && e.target.closest("[data-menu]");
+    if (!el || e.touches.length !== 1) return;
+    start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    timer = setTimeout(function () {
+      timer = null;
+      longPress = true;
+      if (navigator.vibrate) navigator.vibrate(10);
+      el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y }));
+    }, 450);
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!timer) return;
+    var t = e.touches[0];
+    if (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10) cancel();
+  }, { passive: true });
+  document.addEventListener("touchend", release, { passive: true });
+  document.addEventListener("touchcancel", release, { passive: true });
+  document.addEventListener("contextmenu", function (e) {
+    if (!e.isTrusted) return;
+    if (timer) { cancel(); longPress = true; return; }
+    if (longPress) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  document.addEventListener("click", function (e) {
+    if (longPress || Date.now() - releasedAt < 600) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      releasedAt = 0;
+    }
+  }, true);
+})();
+"#;
+
 #[component]
 fn App() -> Element {
     use_hook(|| {
@@ -305,6 +371,7 @@ fn App() -> Element {
     use_effect(|| {
         let _ = dioxus::document::eval(KEYBOARD_JS);
         let _ = dioxus::document::eval(TAB_BAR_JS);
+        let _ = dioxus::document::eval(LONG_PRESS_JS);
     });
     #[cfg(all(target_os = "ios", feature = "mobile"))]
     use_hook(ios_view::hide_scroll_edges);
@@ -342,6 +409,7 @@ fn App() -> Element {
                 Phase::Unlocked if PASSKEY.read().is_some() => rsx! { PasskeyPrompt {} },
                 Phase::Unlocked => rsx! { Shell {} },
             }
+            ContextMenu {}
             ModalHost {}
             BusyOverlay {}
             ToastHost {}

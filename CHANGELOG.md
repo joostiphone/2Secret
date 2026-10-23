@@ -13,6 +13,22 @@ A new look on phones, and the iPhone app fills iPhone Duo.
 - iPhone: the status bar is light or dark with the app's theme, also when
   the iPhone's own setting differs, and dialogs stay clear of the Dynamic
   Island and the home indicator.
+- **Menus on items and vaults**: a long press (phones, tablets) or a right
+  click (computers) on an item gives its menu: copy the username, password
+  or one-time password, favorite, edit, rename, move, duplicate, share via
+  link, select, move to the trash. A vault in the menu has one too: a new
+  item in it, edit, share, delete or leave.
+- **Several items at once**: select items (the select button above the
+  list, *Select* in an item's menu, or Ctrl/Cmd+click) to favorite, move
+  or trash them together, or in the trash to restore or delete them.
+- Search shows your favorites first, then the items with the words in
+  their title (the apps, Quick Access and `2secret list`).
+- The menu's categories, vaults and tags fold away with a tap on their
+  heading; tags start folded.
+- Website icons: *Fetch for all logins* goes on when you leave Settings and
+  shows how far it is. It asks several websites at a time, each once for
+  all its logins, tries the main domain for a login on a subdomain, takes
+  sharper icons and scales down those over 24 KB instead of skipping them.
 - **iPhone Duo**: 2Secret fills the whole screen, open and closed. Until
   now iPhone Duo showed it at the size of a regular iPhone. Open, the list
   and the item show side by side with the fold between them.

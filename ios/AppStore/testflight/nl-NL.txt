@@ -1,22 +1,25 @@
 2Secret 1.9.3
 
 WAT IS NIEUW
-- Nieuw uiterlijk in de stijl van Liquid Glass (iOS 26): Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin, met een zoekknop ernaast. De knoppen bovenin zijn ook van glas, en de inhoud schuift door onder de menubalk en onder de statusbalk en de Dynamic Island, die hem zacht vervagen. De andere onderdelen (zoals de generator en de instellingen) staan in het menu linksboven.
-- De statusbalk (tijd, batterij) is licht of donker zoals het thema van 2Secret, ook als je iPhone een ander thema heeft.
-- iPhone Duo: 2Secret vult nu het hele scherm, op het binnen- en het buitenscherm. Tot nu toe draaide het daar op het formaat van een gewone iPhone.
-- Gebouwd met Xcode 27.1 voor iOS 27. De app start nu zoals iOS 27 dat van apps vraagt (met scenes), dus controleer alsjeblieft of alles werkt zoals voorheen.
+- Nieuw uiterlijk in de stijl van Liquid Glass (iOS 26): Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin, met een zoekknop ernaast. De inhoud schuift door onder de menubalk, de statusbalk en de Dynamic Island. De statusbalk volgt het thema van 2Secret.
+- Lang drukken op een item geeft een menu: kopiëren, favoriet, bewerken, naam wijzigen, verplaatsen, dupliceren, delen, selecteren, prullenbak. Lang drukken op een kluis in het menu ook.
+- Meerdere items tegelijk selecteren (de knop met het vinkje boven de lijst) om ze favoriet te maken, te verplaatsen of naar de prullenbak te doen.
+- Zoeken toont je favorieten bovenaan.
+- In het menu kun je categorieën, kluizen en labels inklappen; labels staan standaard ingeklapt.
+- Website-icoontjes ophalen voor alle logins gaat door als je de instellingen verlaat, laat zien hoe ver het is, is veel sneller en vindt veel meer icoontjes.
+- iPhone Duo: 2Secret vult het hele scherm, opengeklapt en dichtgeklapt. Gebouwd met Xcode 27.1 voor iOS 27.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app: hij start gewoon en al je kluizen en items zijn er. Ontgrendel met Face ID.
-2. De menubalk: tik op Dashboard, Items en Watchtower; het lichte vlak schuift mee naar wat open is. Scroll door een lange lijst: de inhoud loopt zichtbaar onder de balk door en het laatste item komt er nog boven.
-3. Zoeken: tik op de zoekknop rechtsonder. De lijst met items opent met het toetsenbord al open; de menubalk verdwijnt zolang het toetsenbord er is.
-4. Bovenin: scroll omhoog; de inhoud vervaagt onder de knoppen, de statusbalk en de Dynamic Island, en niets is daar aan te tikken of onleesbaar. Kijk ook in de schermen van een item, Watchtower en de instellingen.
-5. Thema: kies bij Instellingen → Weergave → Thema licht, donker en systeem, met je iPhone zowel licht als donker: de tijd en de batterij bovenin blijven leesbaar.
-6. Bewerk een item: de menubalk is weg tot je bewaart of annuleert. Open het menu linksboven: ook dan is hij weg.
-7. iPhone Duo: gebruik 2Secret dichtgeklapt en opengeklapt, half gevouwen en gedraaid. De app vult het scherm, niets valt weg achter de camera, en opengeklapt staan de lijst en het item naast elkaar met de vouw ertussen.
-8. Wissel naar een andere app en terug, en vergrendel en ontgrendel je iPhone: 2Secret staat waar je was, of vraagt om te ontgrendelen, afhankelijk van je instellingen.
-9. Eenmalige codes: kies 2Secret als app voor verificatiecodes bij Instellingen → Algemeen → Automatisch invullen en wachtwoorden. Open daarna een otpauth://-link, of scan de QR-code van een eenmalige code met de Camera-app: 2Secret opent en biedt aan de code te bewaren, ook als de app nog niet draaide.
-10. Automatisch invullen: vul een wachtwoord en een passkey in Safari in.
-11. iPad: gebruik 2Secret schermvullend en in een venster naast een andere app.
+1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID.
+2. De menubalk: tik op Dashboard, Items en Watchtower. Scroll door een lange lijst: de inhoud loopt onder de balk door en het laatste item komt er nog boven.
+3. Zoeken: tik op de zoekknop rechtsonder; de lijst opent met het toetsenbord al open. Zoek op iets dat ook in je favorieten staat: de favoriet staat bovenaan.
+4. Bovenin: scroll omhoog; de inhoud vervaagt onder de knoppen en de Dynamic Island. Kies bij Instellingen → Weergave → Thema licht en donker: de tijd en de batterij blijven leesbaar.
+5. Druk lang op een item en probeer de opties, zoals naam wijzigen en wachtwoord kopiëren. Na het loslaten opent het item niet ook nog. Scrollen opent geen menu.
+6. Druk lang op een kluis in het menu linksboven: nieuw item, bewerken, delen.
+7. Tik op de knop met het vinkje, kies een paar items en zet ze in de prullenbak; zet ze daar terug.
+8. Klap in het menu de labels open en dicht; na het herstarten van de app is dat onthouden.
+9. Instellingen → Website-icoontjes → Ophalen voor alle logins: ga naar een ander scherm; het ophalen gaat door en de icoontjes verschijnen.
+10. iPhone Duo: gebruik 2Secret dichtgeklapt en opengeklapt; de app vult het scherm.
+11. Eenmalige codes, automatisch invullen in Safari en de iPad werken zoals voorheen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

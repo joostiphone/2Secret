@@ -104,6 +104,13 @@ pub fn public_host(host: &str) -> bool {
         && psl::suffix_str(name).is_some_and(|suffix| suffix != name && psl::domain_str(name).is_some())
 }
 
+/// The registrable domain of a host (`example.com` for `login.example.com`,
+/// `example.co.uk` for `www.example.co.uk`).
+pub fn main_domain(host: &str) -> Option<String> {
+    let domain = psl::domain_str(host.trim_end_matches('.'))?;
+    public_host(domain).then(|| domain.to_string())
+}
+
 /// Whether an item should get a (new) icon: it has a public website and no
 /// icon for that host yet.
 pub fn wants_icon(item: &Item) -> bool {
@@ -112,7 +119,8 @@ pub fn wants_icon(item: &Item) -> bool {
 
 /// The icons a page links to, best first, as absolute `https:` (or `data:`)
 /// URLs, followed by `/favicon.ico`. The best is the smallest one of at
-/// least 32 pixels; SVG fits any size.
+/// least 64 pixels, sharp on a high-resolution screen (the apps scale a
+/// larger one down); SVG fits any size.
 pub fn icon_urls(page: &str, base: &url::Url) -> Vec<String> {
     let head = page.get(..page.len().min(MAX_PAGE_BYTES)).unwrap_or(page);
     let head = match head.to_ascii_lowercase().find("</head") {
@@ -134,10 +142,10 @@ pub fn icon_urls(page: &str, base: &url::Url) -> Vec<String> {
         let size = attribute(tag, "sizes").and_then(|s| largest_size(&s)).unwrap_or(if touch { 180 } else { 32 });
         let score = if svg {
             1
-        } else if size >= 32 {
-            size - 32 + 2
+        } else if size >= 64 {
+            size - 64 + 2
         } else {
-            1000 + (32 - size)
+            1000 + (64 - size)
         };
         if !found.iter().any(|(_, u)| *u == url) {
             found.push((score, url));
@@ -258,6 +266,14 @@ mod tests {
     }
 
     #[test]
+    fn main_domains() {
+        assert_eq!(main_domain("login.example.com").as_deref(), Some("example.com"));
+        assert_eq!(main_domain("www.example.co.uk").as_deref(), Some("example.co.uk"));
+        assert_eq!(main_domain("example.com").as_deref(), Some("example.com"));
+        assert_eq!(main_domain("co.uk"), None);
+    }
+
+    #[test]
     fn public_hosts_only() {
         assert!(public_host("example.com"));
         assert!(public_host("Example.COM."));
@@ -296,9 +312,9 @@ mod tests {
         assert_eq!(
             icon_urls(page, &base),
             [
-                "https://cdn.example.com/fav.ico?v=2&x=1",
-                "https://example.com/icons/48.png",
                 "https://example.com/apple.png",
+                "https://example.com/icons/48.png",
+                "https://cdn.example.com/fav.ico?v=2&x=1",
                 "https://example.com/16.png",
                 "https://example.com/favicon.ico",
             ]

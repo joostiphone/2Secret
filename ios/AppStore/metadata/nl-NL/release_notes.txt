@@ -1,5 +1,11 @@
 Nieuw uiterlijk: Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin het scherm, met een zoekknop ernaast. De inhoud loopt door tot onder de Dynamic Island.
 
+- Druk lang op een item of kluis voor een menu met opties, zoals naam wijzigen en wachtwoord kopiëren.
+- Selecteer meerdere items tegelijk om ze te verplaatsen, favoriet te maken of naar de prullenbak te doen.
+- Zoeken toont je favorieten bovenaan.
+- Categorieën, kluizen en labels in het menu klap je in en uit.
+- Website-icoontjes worden sneller en veel vaker gevonden.
+
 iPhone Duo: 2Secret vult nu het hele scherm, opengeklapt en dichtgeklapt.
 
 Beveiligingsverbeteringen:

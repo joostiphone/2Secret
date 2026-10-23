@@ -298,8 +298,10 @@ fn CardHead(title: String, #[props(default)] target: Option<Nav>) -> Element {
 #[component]
 fn ItemRow(item: ItemSummary, detail: String, #[props(default)] when: Option<i64>) -> Element {
     let id = item.id.clone();
+    let menu_id = item.id.clone();
     rsx! {
-        div { class: "item-row", onclick: move |_| open_item(&id),
+        div { class: "item-row", "data-menu": "true", onclick: move |_| open_item(&id),
+            oncontextmenu: move |e| crate::components::actions::open_menu(MenuFor::Item(menu_id.clone()), &e),
             ItemAvatar { category: item.category, title: item.title.clone(), icon: item.icon.clone(), size: 32 }
             div { class: "grow",
                 div { class: "t", "{item.title}" }

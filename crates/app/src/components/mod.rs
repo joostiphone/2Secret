@@ -1,3 +1,4 @@
+pub mod actions;
 pub mod dashboard;
 pub mod emergency;
 pub mod generator;

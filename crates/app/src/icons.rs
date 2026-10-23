@@ -92,6 +92,12 @@ fn path(name: &str) -> &'static str {
         }
         "x" => r#"<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>"#,
         "check" => r#"<polyline points="20 6 9 17 4 12"/>"#,
+        "check-square" => {
+            r#"<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>"#
+        }
+        "type" => {
+            r#"<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>"#
+        }
         "chevron-left" => r#"<polyline points="15 18 9 12 15 6"/>"#,
         "chevron-down" => r#"<polyline points="6 9 12 15 18 9"/>"#,
         "chevron-right" => r#"<polyline points="9 18 15 12 9 6"/>"#,

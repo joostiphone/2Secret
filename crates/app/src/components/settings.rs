@@ -958,6 +958,7 @@ fn QuickAccessRow() -> Element {
 #[component]
 fn WebsiteIconsRow() -> Element {
     let on = PREFS.read().website_icons;
+    let progress = *ICON_PROGRESS.read();
     let fetch_all = move |_| {
         let ids: Vec<String> = SESSION
             .peek()
@@ -973,7 +974,11 @@ fn WebsiteIconsRow() -> Element {
                 div { class: "t", {t("settings.website_icons")} }
                 div { class: "d", {t("settings.website_icons_desc")} }
             }
-            if on {
+            if let Some((done, total)) = progress {
+                span { class: "muted small",
+                    {t("settings.website_icons_progress").replace("{done}", &done.to_string()).replace("{total}", &total.to_string())}
+                }
+            } else if on {
                 button { class: "btn small", onclick: fetch_all, {t("settings.website_icons_all")} }
             }
             button { class: either(on, "btn small", "btn small primary"),

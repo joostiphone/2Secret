@@ -25,9 +25,12 @@ pub fn ModalHost() -> Element {
         Some(Modal::EditVault(id)) => rsx! { VaultFormModal { id: Some(id) } },
         Some(Modal::ShareVault(id)) => rsx! { ShareModal { id } },
         Some(Modal::DeleteVault(id)) => rsx! { DeleteVaultModal { id } },
-        Some(Modal::MoveItem(id)) => rsx! { MoveItemModal { id } },
+        Some(Modal::MoveItem(id)) => rsx! { MoveItemModal { ids: vec![id] } },
+        Some(Modal::MoveItems(ids)) => rsx! { MoveItemModal { ids } },
+        Some(Modal::RenameItem(id)) => rsx! { RenameItemModal { id } },
         Some(Modal::ShareItem(id)) => rsx! { ShareItemModal { id } },
         Some(Modal::DeleteItem(id)) => rsx! { DeleteItemModal { id } },
+        Some(Modal::DeleteItems(ids)) => rsx! { DeleteItemsModal { ids } },
         Some(Modal::Reauth) => rsx! { ReauthModal {} },
         Some(Modal::ForgetDevice) => rsx! { ForgetModal {} },
         Some(Modal::Backup) => rsx! { BackupModal {} },
@@ -312,13 +315,17 @@ fn DeleteVaultModal(id: String) -> Element {
     }
 }
 
+/// Move one item, or several picked in the list, to another vault.
 #[component]
-fn MoveItemModal(id: String) -> Element {
+fn MoveItemModal(ids: Vec<String>) -> Element {
     let session = SESSION.peek();
-    let current = session.as_ref().and_then(|s| s.item_vault(&id)).unwrap_or_default().to_string();
+    // The vault they are all in is not offered.
+    let current: Vec<String> =
+        ids.iter().filter_map(|id| session.as_ref().and_then(|s| s.item_vault(id)).map(str::to_string)).collect();
+    let only = current.first().filter(|first| current.iter().all(|v| v == *first)).cloned().unwrap_or_default();
     let vaults: Vec<_> = session
         .as_ref()
-        .map(|s| s.vaults().into_iter().filter(|v| v.role.can_write() && v.id != current).collect())
+        .map(|s| s.vaults().into_iter().filter(|v| v.role.can_write() && v.id != only).collect())
         .unwrap_or_default();
     drop(session);
     rsx! {
@@ -329,11 +336,33 @@ fn MoveItemModal(id: String) -> Element {
             for v in vaults {
                 button { class: "choice", key: "{v.id}",
                     onclick: {
-                        let id = id.clone();
+                        let ids = ids.clone();
                         move |_| {
-                            if let Some(new_id) = mutate(|s| s.move_item(&id, &v.id)) {
-                                *SELECTED.write() = Some(new_id);
-                                toast(t("toast.moved"));
+                            if let [id] = ids.as_slice() {
+                                if let Some(new_id) = mutate(|s| s.move_item(id, &v.id)) {
+                                    if SELECTED.peek().as_deref() == Some(id.as_str()) {
+                                        *SELECTED.write() = Some(new_id);
+                                    }
+                                    *PICKED.write() = None;
+                                    toast(t("toast.moved"));
+                                    close();
+                                }
+                                return;
+                            }
+                            // Items already in that vault stay where they are.
+                            let moved = mutate(|s| {
+                                Ok(ids
+                                    .iter()
+                                    .filter(|id| s.item_vault(id) != Some(v.id.as_str()) && s.move_item(id, &v.id).is_ok())
+                                    .count())
+                            });
+                            if let Some(n) = moved {
+                                if SELECTED.peek().as_ref().is_some_and(|id| ids.contains(id)) {
+                                    *SELECTED.write() = None;
+                                    *PANE.write() = Pane::List;
+                                }
+                                *PICKED.write() = None;
+                                toast(&t("toast.moved_n").replace("{n}", &n.to_string()));
                                 close();
                             }
                         }
@@ -522,6 +551,77 @@ fn ShareItemModal(id: String) -> Element {
                 oninput: move |e| password.set(e.value()),
             }
             p { class: "small muted", style: "margin-top:6px", {t("link.password_desc")} }
+        }
+    }
+}
+
+/// A new name for an item.
+#[component]
+fn RenameItemModal(id: String) -> Element {
+    let current = SESSION.peek().as_ref().and_then(|s| s.item(&id).map(|i| i.title.clone())).unwrap_or_default();
+    let mut name = use_signal(|| current.clone());
+    let save = move || {
+        let title = name().trim().to_string();
+        if title.is_empty() {
+            return;
+        }
+        let renamed = mutate(|s| {
+            let mut item =
+                s.item(&id).cloned().ok_or_else(|| twosecret_core::Error::not_found(format!("item {id}")))?;
+            item.title = title;
+            s.update_item(item)
+        });
+        if renamed.is_some() {
+            toast(t("toast.saved"));
+            close();
+        }
+    };
+    let save_key = save.clone();
+    let save_click = save;
+    rsx! {
+        ModalFrame { title: t("item.rename"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn primary", disabled: name().trim().is_empty(), onclick: move |_| save_click(), {t("common.save")} }
+            },
+            label { class: "label", {t("vault.name")} }
+            input { class: "input", value: "{name}", autofocus: true, autocapitalize: "sentences",
+                oninput: move |e| name.set(e.value()),
+                onkeydown: move |e: KeyboardEvent| {
+                    if e.key() == Key::Enter {
+                        save_key();
+                    }
+                },
+            }
+        }
+    }
+}
+
+/// Delete several items in the trash for good.
+#[component]
+fn DeleteItemsModal(ids: Vec<String>) -> Element {
+    let count = ids.len();
+    rsx! {
+        ModalFrame { title: t("item.delete_forever"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn danger",
+                    onclick: move |_| {
+                        if let Some(n) = mutate(|s| Ok(ids.iter().filter(|id| s.delete_item(id).is_ok()).count())) {
+                            if SELECTED.peek().as_ref().is_some_and(|id| ids.contains(id)) {
+                                *SELECTED.write() = None;
+                                *PANE.write() = Pane::List;
+                            }
+                            *PICKED.write() = None;
+                            toast(&format!("{n} {}", t("toast.deleted_items")));
+                            close();
+                        }
+                    },
+                    {t("common.delete")}
+                }
+            },
+            p { strong { {t("pick.count").replace("{n}", &count.to_string())} } }
+            p { class: "muted", {t("item.delete_many_warning")} }
         }
     }
 }

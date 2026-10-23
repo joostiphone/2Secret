@@ -1,5 +1,11 @@
 A new look: Dashboard, Items and Watchtower are in a floating tab bar of glass at the bottom of the screen, with a search button beside it. The content runs on under the Dynamic Island.
 
+- Long-press an item or a vault for a menu of options, such as rename and copy password.
+- Select several items at once to move them, favorite them or move them to the trash.
+- Search shows your favorites first.
+- Fold categories, vaults and tags in the menu away.
+- Website icons are found faster and far more often.
+
 iPhone Duo: 2Secret now fills the whole screen, open and closed.
 
 Security improvements:

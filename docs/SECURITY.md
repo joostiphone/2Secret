@@ -418,12 +418,17 @@ touching the other profile.
 
 When a login is saved, the apps fetch the icon of its website straight from
 that website over HTTPS: the home page for the icons it links to, else
-`/favicon.ico`. No icon service is involved and no cookies are sent. Only
+`/favicon.ico`, and for a login on a subdomain without an icon of its own
+(`login.example.com`) the same from the main domain (`example.com`). The
+request looks like one from a browser, as many websites turn others away.
+No icon service is involved and no cookies are sent. Only
 public host names are contacted, never IP addresses (in any notation, such
 as `127.1`) or local names, also not after a redirect, so an item someone shares with you cannot make your device
 contact your own network. The website learns your IP address, as when you
-visit it. The bytes must be an image by their content and at most 24 KB;
-the icon is then stored encrypted with the item, so other devices (the web
+visit it. The bytes must be an image by their content; an icon larger than
+24 KB is scaled down to a small PNG (at most 512 KB is downloaded, and images
+over 4096 pixels are not decoded). The icon is stored encrypted with the
+item, so other devices (the web
 vault and the browser extension too, which cannot fetch icons themselves)
 show it without asking the website again. Turn it off in *Settings →
 Appearance → Website icons*.

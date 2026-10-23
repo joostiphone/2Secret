@@ -686,6 +686,12 @@ impl Session {
         out.sort_by(|a, b| {
             a.title.to_lowercase().cmp(&b.title.to_lowercase()).then(a.subtitle.cmp(&b.subtitle)).then(a.id.cmp(&b.id))
         });
+        // A search shows the favorites first, then the items with the words
+        // in their title, then the rest (each alphabetically).
+        let query = filter.query.trim().to_lowercase();
+        if !query.is_empty() {
+            out.sort_by_key(|i| (!i.favorite, !i.title.to_lowercase().contains(&query)));
+        }
         out
     }
 
@@ -1292,6 +1298,15 @@ pub(crate) mod tests {
         assert_eq!(s.list(&ItemFilter { tag: Some("WORK".into()), ..Default::default() }).len(), 1);
         assert_eq!(s.find_item("alpha", None).unwrap().title, "Alpha");
         assert!(s.find_item("gamma", None).is_err());
+        // A search: favorites first, then titles that match.
+        let mut google = Item::login("Google", "me@gmail.com", "1", Some("https://accounts.google.com"));
+        google.favorite = true;
+        s.add_item(&v, google).unwrap();
+        s.add_item(&v, Item::login("Agenda", "me", "1", Some("https://calendar.google.com"))).unwrap();
+        s.add_item(&v, Item::login("Google Ads", "ads", "1", None)).unwrap();
+        let found: Vec<String> =
+            s.list(&ItemFilter { query: "google".into(), ..Default::default() }).into_iter().map(|i| i.title).collect();
+        assert_eq!(found, ["Google", "Google Ads", "Agenda"]);
         assert_eq!(s.items_for_url("https://login.alpha.com/x").len(), 1);
         assert_eq!(s.tags(), vec![("work".to_string(), 1)]);
     }

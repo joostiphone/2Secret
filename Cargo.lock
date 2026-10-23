@@ -6994,6 +6994,7 @@ name = "twosecret-client"
 version = "1.9.3"
 dependencies = [
  "ed25519-dalek",
+ "image",
  "reqwest",
  "serde",
  "serde_json",
