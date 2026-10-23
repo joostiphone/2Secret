@@ -121,7 +121,8 @@ async function signIn(page, t, locale) {
       await page.waitForSelector('.modal :text("sam@")', { timeout: 15000 });
       await shot(page, locale, theme, 'share');
       await page.keyboard.press('Escape');
-      await page.click('.sidebar-head button');
+      // The lock button (the account before it is a button too).
+      await page.click('.sidebar-head > button.icon-btn');
       await page.waitForSelector(`button:has-text("${t.unlock}")`);
       await shot(page, locale, theme, 'locked');
       await ctx.close();
