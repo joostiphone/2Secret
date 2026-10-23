@@ -1,15 +1,22 @@
 2Secret 1.9.3
 
 WHAT'S NEW
+- A new look in the style of Liquid Glass (iOS 26): Dashboard, Items and Watchtower are in a floating tab bar of glass at the bottom, with a search button beside it. The buttons at the top are glass too, and the content scrolls on under the tab bar and under the status bar and the Dynamic Island, which blur it softly. The other sections (such as the generator and the settings) are in the menu at the top left.
+- The status bar (time, battery) is light or dark like 2Secret's theme, also when your iPhone has another theme.
 - iPhone Duo: 2Secret now fills the whole screen, on the inner and the outer display. Until now it ran there at the size of a regular iPhone.
 - Built with Xcode 27.1 for iOS 27. The app now starts the way iOS 27 asks of apps (the scene life cycle), so please check that everything works as before.
 
 PLEASE TEST
-1. Update over 1.9.2 and open the app: it starts normally and all your vaults and items are there. Unlock with Face ID.
-2. iPhone Duo: use 2Secret closed and open, partly folded and turned. It fills the screen, nothing is hidden behind the camera, and open, the list and the item show side by side with the fold between them.
-3. Switch to another app and back, and lock and unlock your iPhone: 2Secret is where you left it, or asks you to unlock, depending on your settings.
-4. One-time codes: choose 2Secret under Settings → General → AutoFill & Passwords → Set Up Codes In. Then open an otpauth:// link, or scan the QR code of a one-time code with the Camera app: 2Secret opens and offers to save the code, also when it was not running.
-5. AutoFill: fill a password and a passkey in Safari.
-6. iPad: use 2Secret full screen and in a window next to another app.
+1. Update and open the app: it starts normally and all your vaults and items are there. Unlock with Face ID.
+2. The tab bar: tap Dashboard, Items and Watchtower; the light patch slides along to what is open. Scroll through a long list: the content runs on visibly under the bar, and the last item still comes above it.
+3. Search: tap the search button at the bottom right. The item list opens with the keyboard already up; the tab bar is gone while the keyboard is there.
+4. At the top: scroll up; the content blurs under the buttons, the status bar and the Dynamic Island, and nothing there is hard to tap or to read. Look at an item, Watchtower and the settings as well.
+5. Theme: choose light, dark and system under Settings → Appearance → Theme, with your iPhone both light and dark: the time and the battery at the top stay readable.
+6. Edit an item: the tab bar is gone until you save or cancel. Open the menu at the top left: it is gone then too.
+7. iPhone Duo: use 2Secret closed and open, partly folded and turned. It fills the screen, nothing is hidden behind the camera, and open, the list and the item show side by side with the fold between them.
+8. Switch to another app and back, and lock and unlock your iPhone: 2Secret is where you left it, or asks you to unlock, depending on your settings.
+9. One-time codes: choose 2Secret under Settings → General → AutoFill & Passwords → Set Up Codes In. Then open an otpauth:// link, or scan the QR code of a one-time code with the Camera app: 2Secret opens and offers to save the code, also when it was not running.
+10. AutoFill: fill a password and a passkey in Safari.
+11. iPad: use 2Secret full screen and in a window next to another app.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

@@ -27,9 +27,10 @@ const T = {
   },
 };
 // Screen size in points, scale, and the status bar (top) and home indicator
-// (bottom) the app keeps clear of.
+// (bottom). On the iPhone the app runs on under them (`under`); on the iPad it
+// keeps clear of them.
 const DEVICES = {
-  iphone: { width: 440, height: 956, scale: 3, top: 62, bottom: 34 },
+  iphone: { width: 440, height: 956, scale: 3, top: 62, bottom: 34, under: true },
   ipad: { width: 1032, height: 1376, scale: 2, top: 24, bottom: 20 },
 };
 const errors = [];
@@ -37,18 +38,19 @@ const errors = [];
 async function context(browser, locale, device) {
   const d = DEVICES[device];
   return browser.newContext({
-    viewport: { width: d.width, height: d.height - d.top },
+    viewport: { width: d.width, height: d.under ? d.height : d.height - d.top },
     deviceScaleFactor: d.scale, isMobile: true, hasTouch: true, locale: LOCALES[locale], colorScheme: 'light',
     bypassCSP: true,
   });
 }
 
-// The app keeps clear of the home indicator with env(safe-area-inset-bottom),
-// which is 0 in a browser.
+// The safe area (env(safe-area-inset-*), 0 in a browser) through its
+// variables in style.css.
 async function load(page, device) {
+  const d = DEVICES[device];
   await page.goto(server + '/');
   await page.waitForSelector('.card', { timeout: 30000 });
-  await page.addStyleTag({ content: `.root { padding-bottom: ${DEVICES[device].bottom}px !important; }` });
+  await page.addStyleTag({ content: `.root { --safe-top: ${d.under ? d.top : 0}px !important; --safe-bottom: ${d.bottom}px !important; }` });
 }
 
 async function signIn(browser, locale, device) {
@@ -86,8 +88,9 @@ async function openItem(page, title) {
   while (Math.floor(Date.now() / 1000) % 30 > 3) await page.waitForTimeout(250);
 }
 
-// Puts the status bar above a capture of the app, on the colours of the app's
-// top edge, and the home indicator over its bottom edge, as on a device.
+// Puts the status bar over a capture of the app (above it on the iPad, on the
+// colours of the app's top edge) and the home indicator over its bottom edge,
+// as on a device.
 async function frame(browser, png, device, file) {
   const d = DEVICES[device];
   const page = await browser.newPage({ viewport: { width: d.width, height: d.height }, deviceScaleFactor: d.scale });
@@ -126,8 +129,12 @@ window.draw = (src, d, ipad) => {
     c.width = d.width * s; c.height = d.height * s;
     const ctx = c.getContext('2d');
     const top = d.top * s, bottom = d.bottom * s;
-    ctx.drawImage(img, 0, 0, img.width, 1, 0, 0, c.width, top);
-    ctx.drawImage(img, 0, top);
+    if (d.under) {
+      ctx.drawImage(img, 0, 0);
+    } else {
+      ctx.drawImage(img, 0, 0, img.width, 1, 0, 0, c.width, top);
+      ctx.drawImage(img, 0, top);
+    }
     const bar = document.querySelector('.bar'), icons = document.getElementById('icons');
     const leftInk = light(ctx, Math.round(40 * s), Math.round(top / 2)) ? '#000' : '#fff';
     const rightInk = light(ctx, c.width - Math.round(40 * s), Math.round(top / 2)) ? '#000' : '#fff';

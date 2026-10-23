@@ -1,3 +1,5 @@
+Nieuw uiterlijk: Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin het scherm, met een zoekknop ernaast. De inhoud loopt door tot onder de Dynamic Island.
+
 iPhone Duo: 2Secret vult nu het hele scherm, opengeklapt en dichtgeklapt.
 
 Beveiligingsverbeteringen:

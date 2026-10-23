@@ -1,3 +1,5 @@
+A new look: Dashboard, Items and Watchtower are in a floating tab bar of glass at the bottom of the screen, with a search button beside it. The content runs on under the Dynamic Island.
+
 iPhone Duo: 2Secret now fills the whole screen, open and closed.
 
 Security improvements:

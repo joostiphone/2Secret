@@ -237,6 +237,9 @@ static TABLE: &[Entry] = &[
     // Navigation
     ("nav.home", "Dashboard", "Dashboard"),
     ("nav.all", "All items", "Alle items"),
+    // The tab bar on phones: short names.
+    ("nav.items", "Items", "Items"),
+    ("nav.sections", "Sections", "Onderdelen"),
     ("nav.favorites", "Favorites", "Favorieten"),
     ("nav.watchtower", "Watchtower", "Watchtower"),
     ("nav.generator", "Password generator", "Wachtwoordgenerator"),

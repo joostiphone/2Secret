@@ -102,18 +102,32 @@ pub fn Shell() -> Element {
             },
             nav { class: "sidebar {class(Pane::Nav)}", Sidebar {} }
             if page {
-                main { class: if pane == Pane::Nav { "detail-pane pane-hidden" } else { "detail-pane" },
-                    match nav {
-                        Nav::Home => rsx! { DashboardPage {} },
-                        Nav::Generator => rsx! { GeneratorPage {} },
-                        Nav::Settings => rsx! { SettingsPage {} },
-                        Nav::Watchtower(kind) => rsx! { WatchtowerPage { kind } },
-                        _ => rsx! {},
+                // A new pane for each page, so that it opens at the top: on
+                // phones the pane itself scrolls. Watchtower keeps its pane
+                // (and its check of data breaches) across its lists.
+                for k in [match nav {
+                    Nav::Watchtower(_) => "watchtower".to_string(),
+                    _ => format!("{nav:?}"),
+                }] {
+                    main { key: "{k}", class: if pane == Pane::Nav { "detail-pane pane-hidden" } else { "detail-pane" },
+                        match nav.clone() {
+                            Nav::Home => rsx! { DashboardPage {} },
+                            Nav::Generator => rsx! { GeneratorPage {} },
+                            Nav::Settings => rsx! { SettingsPage {} },
+                            Nav::Watchtower(kind) => rsx! { WatchtowerPage { kind } },
+                            _ => rsx! {},
+                        }
                     }
                 }
             } else {
                 section { class: "list-pane {class(Pane::List)}", ItemList {} }
                 main { class: "detail-pane {class(Pane::Detail)}", DetailPane {} }
+            }
+            if !crate::extension::ENABLED {
+                TabBar {}
+                // Takes the focus while the search button is tapped (TAB_BAR_JS
+                // in lib.rs), outside the tab bar, which hides with the keyboard.
+                input { class: "search-proxy", id: "search-proxy", tabindex: "-1", aria_hidden: "true", autocomplete: "off" }
             }
         }
     }
@@ -124,6 +138,66 @@ pub fn go(nav: Nav) {
     *SELECTED.write() = None;
     *EDITING.write() = None;
     *PANE.write() = Pane::List;
+}
+
+/// Shows the item list with the cursor in its search field (Ctrl/Cmd+F, the
+/// search button on phones).
+pub fn open_search() {
+    if NAV.peek().is_page() {
+        go(Nav::All);
+    }
+    *PANE.write() = Pane::List;
+    // Once the list is drawn: it may only appear now.
+    spawn(async move {
+        platform::sleep_ms(30).await;
+        let el = SEARCH_EL.peek().clone();
+        if let Some(el) = el {
+            let _ = el.set_focus(true).await;
+        }
+    });
+}
+
+/// Phones: the main sections at the bottom of the screen, within reach of a
+/// thumb, and a search button, in glass like iOS 26's tab bar. style.css only
+/// shows it on narrow touch screens; it hides while the menu is open, an
+/// item is edited or the keyboard is up.
+#[component]
+fn TabBar() -> Element {
+    let nav = NAV.read().clone();
+    let hidden = PANE() == Pane::Nav || EDITING.read().is_some();
+    // Every list of items (a category, a vault, the trash) is under Items;
+    // the generator and the settings are in the menu.
+    let tab = match nav {
+        Nav::Home => "0",
+        Nav::Watchtower(_) => "2",
+        Nav::Generator | Nav::Settings => "none",
+        _ => "1",
+    };
+    rsx! {
+        div { class: if hidden { "tabbar hidden" } else { "tabbar" },
+            nav { class: "tabs glass", "data-tab": tab, aria_label: t("nav.sections"),
+                span { class: "tab-pill" }
+                Tab { target: Nav::Home, icon: "home", label: t("nav.home"), on: tab == "0" }
+                Tab { target: Nav::All, icon: "grid", label: t("nav.items"), on: tab == "1" }
+                Tab { target: Nav::Watchtower(None), icon: "shield", label: t("nav.watchtower"), on: tab == "2" }
+            }
+            button { class: "tab-search glass", "data-search": "true", title: t("list.search"), aria_label: t("list.search"),
+                onclick: move |_| open_search(),
+                Icon { name: "search", size: 24 }
+            }
+        }
+    }
+}
+
+#[component]
+fn Tab(target: Nav, icon: &'static str, label: String, on: bool) -> Element {
+    rsx! {
+        button { class: if on { "tab on" } else { "tab" }, aria_current: if on { "page" } else { "false" },
+            onclick: move |_| go(target.clone()),
+            Icon { name: icon, size: 24 }
+            span { "{label}" }
+        }
+    }
 }
 
 #[component]

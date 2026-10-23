@@ -15,6 +15,8 @@ mod components;
 mod extension;
 mod i18n;
 mod icons;
+#[cfg(all(target_os = "ios", feature = "mobile"))]
+mod ios_view;
 #[cfg(all(feature = "desktop", not(target_os = "macos")))]
 mod link_handler;
 mod platform;
@@ -179,16 +181,7 @@ fn shortcut(e: KeyboardEvent) {
         }
         "f" => {
             e.prevent_default();
-            if NAV.peek().is_page() {
-                *NAV.write() = Nav::All;
-            }
-            *PANE.write() = Pane::List;
-            let el = SEARCH_EL.peek().clone();
-            if let Some(el) = el {
-                spawn(async move {
-                    let _ = el.set_focus(true).await;
-                });
-            }
+            components::shell::open_search();
         }
         _ => {}
     }
@@ -253,6 +246,32 @@ const KEYBOARD_JS: &str = r#"
 })();
 "#;
 
+/// The tab bar on phones (`TabBar` in shell.rs). iOS only shows a pressed
+/// button (`:active`) on a page that listens to touches. And it only opens
+/// the keyboard for a field that gets the focus during the tap, while the
+/// search field may only appear once Rust has handled the tap: a stand-in
+/// field takes the focus now and hands it on when the search field is there.
+#[cfg(feature = "mobile")]
+const TAB_BAR_JS: &str = r#"
+(function () {
+  if (window.twosecretTabBar) return;
+  window.twosecretTabBar = true;
+  document.addEventListener("touchstart", function () {}, { passive: true });
+  document.addEventListener("click", function (e) {
+    var proxy = document.getElementById("search-proxy");
+    if (!proxy || !e.target.closest || !e.target.closest("[data-search]")) return;
+    proxy.focus();
+    var frames = 0;
+    (function handOn() {
+      var field = document.querySelector(".list-pane:not(.pane-hidden) .search input");
+      if (field) field.focus();
+      else if (++frames < 60) requestAnimationFrame(handOn);
+      else proxy.blur();
+    })();
+  }, true);
+})();
+"#;
+
 #[component]
 fn App() -> Element {
     use_hook(|| {
@@ -285,7 +304,12 @@ fn App() -> Element {
     #[cfg(feature = "mobile")]
     use_effect(|| {
         let _ = dioxus::document::eval(KEYBOARD_JS);
+        let _ = dioxus::document::eval(TAB_BAR_JS);
     });
+    #[cfg(all(target_os = "ios", feature = "mobile"))]
+    use_hook(ios_view::hide_scroll_edges);
+    #[cfg(all(target_os = "ios", feature = "mobile"))]
+    use_effect(|| ios_view::follow_theme(PREFS.read().theme.id()));
     let theme = PREFS.read().theme.id();
     let phase = PHASE.read().clone();
     rsx! {

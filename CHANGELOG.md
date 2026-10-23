@@ -2,13 +2,22 @@
 
 ## 1.9.3
 
-Only the iPhone and iPad app changes.
+A new look on phones, and the iPhone app fills iPhone Duo.
 
+- **Phones** (the iPhone and Android apps, the web vault on a phone): the
+  Dashboard, Items and Watchtower are in a floating tab bar of glass at the
+  bottom of the screen, with a search button beside it, in the style of
+  Liquid Glass in iOS 26. The buttons at the top are glass too, and the
+  content scrolls on under the tab bar, the status bar and the Dynamic
+  Island, which blur it softly. The other sections stay in the menu.
+- iPhone: the status bar is light or dark with the app's theme, also when
+  the iPhone's own setting differs, and dialogs stay clear of the Dynamic
+  Island and the home indicator.
 - **iPhone Duo**: 2Secret fills the whole screen, open and closed. Until
   now iPhone Duo showed it at the size of a regular iPhone. Open, the list
   and the item show side by side with the fold between them.
-- The app is built with Xcode 27.1 and starts with the scene life cycle
-  that iOS 27 asks of apps.
+- The iPhone and iPad app is built with Xcode 27.1 and starts with the
+  scene life cycle that iOS 27 asks of apps.
 
 ## 1.9.2
 

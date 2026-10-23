@@ -6,6 +6,9 @@
   --danger: #d6336c; --danger-soft: #ffe3ec; --warn: #e8590c; --warn-soft: #fff0e6; --ok: #2b8a3e; --ok-soft: #e6f7ea;
   --sidebar: #1c2030; --sidebar-2: #252a3d; --sidebar-text: #c3c9d9; --sidebar-muted: #7d849a; --sidebar-active: #323a57;
   --input: #ffffff; --shadow: 0 10px 40px rgba(20, 24, 40, .14); --code: #f1f3f7;
+  --glass: rgba(255, 255, 255, .6); --glass-pill: rgba(40, 52, 90, .09);
+  --glass-shadow: 0 6px 22px rgba(20, 24, 40, .14), 0 1px 3px rgba(20, 24, 40, .08);
+  --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .3) 35%, rgba(255, 255, 255, .15) 65%, rgba(255, 255, 255, .8));
   --radius: 10px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -16,6 +19,9 @@
   --danger: #f06595; --danger-soft: #3a1d29; --warn: #ff922b; --warn-soft: #3a2817; --ok: #51cf66; --ok-soft: #1b3324;
   --sidebar: #0d0f15; --sidebar-2: #151823; --sidebar-text: #c3c9d9; --sidebar-muted: #6c7389; --sidebar-active: #252b42;
   --input: #11141c; --shadow: 0 10px 40px rgba(0, 0, 0, .5); --code: #10131a;
+  --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16);
+  --glass-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
+  --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .4), rgba(255, 255, 255, .07) 35%, rgba(255, 255, 255, .03) 65%, rgba(255, 255, 255, .22));
 }
 @media (prefers-color-scheme: dark) {
   .root[data-theme="system"] {
@@ -25,6 +31,9 @@
     --danger: #f06595; --danger-soft: #3a1d29; --warn: #ff922b; --warn-soft: #3a2817; --ok: #51cf66; --ok-soft: #1b3324;
     --sidebar: #0d0f15; --sidebar-2: #151823; --sidebar-text: #c3c9d9; --sidebar-muted: #6c7389; --sidebar-active: #252b42;
     --input: #11141c; --shadow: 0 10px 40px rgba(0, 0, 0, .5); --code: #10131a;
+    --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16);
+    --glass-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
+    --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .4), rgba(255, 255, 255, .07) 35%, rgba(255, 255, 255, .03) 65%, rgba(255, 255, 255, .22));
   }
 }
 
@@ -33,10 +42,14 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 body { font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
 #main { height: 100%; }
 .root { height: 100vh; height: 100dvh; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
-/* Keep clear of the status bar, the camera and the home indicator, on every
-   side and each side on its own: on a foldable such as iPhone Duo they sit
-   at the side, and differ per side and pose. Zero outside phones and tablets. */
-.root { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+/* Keep clear of the status bar, the Dynamic Island or camera and the home
+   indicator, on every side and each side on its own: on a foldable such as
+   iPhone Duo they sit at the side, and differ per side and pose. Zero outside
+   phones and tablets. On phones the content scrolls on under the status bar
+   and the tab bar (the end of this file). */
+.root { --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--accent); }
 .icon { flex-shrink: 0; display: block; }
@@ -312,8 +325,10 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 .settings-row select.input { width: auto; min-width: 160px; }
 
 /* Overlays */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(10, 12, 20, .55); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-.modal { background: var(--panel); color: var(--text); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+/* Dialogs and messages stay clear of the Dynamic Island and the home indicator. */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(10, 12, 20, .55); display: flex; align-items: center; justify-content: center; z-index: 50;
+  padding: max(20px, var(--safe-top)) max(20px, var(--safe-right)) max(20px, var(--safe-bottom)) max(20px, var(--safe-left)); }
+.modal { background: var(--panel); color: var(--text); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 480px; max-height: min(90vh, 100%); overflow-y: auto; }
 .modal-head { display: flex; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--border); }
 .modal-head h3 { margin: 0; font-size: 17px; flex: 1; }
 .modal-body { padding: 18px; }
@@ -326,7 +341,7 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 .menu-grid button { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-2); cursor: pointer; color: var(--text); text-align: left; }
 .menu-grid button:hover { border-color: var(--accent); background: var(--accent-soft); }
 .rel { position: relative; }
-.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1c2030; color: #fff; padding: 10px 18px; border-radius: 10px; box-shadow: var(--shadow);
+.toast { position: fixed; bottom: calc(24px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); background: #1c2030; color: #fff; padding: 10px 18px; border-radius: 10px; box-shadow: var(--shadow);
   z-index: 100; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); animation: toastin .18s ease-out; }
 .toast.error { background: #c2255c; }
 @keyframes toastin { from { transform: translate(-50%, 12px); opacity: 0; } }
@@ -335,6 +350,8 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .mobile-only { display: none; }
+/* Phones only (the end of this file). */
+.tabbar, .search-proxy { display: none; }
 
 /* Browser extension popup */
 .root.ext { width: 380px; height: 600px; }
@@ -441,3 +458,76 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px s
 
 /* Configuration to copy (SSH agent) */
 .code-block { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--code); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; }
+
+/* Phones (the iPhone and Android apps, the web vault on a phone): Liquid
+   Glass like iOS 26. The main sections float at the bottom in a tab bar of
+   glass (TabBar in shell.rs); the content scrolls on under it, and at the top
+   under a soft, blurred edge up to the top of the screen, around the Dynamic
+   Island, as in Apple's own apps. Each pane scrolls as a whole, so its header
+   can stay on top of its content. A web page cannot bend light as Apple's
+   glass does; this is blur, saturation and light on the rims. */
+@media (max-width: 599px) and (pointer: coarse) {
+  .root:not(.ext):has(> .shell) { padding-top: 0; padding-bottom: 0; }
+  .root:not(.ext) .list-pane { --under: var(--panel); }
+  .root:not(.ext) .detail-pane { --under: var(--bg); }
+  .root:not(.ext) .list-pane, .root:not(.ext) .detail-pane { overflow-y: auto; overscroll-behavior: contain; }
+  .root:not(.ext) .items, .root:not(.ext) .detail-scroll { flex: none; overflow: visible; padding-bottom: calc(var(--safe-bottom) + 100px); }
+  .root:not(.ext) .sidebar { padding-bottom: var(--safe-bottom); }
+  .root:not(.ext) .sidebar-head { padding-top: calc(var(--safe-top) + 14px); }
+
+  /* The header: on top of the content, which fades and blurs under it. */
+  .root:not(.ext) .list-head, .root:not(.ext) .toolbar { position: sticky; top: 0; z-index: 5; flex: none; isolation: isolate; background: transparent; border-bottom: none; }
+  .root:not(.ext) .list-head { padding: calc(var(--safe-top) + 6px) 14px 12px; }
+  .root:not(.ext) .toolbar { padding: calc(var(--safe-top) + 6px) 14px 10px; min-height: 0; gap: 8px; }
+  .root:not(.ext) .list-head::before, .root:not(.ext) .toolbar::before { content: ""; position: absolute; inset: 0 0 -24px; z-index: -1; pointer-events: none;
+    background: linear-gradient(to bottom, var(--under), color-mix(in srgb, var(--under) 85%, transparent) calc(100% - 24px), transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent); }
+  .root:not(.ext) .toolbar .menu { top: 52px; }
+
+  /* Glass: the tab bar, and the buttons and search field in a header. */
+  .root:not(.ext) .glass,
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) :is(.icon-btn, .btn),
+  .root:not(.ext) .list-head .search {
+    position: relative; border: none; background: var(--glass); box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    -webkit-tap-highlight-color: transparent; transition: transform .3s cubic-bezier(.3, 1.5, .5, 1), background .2s;
+  }
+  /* Light on the rims, brightest at the top left and the bottom right. */
+  .root:not(.ext) .glass::after,
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) :is(.icon-btn, .btn)::after,
+  .root:not(.ext) .list-head .search::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; background: var(--glass-rim);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) .icon-btn { border-radius: 50%; }
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) .icon-btn:not(.active) { color: var(--text); }
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) .btn { border-radius: 999px; padding: 8px 16px; }
+  .root:not(.ext) :is(.toolbar, .list-head .title-row) .btn.primary { background: color-mix(in srgb, var(--accent) 88%, transparent); color: var(--on-accent); }
+  /* Pressed glass swells a little; the wide tab bar less. */
+  .root:not(.ext) :is(.tab-search, .toolbar .icon-btn, .toolbar .btn, .list-head .title-row .icon-btn, .list-head .title-row .btn):active { transform: scale(1.08); }
+  .root:not(.ext) .tabs:active { transform: scale(1.02); }
+  .root:not(.ext) .list-head .search { border-radius: 999px; padding: 0 14px; color: var(--muted); }
+  .root:not(.ext) .list-head .search:focus-within { box-shadow: var(--glass-shadow), 0 0 0 2px var(--accent); }
+
+  /* The tab bar: the sections in a capsule, search in a circle beside it. */
+  .root:not(.ext) .tabbar { display: flex; gap: 10px; position: fixed; z-index: 20; height: 62px;
+    left: calc(var(--safe-left) + 16px); right: calc(var(--safe-right) + 16px); bottom: max(12px, calc(var(--safe-bottom) - 12px)); }
+  .kb-open .root:not(.ext) .tabbar { display: none; }
+  .tabs { flex: 1; min-width: 0; display: flex; padding: 4px; border-radius: 999px; }
+  .tab { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    border: none; border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; transition: color .25s; }
+  .tab span { max-width: 100%; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab.on { color: var(--accent); }
+  /* The lighter drop of glass behind the open section slides to the next. */
+  .tab-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px; background: var(--glass-pill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); transition: transform .45s cubic-bezier(.3, 1.4, .5, 1), opacity .2s; }
+  .tabs[data-tab="1"] .tab-pill { transform: translateX(100%); }
+  .tabs[data-tab="2"] .tab-pill { transform: translateX(200%); }
+  .tabs[data-tab="none"] .tab-pill { opacity: 0; }
+  .tab-search { flex: none; width: 62px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; }
+  .root:not(.ext) .search-proxy { display: block; position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; pointer-events: none; }
+  .root:not(.ext):has(.tabbar:not(.hidden)) .toast { bottom: calc(max(12px, calc(var(--safe-bottom) - 12px)) + 76px); }
+}
