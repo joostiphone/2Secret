@@ -35,8 +35,24 @@ limit() {
   perl -e 'alarm shift; exec @ARGV' "$seconds" "$@"
 }
 
+# Is the app running in the simulator? Its process is a process of this Mac,
+# started from the app's install path in the device, so `pgrep` sees it at
+# once. `launchctl list` in the device is asked only when `pgrep` finds
+# nothing; it took more than half a minute on a busy runner, which once
+# counted as "stopped".
 running() {
-  limit 30 xcrun simctl spawn "$1" launchctl list | grep -F "UIKitApplication:$bundle" | awk '{print $1}' | grep -qE '^[0-9]+$'
+  local udid="$1" attempt
+  for attempt in 1 2 3; do
+    if pgrep -f "CoreSimulator/Devices/$udid/.*/2Secret\.app/2Secret" > /dev/null; then
+      return 0
+    fi
+    if limit 90 xcrun simctl spawn "$udid" launchctl list 2> /dev/null | grep -F "UIKitApplication:$bundle" |
+      awk '{print $1}' | grep -qE '^[0-9]+$'; then
+      return 0
+    fi
+    sleep 10
+  done
+  return 1
 }
 
 # Prints a small JPEG of a saved screenshot in the log.

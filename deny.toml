@@ -7,6 +7,13 @@ ignore = [
     # SSH agent signs with RSA keys, over a local socket, each signature
     # after consent. Ed25519 keys are not affected.
     { id = "RUSTSEC-2023-0071", reason = "no fix upstream; local SSH agent only" },
+    # crypto-bigint 0.5 (through p256/p384 0.13 and ssh-key 0.6): timing
+    # variability in big-integer arithmetic. Fixed in crypto-bigint 0.7, which
+    # p256 0.14 uses, but ssh-key 0.7 is still a release candidate. P-256 is
+    # used on the device only: passkey signatures after a click, SSH agent
+    # signatures after consent over a local socket; the server never uses it.
+    # Move to p256 0.14 and ssh-key 0.7 together once ssh-key 0.7 is out.
+    { id = "RUSTSEC-2026-0387", reason = "fix needs ssh-key 0.7 (release candidate); device-local signing only" },
     # glib 0.18: VariantStrIter is never used. gtk-rs 0.18 comes with
     # wry/tao in Dioxus 0.7; gone with Dioxus 0.8.
     { id = "RUSTSEC-2024-0429", reason = "not called; comes with Dioxus 0.7" },

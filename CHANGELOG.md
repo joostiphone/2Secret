@@ -29,6 +29,12 @@
   window, like the other limits.
 - `docs/SECURITY.md` says more precisely what the server stores and which
   limits apply.
+- Dependencies: tokio 1.54.1 (RUSTSEC-2026-0386), clipboard-win 5.4.3. The
+  advisory on crypto-bigint 0.5 (RUSTSEC-2026-0387, timing variability in
+  P-256 arithmetic) waits for ssh-key 0.7; P-256 only signs on the device,
+  after a click or consent (see `deny.toml`).
+- The iOS simulator check looks for the app's process directly instead of
+  asking `launchctl`, which once took too long on a busy runner.
 
 ## 1.9.3
 
