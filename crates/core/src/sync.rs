@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ItemChange, ItemDto, SyncRequest, SyncResponse, VaultDto, VaultSyncRequest};
 use crate::crypto::SymmetricKey;
 use crate::item::{Item, PasswordHistoryEntry, MAX_PASSWORD_HISTORY};
-use crate::profile::{aad, retired_key_id, ItemRecord, SyncState, VaultRecord, RETIRED_KEYS};
+use crate::profile::{aad, retired_key_id, ItemRecord, KeyChange, Role, SyncState, VaultRecord, RETIRED_KEYS};
 use crate::session::Session;
 use crate::util::now;
 use crate::Result;
@@ -38,12 +38,33 @@ pub struct SyncReport {
     #[serde(default)]
     pub avatar_changed: bool,
     /// Vault keys the server offered and this device refused: keys the vault
-    /// had before.
+    /// had before, or a key sealed to our public key for a vault without
+    /// other members.
     #[serde(default)]
     pub keys_refused: usize,
+    /// The vaults (ids) those refused keys were for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys_refused_in: Vec<String>,
+    /// Vaults (ids) whose key another member replaced during this sync.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys_replaced: Vec<String>,
+    /// Emergency contacts for whom the server reports other public keys than
+    /// this device knew: no vault key was sealed to them (see
+    /// [`Session::recipient`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub untrusted_contacts: Vec<KeyChange>,
     /// Emergency access as the server sees it (none: not supported there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emergency: Option<crate::api::EmergencyOverview>,
+}
+
+/// Append the ids in `more` that `list` does not have yet.
+fn extend_unique(list: &mut Vec<String>, more: &[String]) {
+    for id in more {
+        if !list.contains(id) {
+            list.push(id.clone());
+        }
+    }
 }
 
 impl SyncReport {
@@ -58,6 +79,9 @@ impl SyncReport {
         self.vaults_added += other.vaults_added;
         self.vaults_removed += other.vaults_removed;
         self.keys_refused += other.keys_refused;
+        extend_unique(&mut self.keys_refused_in, &other.keys_refused_in);
+        extend_unique(&mut self.keys_replaced, &other.keys_replaced);
+        self.untrusted_contacts.extend(other.untrusted_contacts.iter().cloned());
         self.needs_another_round = other.needs_another_round;
         self.avatar_changed |= other.avatar_changed;
     }
@@ -215,6 +239,15 @@ impl Session {
             if local.wrapped_key == dto.wrapped_key {
                 continue;
             }
+            // Only this account's own devices can give a vault without other
+            // members a new key, and they wrap it with the account key. A key
+            // sealed to our public key (anyone can make one, a server too) is
+            // refused for such a vault.
+            let alone = local.role == Role::Owner && local.member_count <= 1 && dto.member_count <= 1;
+            if alone && dto.wrapped_key.is_sealed() {
+                refused.push(dto.id.clone());
+                continue;
+            }
             let Ok(new_key) = dto.wrapped_key.unwrap(self.keyset(), &aad::vault_key(&dto.id)) else { continue };
             let Some(old_key) = self.vault_key(&dto.id) else { continue };
             if old_key == &new_key {
@@ -234,8 +267,12 @@ impl Session {
             }
         }
         report.keys_refused += refused.len();
+        extend_unique(&mut report.keys_refused_in, &refused);
         for (vault_id, key) in &replaced {
             self.reencrypt_vault(vault_id, key);
+            if !report.keys_replaced.contains(vault_id) {
+                report.keys_replaced.push(vault_id.clone());
+            }
         }
 
         let account_id = self.account().id.clone();
@@ -575,15 +612,73 @@ mod tests {
         assert_eq!(a.vault_key(&v), Some(&key));
         assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
 
-        // A key rotated in later is taken, and the one before it retired.
+        // A key rotated in later by a member (the vault is shared) is taken,
+        // and the one before it retired.
         let newer = SymmetricKey::generate();
         let meta_aad = aad::vault_meta(&v);
         let meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
         server.vaults[0].meta = encrypt_json(&newer, &meta, &meta_aad).unwrap();
         server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &newer, &aad::vault_key(&v));
-        assert_eq!(server.full_sync(&mut a).keys_refused, 0);
+        server.vaults[0].member_count = 2;
+        let report = server.full_sync(&mut a);
+        assert_eq!((report.keys_refused, report.keys_replaced), (0, vec![v.clone()]));
         assert_eq!(a.vault_key(&v), Some(&newer));
         assert_eq!(a.profile().vault(&v).unwrap().retired_keys.len(), 2);
+    }
+
+    #[test]
+    fn a_sealed_key_for_a_vault_without_other_members_is_refused() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let id = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        server.full_sync(&mut a);
+        let key = a.vault_key(&v).unwrap().clone();
+        // Only our own devices could replace this key, and they would wrap
+        // it with the account key: a sealed one is a server's doing.
+        let other = SymmetricKey::generate();
+        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &other, &aad::vault_key(&v));
+        server.vaults[0].key_rev += 1;
+        let report = server.full_sync(&mut a);
+        assert_eq!((report.keys_refused, report.keys_refused_in.clone()), (1, vec![v.clone()]));
+        assert!(report.keys_replaced.is_empty());
+        assert_eq!(a.vault_key(&v), Some(&key));
+        assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
+        assert!(a.profile().vault(&v).unwrap().retired_keys.is_empty());
+        // With other members, a member may have replaced it: taken, and reported.
+        server.vaults[0].member_count = 2;
+        let meta_aad = aad::vault_meta(&v);
+        let meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
+        server.vaults[0].meta = encrypt_json(&other, &meta, &meta_aad).unwrap();
+        let report = server.full_sync(&mut a);
+        assert_eq!((report.keys_refused, report.keys_replaced), (0, vec![v.clone()]));
+        assert_eq!(a.vault_key(&v), Some(&other));
+    }
+
+    #[test]
+    fn a_replaced_key_is_not_sealed_to_changed_member_keys() {
+        let (mut a, _) = new_session();
+        let (bob, _) = new_session();
+        let (eve, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        server.full_sync(&mut a);
+        let member = |keys_of: &Session| MemberDto {
+            account_id: bob.account().id.clone(),
+            email: "bob@example.com".into(),
+            name: "Bob".into(),
+            role: Role::Editor,
+            public_key: keys_of.public_key().to_b64(),
+            pq_public_key: keys_of.public_keys().ml_kem.map(|k| k.to_b64()),
+        };
+        // Bob's keys are known from sharing the vault with him.
+        a.recipient(&bob.account().id, "bob@example.com", &bob.public_key().to_b64(), None).unwrap();
+        // The server lists Bob with other keys: nothing is sealed to them.
+        let err = a.rotate_vault_key_request(&v, &[me(&a), member(&eve)]).unwrap_err();
+        assert!(matches!(err, crate::Error::KeyChanged(_)), "{err}");
+        let req = a.rotate_vault_key_request(&v, &[me(&a), member(&bob)]).unwrap();
+        assert_eq!(req.members.len(), 2);
+        assert!(matches!(req.members[1].wrapped_key, WrappedKey::HybridSealed { .. }));
     }
 
     #[test]

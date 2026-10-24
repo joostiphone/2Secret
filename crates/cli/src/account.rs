@@ -51,6 +51,9 @@ pub enum AccountCmd {
     ChangePassword,
     /// Show the Secret Key (requires the master password).
     SecretKey,
+    /// Trust the new public keys of an account whose keys changed, after
+    /// comparing its fingerprint with them out of band.
+    TrustKeys { email: String },
     /// Write a printable Emergency Kit (HTML).
     EmergencyKit {
         #[arg(short, long, default_value = "2Secret-Emergency-Kit.html")]
@@ -236,6 +239,17 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
         AccountCmd::SecretKey => {
             let (_session, _pw, sk) = ctx.unlock_with_password()?;
             println!("{}", sk.formatted());
+            Ok(())
+        }
+        AccountCmd::TrustKeys { email } => {
+            let mut session = ctx.unlock()?;
+            let client = twosecret_client::client_for(&session)?;
+            let user = ctx.block_on(client.lookup_user(&email))?;
+            session.forget_known_keys(&user.account_id);
+            let keys =
+                session.recipient(&user.account_id, &user.email, &user.public_key, user.pq_public_key.as_deref())?;
+            ctx.save(&session)?;
+            eprintln!("Trusting the keys of {} <{}> with fingerprint {}.", user.name, user.email, keys.fingerprint());
             Ok(())
         }
         AccountCmd::EmergencyKit { output } => {

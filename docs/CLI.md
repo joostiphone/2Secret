@@ -158,6 +158,7 @@ export DATABASE_PASSWORD=2s://Work/Postgres/password
 2secret account info
 2secret account change-password
 2secret account secret-key
+2secret account trust-keys EMAIL     # someone's keys changed: trust the new ones after comparing the fingerprint
 2secret account devices
 2secret account revoke-device ID
 2secret account signout

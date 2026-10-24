@@ -583,6 +583,7 @@ fn ItemList() -> Element {
                 }
             }
             }
+            crate::components::emergency::KeyChangeBanner {}
             crate::components::emergency::EmergencyBanner {}
             BackupReminder {}
             div { class: "search",

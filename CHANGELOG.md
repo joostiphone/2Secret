@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Known keys.** The apps and the command line remember the public keys of
+  everyone you sealed a vault key to (sharing a vault, replacing its key,
+  an emergency contact). When the server later reports other keys for that
+  person, nothing is sent to them and the app shows both fingerprints; you
+  can trust the new keys after comparing them (`2secret account trust-keys`
+  on the command line). Until now a server could put its own keys in
+  someone's place, for an emergency contact even without you doing
+  anything.
+- **Replaced vault keys.** A vault key that the server offers sealed to
+  your public key for a vault without other members is refused: only your
+  own devices could replace that key, and they do so with your account
+  key. Every replaced or refused key is mentioned after the sync.
 - **Mac: the Touch ID key is in the protected keychain.** The key that
   unlocks 2Secret with Touch ID was in the login keychain, which has no
   Touch ID protection of its own, so a copy of the Mac's disk opened with

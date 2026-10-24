@@ -67,7 +67,7 @@ fn perform(action: Action, id: String) {
                 }
                 toast(action.done());
             }
-            Err(e) => toast_err(&client_error(&e)),
+            Err(e) => report_error(&e, |m| toast_err(&m)),
         }
     });
 }
@@ -220,7 +220,7 @@ fn AddContactForm(done: EventHandler<()>) -> Element {
                     toast(&t("emergency.added").replace("{name}", &user.name).replace("{fp}", &fp));
                     done.call(());
                 }
-                Err(e) => error.set(Some(client_error(&e))),
+                Err(e) => report_error(&e, |m| error.set(Some(m))),
             }
         });
     };
@@ -239,6 +239,27 @@ fn AddContactForm(done: EventHandler<()>) -> Element {
                     }
                 }
                 button { class: "btn primary", onclick: add, {t("emergency.add")} }
+            }
+        }
+    }
+}
+
+/// Emergency contacts for whom the server reports other public keys than
+/// this device knew: they get no vault keys until the new keys are trusted.
+#[component]
+pub fn KeyChangeBanner() -> Element {
+    let changes = KEY_WARNINGS.read().clone();
+    rsx! {
+        for c in changes {
+            div { class: "banner", key: "keys-{c.account_id}",
+                Icon { name: "alert", size: 18 }
+                div { class: "grow",
+                    div { class: "t", {t("keys.banner").replace("{email}", &c.email)} }
+                    div { class: "d", {t("keys.banner_desc")} }
+                }
+                button { class: "btn small", onclick: { let c = c.clone(); move |_| *MODAL.write() = Some(Modal::KeysChanged(c.clone())) },
+                    {t("keys.view")}
+                }
             }
         }
     }

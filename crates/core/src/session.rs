@@ -16,8 +16,8 @@ use crate::crypto::{
 use crate::item::{Category, Item, ItemSummary};
 use crate::passkey::Passkey;
 use crate::profile::{
-    aad, AccountRecord, ItemRecord, Profile, Role, ServerLink, SyncState, VaultMeta, VaultRecord, PROFILE_FORMAT,
-    PROFILE_VERSION,
+    aad, AccountRecord, ItemRecord, KeyChange, KnownAccount, Profile, Role, ServerLink, SyncState, VaultMeta,
+    VaultRecord, PROFILE_FORMAT, PROFILE_VERSION,
 };
 use crate::util::{b64, new_id, normalize_email, now, random_bytes, unb64, url_matches};
 use crate::{Error, Result};
@@ -198,6 +198,7 @@ impl Session {
             vaults: Vec::new(),
             items: Vec::new(),
             default_vault: None,
+            known_accounts: Vec::new(),
         };
         let mut session = Session::from_parts(profile, keyset)?;
         let name = if default_vault_name.trim().is_empty() { "Personal" } else { default_vault_name };
@@ -217,6 +218,7 @@ impl Session {
             vaults: Vec::new(),
             items: Vec::new(),
             default_vault: None,
+            known_accounts: Vec::new(),
         };
         Session::open(profile, keys)
     }
@@ -375,11 +377,12 @@ impl Session {
     /// [`RotateVaultKeyRequest`]): a new random key, the metadata and every
     /// item re-encrypted with it, and the key wrapped for each of `members`
     /// (the vault's current members as listed by the server; for us with our
-    /// own account key, for everybody else with their public keys).
+    /// own account key, for everybody else with their public keys as this
+    /// device knows them, see [`Session::recipient`]).
     ///
     /// The vault must be fully synced, so that no local edit is left behind
     /// encrypted with the old key.
-    pub fn rotate_vault_key_request(&self, vault_id: &str, members: &[MemberDto]) -> Result<RotateVaultKeyRequest> {
+    pub fn rotate_vault_key_request(&mut self, vault_id: &str, members: &[MemberDto]) -> Result<RotateVaultKeyRequest> {
         let record = self.profile.vault(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
         if !record.role.can_manage() {
             return Err(Error::PermissionDenied("only the owner and managers can replace a vault's key".into()));
@@ -388,10 +391,26 @@ impl Session {
         if record.sync_state != SyncState::Synced || pending {
             return Err(Error::invalid("sync the vault before replacing its key"));
         }
-        let open = self.vaults.get(vault_id).ok_or(Error::Decryption)?;
+        let key_rev = record.key_rev;
         let key = SymmetricKey::generate();
         let key_aad = aad::vault_key(vault_id);
 
+        let me = self.profile.account.id.clone();
+        if !members.iter().any(|m| m.account_id == me) {
+            return Err(Error::invalid("the member list does not include this account"));
+        }
+        let mut wrapped = Vec::new();
+        for m in members {
+            let wrapped_key = if m.account_id == me {
+                WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &key_aad)
+            } else {
+                let keys = self.recipient(&m.account_id, &m.email, &m.public_key, m.pq_public_key.as_deref())?;
+                WrappedKey::wrap_for(&keys, &key, &key_aad)?
+            };
+            wrapped.push(MemberKey { account_id: m.account_id.clone(), wrapped_key });
+        }
+
+        let open = self.vaults.get(vault_id).ok_or(Error::Decryption)?;
         let mut items = Vec::new();
         for rec in self.profile.items.iter().filter(|i| i.vault_id == vault_id) {
             if let Some(data) = &rec.data {
@@ -403,27 +422,75 @@ impl Session {
             }
         }
 
-        let me = &self.profile.account.id;
-        if !members.iter().any(|m| &m.account_id == me) {
-            return Err(Error::invalid("the member list does not include this account"));
-        }
-        let mut wrapped = Vec::new();
-        for m in members {
-            let wrapped_key = if &m.account_id == me {
-                WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &key_aad)
-            } else {
-                let keys = AccountPublicKeys::from_b64(&m.public_key, m.pq_public_key.as_deref())?;
-                WrappedKey::wrap_for(&keys, &key, &key_aad)?
-            };
-            wrapped.push(MemberKey { account_id: m.account_id.clone(), wrapped_key });
-        }
-
         Ok(RotateVaultKeyRequest {
-            key_rev: record.key_rev,
+            key_rev,
             meta: encrypt_json(&key, &open.meta, &aad::vault_meta(vault_id))?,
             members: wrapped,
             items,
         })
+    }
+
+    // ------------------------------------------------------------------
+    // Other accounts' public keys
+    // ------------------------------------------------------------------
+
+    /// The public keys of another account, to seal a vault key to them, as
+    /// the server reports them. The first time an account is seen its keys
+    /// are remembered; after that the server has to report the same ones (an
+    /// ML-KEM key may come once, next to the same X25519 key, when an account
+    /// from 2Secret 1.0 publishes it). A server that puts its own keys in
+    /// someone's place therefore gets nothing sealed to them:
+    /// [`Error::KeyChanged`], until the person compares the new fingerprint
+    /// out of band and calls [`Session::forget_known_keys`].
+    pub fn recipient(
+        &mut self,
+        account_id: &str,
+        email: &str,
+        public_key: &str,
+        pq_public_key: Option<&str>,
+    ) -> Result<AccountPublicKeys> {
+        let keys = AccountPublicKeys::from_b64(public_key, pq_public_key)?;
+        let Some(known) = self.profile.known_accounts.iter_mut().find(|k| k.account_id == account_id) else {
+            self.profile.known_accounts.push(KnownAccount {
+                account_id: account_id.to_string(),
+                email: email.to_string(),
+                public_key: public_key.to_string(),
+                pq_public_key: pq_public_key.map(str::to_string),
+                seen_at: now(),
+            });
+            return Ok(keys);
+        };
+        // A withdrawn ML-KEM key would leave X25519 alone: refused as well.
+        let same_pq = match (&known.pq_public_key, pq_public_key) {
+            (None, _) => true,
+            (Some(a), Some(b)) => a == b,
+            (Some(_), None) => false,
+        };
+        if known.public_key != public_key || !same_pq {
+            return Err(Error::KeyChanged(KeyChange {
+                account_id: account_id.to_string(),
+                email: email.to_string(),
+                old: known.fingerprint(),
+                new: keys.fingerprint(),
+            }));
+        }
+        if known.pq_public_key.is_none() && pq_public_key.is_some() {
+            known.pq_public_key = pq_public_key.map(str::to_string);
+        }
+        known.email = email.to_string();
+        Ok(keys)
+    }
+
+    /// Forget an account's keys, after the person compared the new
+    /// fingerprint out of band: the next time the account is seen, its keys
+    /// are remembered afresh.
+    pub fn forget_known_keys(&mut self, account_id: &str) {
+        self.profile.known_accounts.retain(|k| k.account_id != account_id);
+    }
+
+    /// The keys this device knows for an account, if it saw them before.
+    pub fn known_account(&self, account_id: &str) -> Option<&KnownAccount> {
+        self.profile.known_accounts.iter().find(|k| k.account_id == account_id)
     }
 
     /// Re-encrypt what this device stores for a vault with `new_key`, after
@@ -1402,6 +1469,38 @@ pub(crate) mod tests {
         bob.reload().unwrap();
         assert_eq!(bob.vault_key(&v), alice.vault_key(&v));
         assert!(bob.vault_keys_to_rewrap().is_empty());
+    }
+
+    #[test]
+    fn recipient_keys_are_pinned() {
+        let (mut s, _) = new_session();
+        let (bob, _) = new_session();
+        let (eve, _) = new_session();
+        let x = bob.public_key().to_b64();
+        let pq = bob.public_keys().ml_kem.unwrap().to_b64();
+        // First seen without an ML-KEM key (an account from 1.0), then with it.
+        assert!(s.recipient("bob", "bob@example.com", &x, None).is_ok());
+        assert_eq!(s.known_account("bob").unwrap().pq_public_key, None);
+        assert!(s.recipient("bob", "bob@example.com", &x, Some(&pq)).is_ok());
+        assert_eq!(s.known_account("bob").unwrap().pq_public_key.as_deref(), Some(pq.as_str()));
+        assert!(s.recipient("bob", "bob@example.com", &x, Some(&pq)).is_ok());
+        // Another X25519 key, or the ML-KEM key gone: refused, with both fingerprints.
+        match s.recipient("bob", "bob@example.com", &eve.public_key().to_b64(), Some(&pq)) {
+            Err(Error::KeyChanged(change)) => {
+                assert_eq!(change.old, bob.public_keys().fingerprint());
+                assert_ne!(change.old, change.new);
+                assert_eq!((change.account_id.as_str(), change.email.as_str()), ("bob", "bob@example.com"));
+                assert!(change.to_string().contains(&change.new));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(s.recipient("bob", "bob@example.com", &x, None), Err(Error::KeyChanged(_))));
+        assert!(s.recipient("bob", "bob@example.com", &x, Some(&pq)).is_ok(), "the known keys still work");
+        // Remembered in the profile; forgotten on request.
+        assert!(s.profile().to_json().contains(&x));
+        assert_eq!(Profile::from_json(&s.profile().to_json()).unwrap().known_accounts.len(), 1);
+        s.forget_known_keys("bob");
+        assert!(s.recipient("bob", "bob@example.com", &eve.public_key().to_b64(), None).is_ok());
     }
 
     #[test]

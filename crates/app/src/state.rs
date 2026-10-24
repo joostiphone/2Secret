@@ -150,6 +150,9 @@ pub enum Modal {
     Backup,
     /// Add a one-time password from an `otpauth://` link to a login.
     SetUpCode(String),
+    /// The server reports other public keys for someone than this device
+    /// knew; the person can trust the new keys after comparing them.
+    KeysChanged(twosecret_core::profile::KeyChange),
 }
 
 /// What a menu opened with a long press or a right click is for.
@@ -274,6 +277,9 @@ pub static TAB_URL: GlobalSignal<Option<String>> = Signal::global(|| None);
 /// Emergency access as the server said at the last sync (none: not
 /// connected, or a server without it).
 pub static EMERGENCY: GlobalSignal<Option<twosecret_core::api::EmergencyOverview>> = Signal::global(|| None);
+/// Emergency contacts for whom the server reported other public keys than
+/// this device knew at the last sync: no vault key went to them.
+pub static KEY_WARNINGS: GlobalSignal<Vec<twosecret_core::profile::KeyChange>> = Signal::global(Vec::new);
 /// Breach counts from the last Have I Been Pwned check (item id → count).
 pub static BREACHES: GlobalSignal<Option<std::collections::HashMap<String, u64>>> = Signal::global(|| None);
 
@@ -408,6 +414,7 @@ fn reset_view() {
     *NAV.write() = start_nav();
     *BREACHES.write() = None;
     *EMERGENCY.write() = None;
+    KEY_WARNINGS.write().clear();
     *SYNC.write() = SyncStatus::default();
     *PANE.write() = Pane::List;
 }
@@ -812,6 +819,30 @@ pub fn core_error(e: &twosecret_core::Error) -> String {
     }
 }
 
+/// Show an error from the server or the session: someone's changed keys get
+/// their own dialog (the person can compare and trust the new keys), every
+/// other error goes to `show`.
+pub fn report_error(e: &twosecret_client::Error, show: impl FnOnce(String)) {
+    match e {
+        twosecret_client::Error::Core(twosecret_core::Error::KeyChanged(change)) => {
+            *MODAL.write() = Some(Modal::KeysChanged(change.clone()));
+        }
+        other => show(client_error(other)),
+    }
+}
+
+/// Take the keys the server reports now for an account whose keys changed,
+/// after the person compared the new fingerprint: the next action with the
+/// account remembers them, and a sync sends emergency keys again.
+pub fn trust_new_keys(account_id: &str) {
+    if let Some(s) = SESSION.write().as_mut() {
+        s.forget_known_keys(account_id);
+    }
+    KEY_WARNINGS.write().retain(|c| c.account_id != account_id);
+    persist();
+    request_sync();
+}
+
 pub fn client_error(e: &twosecret_client::Error) -> String {
     use twosecret_client::Error as E;
     match e {
@@ -1056,6 +1087,9 @@ pub async fn run_sync(show_result: bool) {
             if report.emergency.is_some() && *EMERGENCY.peek() != report.emergency {
                 *EMERGENCY.write() = report.emergency.clone();
             }
+            if *KEY_WARNINGS.peek() != report.untrusted_contacts {
+                *KEY_WARNINGS.write() = report.untrusted_contacts.clone();
+            }
             persist();
             // The selected item may have been deleted remotely.
             let gone = SELECTED
@@ -1069,6 +1103,17 @@ pub async fn run_sync(show_result: bool) {
                 toast_err(&t("sync.over_quota").replace("{n}", &report.over_quota.to_string()));
             } else if show_result {
                 toast(&format!("{} ↑{} ↓{}", t("toast.synced"), report.uploaded, report.downloaded + report.deleted));
+            }
+            // Vault keys that changed hands are worth a word, always.
+            let names = |ids: &[String]| {
+                let session = SESSION.peek();
+                let Some(s) = session.as_ref() else { return String::new() };
+                ids.iter().filter_map(|id| s.vault(id).map(|v| v.name)).collect::<Vec<_>>().join(", ")
+            };
+            if !report.keys_refused_in.is_empty() {
+                toast_err(&t("sync.key_refused").replace("{vaults}", &names(&report.keys_refused_in)));
+            } else if !report.keys_replaced.is_empty() {
+                toast(&t("sync.key_replaced").replace("{vaults}", &names(&report.keys_replaced)));
             }
         }
         Err(twosecret_client::Error::Protocol(m)) if m == "locked" => {}

@@ -22,6 +22,10 @@ pub enum Error {
     NotFound(String),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    /// Another account's public keys are not the ones this device knew
+    /// (see `Session::recipient`).
+    #[error("{0}")]
+    KeyChanged(crate::profile::KeyChange),
     #[error("key derivation failed: {0}")]
     Kdf(String),
     #[error("import failed: {0}")]

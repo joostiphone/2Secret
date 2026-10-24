@@ -196,6 +196,18 @@ Comparing it out of band protects against a malicious server substituting
 its own keys. A fingerprint changes once, when an account created with 1.0
 publishes its ML-KEM key.
 
+**Known keys.** A device remembers the public keys of every account it
+sealed a vault key to (sharing a vault, replacing its key, an emergency
+contact; `known_accounts` in the profile). From then on the server has to
+report the same keys for that account: an X25519 key that differs, or an
+ML-KEM key that is gone, means nothing is sealed to them and the apps say so
+(the person compares the new fingerprint through another channel and can
+then trust the new keys; `2secret account trust-keys` on the command line).
+An ML-KEM key appearing next to the same X25519 key is taken, as accounts
+from 1.0 publish one once. So a server that puts its own keys in someone's
+place gets nothing, except on the very first contact with that account:
+compare the fingerprint then.
+
 ### Revocation and key rotation
 
 Removing someone stops the server from sending them further updates, and the
@@ -216,7 +228,14 @@ a vault's key on request, for example after someone left on their own.
 
 A device never takes back a key a vault had before: it remembers the keys
 it replaced, so a server cannot bring back the key a removed person still
-knows. (After restoring a server backup from before a key was replaced, such
+knows. It also refuses a key sealed to its public key for a vault that has
+no other members: only the account's own devices could replace that key,
+and they wrap it with the account key, so such a key can only be a server's
+doing (anyone can seal to a public key). The apps mention every replaced
+and every refused key. A replaced key for a vault with other members is
+taken as it comes, since replacements are not signed: a server could offer
+one for such a vault and read what the members write from then on (not
+what the vault held). Signed replacements are planned. (After restoring a server backup from before a key was replaced, such
 a vault does not sync on the devices that have the newer key; export it there
 and import it into a new vault.)
 
@@ -487,11 +506,11 @@ the apps warn about this.
 
 ## Known limitations
 
-- Sharing a vault, rotating a vault key and keeping emergency contacts'
-  keys up to date seal keys to the public keys as the server reports them;
-  the devices do not yet remember the keys they saw before. A server that
-  substitutes its own keys could so obtain vault keys; compare fingerprints
-  (see *Fingerprints*).
+- The first time a device seals a vault key to an account (sharing, an
+  emergency contact, a member it had not seen before when replacing a key),
+  it takes that account's public keys as the server reports them; compare
+  the fingerprint then (see *Fingerprints*). Replaced vault keys are not
+  signed (see *Revocation and key rotation*).
 - Metadata listed above (counts, size classes, timestamps, sharing graph,
   e-mail addresses) is visible to the server operator.
 - Login uses TLS from the operating system or browser; whether that

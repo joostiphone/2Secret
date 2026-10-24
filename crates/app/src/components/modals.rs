@@ -35,6 +35,34 @@ pub fn ModalHost() -> Element {
         Some(Modal::ForgetDevice) => rsx! { ForgetModal {} },
         Some(Modal::Backup) => rsx! { BackupModal {} },
         Some(Modal::SetUpCode(uri)) => rsx! { SetUpCodeModal { uri } },
+        Some(Modal::KeysChanged(change)) => rsx! { KeysChangedModal { change } },
+    }
+}
+
+/// The server reports other public keys for someone than this device knew,
+/// so nothing was sealed to them (`Session::recipient`). The person compares
+/// the new fingerprint through another channel and can then trust it.
+#[component]
+fn KeysChangedModal(change: twosecret_core::profile::KeyChange) -> Element {
+    let account_id = change.account_id.clone();
+    let trust = move |_| {
+        trust_new_keys(&account_id);
+        close();
+        toast(t("keys.trusted"));
+    };
+    rsx! {
+        ModalFrame { title: t("keys.changed_title"),
+            p { {t("keys.changed_text").replace("{email}", &change.email)} }
+            div { class: "settings-row",
+                div { class: "k", div { class: "d", {t("keys.before")} } div { class: "t mono", "{change.old}" } }
+                div { class: "k", div { class: "d", {t("keys.now")} } div { class: "t mono", "{change.new}" } }
+            }
+            p { class: "small muted", {t("keys.changed_advice").replace("{email}", &change.email)} }
+            div { class: "row", style: "justify-content:flex-end;gap:8px",
+                button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
+                button { class: "btn danger", onclick: trust, {t("keys.trust")} }
+            }
+        }
     }
 }
 
@@ -718,7 +746,7 @@ fn ShareModal(id: String) -> Element {
                     toast(&format!("{} {} ({fp})", t("share.shared_with"), user.name));
                     reload();
                 }
-                Err(e) => error.set(Some(client_error(&e))),
+                Err(e) => report_error(&e, |m| error.set(Some(m))),
             }
         });
     };
@@ -737,7 +765,7 @@ fn ShareModal(id: String) -> Element {
                     install_session(session);
                     toast(t("share.rotated"));
                 }
-                Err(e) => error.set(Some(client_error(&e))),
+                Err(e) => report_error(&e, |m| error.set(Some(m))),
             }
         });
     };
@@ -820,7 +848,7 @@ fn MemberRow(vault_id: String, member: MemberDto, me: String, can_manage: bool, 
                     toast(t("share.removed"));
                     changed.call(());
                 }
-                Err(e) => toast_err(&client_error(&e)),
+                Err(e) => report_error(&e, |m| toast_err(&m)),
             }
         });
     };

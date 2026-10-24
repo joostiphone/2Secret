@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use twosecret_core::api::*;
-use twosecret_core::crypto::{derive_keys, AccountPublicKeys, DerivedKeys, KdfParams, SecretKey};
+use twosecret_core::crypto::{derive_keys, DerivedKeys, KdfParams, SecretKey};
 use twosecret_core::profile::{AccountRecord, Role, ServerLink, SyncState};
 use twosecret_core::session::{PasswordChange, Session};
 use twosecret_core::sync::SyncReport;
@@ -312,21 +312,39 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     total.needs_another_round = false;
     post_quantum_upkeep(&client, access).await?;
     total.avatar_changed = avatar_upkeep(&client, access).await?;
-    total.emergency = emergency_upkeep(&client, access).await?;
+    let emergency = emergency_upkeep(&client, access, &mut total).await?;
+    total.emergency = emergency;
     Ok(total)
 }
 
 /// Give every emergency contact the current key of every vault this account
 /// owns: vaults created since, and keys replaced since. Servers from before
 /// emergency access answer 404 or 405: there is nothing to do then.
-async fn emergency_upkeep<A: SessionAccess>(client: &Client, access: &mut A) -> Result<Option<EmergencyOverview>> {
+async fn emergency_upkeep<A: SessionAccess>(
+    client: &Client,
+    access: &mut A,
+    report: &mut SyncReport,
+) -> Result<Option<EmergencyOverview>> {
     let mut overview = match client.emergency().await {
         Ok(overview) => overview,
         Err(e) if e.is_not_found() || e.status() == Some(405) => return Ok(None),
         Err(e) => return Err(e),
     };
     for contact in &mut overview.contacts {
-        let recipient = AccountPublicKeys::from_b64(&contact.public_key, contact.pq_public_key.as_deref())?;
+        // Sealed only to the keys this device knows for the contact
+        // (`Session::recipient`): a server that swapped them gets nothing,
+        // and the person hears about it.
+        let recipient = access.with_session(|s| {
+            s.recipient(&contact.account_id, &contact.email, &contact.public_key, contact.pq_public_key.as_deref())
+        })?;
+        let recipient = match recipient {
+            Ok(keys) => keys,
+            Err(twosecret_core::Error::KeyChanged(change)) => {
+                report.untrusted_contacts.push(change);
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
         let keys = access.with_session(|s| s.emergency_keys_for(&recipient, &contact.keys))??;
         if keys.is_empty() {
             continue;
@@ -405,7 +423,7 @@ pub async fn share_vault(session: &mut Session, vault_id: &str, email: &str, rol
     if user.account_id == session.account().id {
         return Err(twosecret_core::Error::invalid("you already have access to this vault").into());
     }
-    let keys = AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?;
+    let keys = session.recipient(&user.account_id, &user.email, &user.public_key, user.pq_public_key.as_deref())?;
     let wrapped = session.wrap_vault_key_for(vault_id, &keys)?;
     let key_rev = session.profile().vault(vault_id).map(|v| v.key_rev);
     client
@@ -429,7 +447,8 @@ pub async fn add_emergency_contact(session: &mut Session, email: &str, wait_days
     if user.account_id == session.account().id {
         return Err(twosecret_core::Error::invalid("you cannot be your own emergency contact").into());
     }
-    let recipient = AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?;
+    let recipient =
+        session.recipient(&user.account_id, &user.email, &user.public_key, user.pq_public_key.as_deref())?;
     let keys = session.emergency_keys_for(&recipient, &[])?;
     client
         .add_emergency_contact(&AddEmergencyContactRequest { account_id: user.account_id.clone(), wait_days, keys })

@@ -5,9 +5,11 @@
 //! other means. The [`DeviceSecrets`] (holding the Secret Key) are stored
 //! separately and must *not* travel together with the profile.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{EncString, EncryptedKeyset, KdfParams, SecretKey, WrappedKey};
+use crate::crypto::{AccountPublicKeys, EncString, EncryptedKeyset, KdfParams, SecretKey, WrappedKey};
 use crate::{Error, Result};
 
 pub const PROFILE_FORMAT: &str = "2secret-profile";
@@ -52,6 +54,10 @@ pub struct Profile {
     /// created with the account. Unset on devices that signed in later.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_vault: Option<String>,
+    /// The public keys of other accounts as this device first saw them (see
+    /// [`KnownAccount`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_accounts: Vec<KnownAccount>,
 }
 
 impl Profile {
@@ -249,6 +255,56 @@ pub struct ItemRecord {
     /// Changed locally since the last successful upload.
     #[serde(default)]
     pub dirty: bool,
+}
+
+/// The public keys of another account as this device first saw them, when
+/// it sealed a vault key to them (sharing a vault, replacing its key, an
+/// emergency contact). From then on the server has to report the same keys
+/// for the account ([`crate::session::Session::recipient`]), so a server
+/// that puts its own keys in someone's place gets nothing sealed to them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KnownAccount {
+    pub account_id: String,
+    /// For display; follows the server.
+    pub email: String,
+    /// X25519 public key (base64).
+    pub public_key: String,
+    /// ML-KEM-768 public key (base64), from when the account has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pq_public_key: Option<String>,
+    pub seen_at: i64,
+}
+
+impl KnownAccount {
+    /// The fingerprint of the known keys (see [`AccountPublicKeys::fingerprint`]).
+    pub fn fingerprint(&self) -> String {
+        AccountPublicKeys::from_b64(&self.public_key, self.pq_public_key.as_deref())
+            .map(|k| k.fingerprint())
+            .unwrap_or_default()
+    }
+}
+
+/// An account for which the server reports other public keys than this
+/// device knew ([`KnownAccount`]): nothing was sealed to them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyChange {
+    pub account_id: String,
+    pub email: String,
+    /// Fingerprint of the keys this device knew.
+    pub old: String,
+    /// Fingerprint of the keys the server reports now.
+    pub new: String,
+}
+
+impl fmt::Display for KeyChange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "the keys of {} are not the ones this device knew (fingerprint {}, before {}); nothing was sent to them. \
+             Compare the new fingerprint with them, then trust the new keys",
+            self.email, self.new, self.old
+        )
+    }
 }
 
 /// Device-local secrets. Kept apart from the profile on purpose.
