@@ -1,7 +1,7 @@
 //! Cryptographic primitives and the 2Secret key hierarchy.
 //!
 //! * **Key derivation** – Two-Secret Key Derivation (2SKD): the master password
-//!   is stretched with Argon2id and combined with a 128-bit random
+//!   is stretched with Argon2id and combined with a 130-bit random
 //!   [`SecretKey`] that never leaves the user's devices. A server breach alone
 //!   is therefore useless for offline password guessing.
 //! * **Symmetric encryption** – XChaCha20-Poly1305 with random 192-bit nonces

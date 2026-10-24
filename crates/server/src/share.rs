@@ -12,8 +12,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use rusqlite::{params, OptionalExtension};
 use twosecret_core::api::{CreateShareRequest, OpenShareRequest, OpenShareResponse, ShareDto, ShareInfo};
-use twosecret_core::crypto::{constant_time_eq, EncString};
-use twosecret_core::util::now;
+use twosecret_core::crypto::{constant_time_eq, sha256, EncString};
+use twosecret_core::util::{b64url, now};
 
 use crate::auth::Auth;
 use crate::client_ip::ClientIp;
@@ -55,6 +55,25 @@ fn valid_id(id: &str) -> ApiResult<()> {
 /// A SHA-256 hash, base64url.
 fn valid_proof(proof: &str) -> bool {
     proof.len() == 43 && proof.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Marks a stored proof hash (see [`stored_proof`]).
+const PROOF_HASH_PREFIX: &str = "h1.";
+
+/// What the database keeps of a proof: its SHA-256. The proof is what opens
+/// a link, so a copy of the database must not hold it (it could use up a
+/// link's views before its recipient opens it).
+fn stored_proof(proof: &str) -> String {
+    format!("{PROOF_HASH_PREFIX}{}", b64url(&sha256(proof.as_bytes())))
+}
+
+/// Does `proof` match what the database keeps for a link? Links made before
+/// proofs were hashed hold the proof itself; they expire within `MAX_DAYS`.
+fn proof_matches(stored: &str, proof: &str) -> bool {
+    match stored.strip_prefix(PROOF_HASH_PREFIX) {
+        Some(hash) => constant_time_eq(hash.as_bytes(), b64url(&sha256(proof.as_bytes())).as_bytes()),
+        None => constant_time_eq(stored.as_bytes(), proof.as_bytes()),
+    }
 }
 
 async fn create(
@@ -99,7 +118,7 @@ async fn create(
                     auth.account_id,
                     req.label.as_str(),
                     req.data,
-                    req.proof,
+                    stored_proof(&req.proof),
                     req.password,
                     created,
                     req.expires_at,
@@ -203,7 +222,7 @@ async fn open(
             let Some((data, proof, views_left, wrong)) = row else {
                 return Err(ApiError::not_found("this link does not exist (any more)"));
             };
-            if !constant_time_eq(proof.as_bytes(), req.proof.as_bytes()) {
+            if !proof_matches(&proof, &req.proof) {
                 if wrong + 1 >= MAX_WRONG {
                     tx.execute("DELETE FROM shares WHERE id = ?1", [&id])?;
                 } else {
@@ -246,4 +265,23 @@ async fn page(Path(_id): Path<String>) -> impl IntoResponse {
 
 async fn script() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], SCRIPT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_database_keeps_a_hash_of_the_proof() {
+        let proof = b64url(&[7u8; 32]);
+        assert!(valid_proof(&proof));
+        let stored = stored_proof(&proof);
+        assert!(stored.starts_with(PROOF_HASH_PREFIX) && !stored.contains(&proof));
+        assert!(proof_matches(&stored, &proof));
+        assert!(!proof_matches(&stored, &b64url(&[8u8; 32])));
+        assert!(!proof_matches(&stored, &stored[PROOF_HASH_PREFIX.len()..]));
+        // A link from before the proofs were hashed.
+        assert!(proof_matches(&proof, &proof));
+        assert!(!proof_matches(&proof, &b64url(&[8u8; 32])));
+    }
 }

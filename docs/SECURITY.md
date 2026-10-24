@@ -125,10 +125,11 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Vault names, descriptions and icons | **no** (encrypted) |
 | Profile photo | **no** (encrypted with the account key) |
 | Item titles, usernames, passwords, URLs, notes, files | **no** (encrypted) |
-| Number of vaults/items, size class of each item (padded), modification times | yes (metadata) |
-| Who shares which vault with whom, and with which role | yes |
+| Number of vaults/items, size class of each item (padded), modification times, deletions | yes (metadata) |
+| Devices (their names) and when each was last used | yes |
+| Who shares which vault with whom, and with which role; how often a vault's key was replaced | yes |
 | Content of share links | **no** (encrypted with a key that only the link holds) |
-| Share links' expiry, views left, whether they have a password | yes |
+| Share links' expiry, views left, whether they have a password, their proof | yes (the proof as a SHA-256 hash) |
 | Emergency contacts, their waiting periods and requests | yes |
 | Vault keys for emergency contacts | **no** (sealed to the contact's public keys) |
 
@@ -144,7 +145,8 @@ Signing in sends the 32-byte authentication key over TLS. The server stores
 login returns a random 256-bit bearer token; the server stores only its
 SHA-256. Tokens expire after 30 days of inactivity (configurable) and can be
 revoked per device. Changing the master password signs out all other devices.
-Failed logins are rate limited per account (10 per 15 minutes).
+Failed logins are rate limited per e-mail address and client address (10 per
+15 minutes) and per client address (30 per 15 minutes).
 
 On the device the token is stored encrypted with the account key, so a copied
 profile file cannot be used to talk to the server either.
@@ -235,12 +237,17 @@ picked, attachments and passkeys never) can be shared with someone without
   send to a server. The optional password is for links sent through a channel
   others can read; it is sent another way.
 - The server stores the ciphertext, the expiry (at most 30 days), the number
-  of views left (or none) and `SHA-256("2secret/share/v1/proof" ‖ content
-  key)`. It gives out the ciphertext only to a request with that proof
-  (compared in constant time), so a link without its fragment, a guessed id
-  or a wrong password neither reads it nor uses up its views. Ten wrong
-  proofs delete the link; opening is rate limited per address. It deletes the
-  link after its last view, when it expires and when its owner revokes it.
+  of views left (or none) and the SHA-256 of the proof
+  `SHA-256("2secret/share/v1/proof" ‖ content key)`. It gives out the
+  ciphertext only to a request with that proof (compared in constant time),
+  so a link without its fragment, a guessed id or a wrong password neither
+  reads it nor uses up its views, and a copy of the server's database holds
+  nothing that does either. Ten wrong proofs delete the link; opening is rate
+  limited per address. It deletes the link after its last view, when it
+  expires and when its owner revokes it.
+- A link password only helps against someone who has the link: whoever has
+  the link *and* a copy of the server's database can try passwords offline
+  (600 000 PBKDF2 rounds each), so give such a link a strong password.
 - The page at `/s/<id>` is served by the sync server itself (no third-party
   code) and decrypts in the browser with WebCrypto, which has AES-GCM,
   SHA-256 and PBKDF2 but neither XChaCha20-Poly1305 nor Argon2id; hence these
@@ -262,7 +269,9 @@ An account can trust up to ten other accounts on the same server as
   contact's public keys (hybrid, exactly as when sharing; compare the
   fingerprint) and uploads it. Its devices keep this up to date on every sync:
   new vaults and replaced keys are sealed again. The server cannot open these
-  keys and holds them back.
+  keys and holds them back. Unlike a shared vault's key, they stay sealed to
+  the contact's public keys (hybrid when the contact has an ML-KEM key) for
+  as long as the arrangement lasts.
 - The contact asks for access. The owner's apps show the request; the owner
   can approve it at once or deny it. Without either, the server grants it when
   the waiting period has passed. Then the contact can open the vaults: the
@@ -326,15 +335,20 @@ conflict never silently loses a password. Deletions are tombstones.
 - **Auto-lock** after inactivity (default 10 minutes).
 - **Biometric unlock** (optional; macOS, iOS, Windows): the account key is
   stored encrypted with a random 256-bit device key that the operating
-  system releases only after Touch ID, Face ID or Windows Hello. On iOS the
-  device key is a keychain item that the Secure Enclave opens only for the
-  currently enrolled face or fingers, on this device, while a passcode is
-  set. On macOS Touch ID is checked through LocalAuthentication and the key
-  sits in the login keychain, readable only by 2Secret. On Windows the
-  device key is derived (HKDF) from a Windows Hello signature over a fixed
-  challenge: the private key stays in the TPM and the device key is never
-  stored. The master password is required again every 14 days, and turning
-  the feature off or removing the account deletes the device key.
+  system releases only after Touch ID, Face ID or Windows Hello. On iOS and
+  macOS the device key is a keychain item that the Secure Enclave opens only
+  for the currently enrolled face or fingers, on this device, while a
+  passcode (on a Mac: a login password) is set; on a Mac it is in the data
+  protection keychain, as the login keychain knows no such protection (2Secret
+  before 1.9.4 kept it there; the app moves it on the next unlock). On
+  Windows the device key is derived (HKDF) from a Windows Hello signature
+  over a fixed challenge: the private key stays in the TPM and the device
+  key is never stored. The master password is required again every 14 days
+  (a reminder, not a cryptographic limit: the date is kept next to the
+  encrypted key), and turning the feature off or removing the account
+  deletes the device key. With biometric unlock on, the device key alone
+  opens the vault on that device: its protection rests on the Secure Enclave
+  or the TPM, not on the master password.
 - **AutoFill on iOS and macOS** (only while biometric unlock is on): the app
   shares the logins, passkeys and one-time password secrets AutoFill may fill
   with its extension through a file in the app group, encrypted with
@@ -473,8 +487,11 @@ the apps warn about this.
 
 ## Known limitations
 
-- Rotating a vault key uses the members' public keys as the server reports
-  them; compare fingerprints in the member list (see *Fingerprints*).
+- Sharing a vault, rotating a vault key and keeping emergency contacts'
+  keys up to date seal keys to the public keys as the server reports them;
+  the devices do not yet remember the keys they saw before. A server that
+  substitutes its own keys could so obtain vault keys; compare fingerprints
+  (see *Fingerprints*).
 - Metadata listed above (counts, size classes, timestamps, sharing graph,
   e-mail addresses) is visible to the server operator.
 - Login uses TLS from the operating system or browser; whether that

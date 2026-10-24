@@ -4,11 +4,12 @@
 //! The operating system keeps a random 256-bit *device key* and releases it
 //! only after a biometric check:
 //!
-//! - **iOS**: a keychain item that the Secure Enclave only opens after Face ID
-//!   or Touch ID with the currently enrolled fingers or face, and only while
-//!   the device has a passcode (`ThisDeviceOnly`, never in backups or iCloud).
-//! - **macOS**: Touch ID through LocalAuthentication, the key in the login
-//!   keychain, readable only by this app.
+//! - **iOS and macOS**: a keychain item that the Secure Enclave only opens
+//!   after Face ID or Touch ID with the currently enrolled fingers or face,
+//!   and only while the device has a passcode (`ThisDeviceOnly`, never in
+//!   backups or iCloud). On a Mac the item is in the data protection
+//!   keychain: the login keychain knows no such protection, and a copy of it
+//!   opens with the login password alone.
 //! - **Windows**: the device key is derived from a Windows Hello signature
 //!   over a fixed challenge. The private key never leaves the TPM and the
 //!   device key is never stored.
@@ -74,14 +75,20 @@ pub fn delete_device_key(account_id: &str) {
 mod imp {
     use super::{Error, Kind};
     use block2::RcBlock;
+    use core_foundation::base::{CFType, CFTypeRef, TCFType};
+    use core_foundation::string::CFString;
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_foundation::{NSError, NSString};
     use objc2_local_authentication::{LABiometryType, LAContext, LAError, LAPolicy};
+    use security_framework::access_control::{ProtectionMode, SecAccessControl};
     use security_framework::passwords::{
-        delete_generic_password_options, generic_password, set_generic_password_options, PasswordOptions,
+        delete_generic_password_options, generic_password, set_generic_password_options, AccessControlOptions,
+        PasswordOptions,
     };
+    use security_framework_sys::item::kSecUseAuthenticationContext;
     use twosecret_core::crypto::SymmetricKey;
+    use zeroize::Zeroizing;
 
     const SERVICE: &str = "2Secret biometric unlock";
     const POLICY: LAPolicy = LAPolicy::DeviceOwnerAuthenticationWithBiometrics;
@@ -131,62 +138,83 @@ mod imp {
         Ok(context)
     }
 
+    /// The keychain item with the device key: in the data protection
+    /// keychain, the only one iOS has and the only one on a Mac that knows
+    /// biometric protection (macOS uses it when asked).
     fn options(account_id: &str) -> PasswordOptions {
         #[allow(unused_mut)]
         let mut options = PasswordOptions::new_generic_password(SERVICE, account_id);
-        // iOS: the Secure Enclave releases the key only after Face ID / Touch
-        // ID with the current enrolment, on this device, with a passcode set.
-        #[cfg(target_os = "ios")]
-        {
-            use security_framework::access_control::{ProtectionMode, SecAccessControl};
-            use security_framework::passwords::AccessControlOptions;
-            if let Ok(acl) = SecAccessControl::create_with_protection(
-                Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
-                AccessControlOptions::BIOMETRY_CURRENT_SET.bits(),
-            ) {
-                options.set_access_control(acl);
-            }
-        }
+        #[cfg(target_os = "macos")]
+        options.use_protected_keychain();
         options
+    }
+
+    /// The item as it is created: the Secure Enclave releases it only after
+    /// Face ID / Touch ID with the current enrolment, on this device, while a
+    /// passcode (on a Mac: a login password) is set. Without that protection
+    /// the key is not stored at all.
+    fn protected_options(account_id: &str) -> Result<PasswordOptions, Error> {
+        let acl = SecAccessControl::create_with_protection(
+            Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
+            AccessControlOptions::BIOMETRY_CURRENT_SET.bits(),
+        )
+        .map_err(keychain_error)?;
+        let mut options = options(account_id);
+        options.set_access_control(acl);
+        Ok(options)
+    }
+
+    fn keychain_error(e: security_framework::base::Error) -> Error {
+        match e.code() {
+            -25300 => Error::Unavailable, // errSecItemNotFound
+            -128 => Error::Cancelled,     // errSecUserCanceled
+            _ => Error::Failed(format!("keychain: {e}")),
+        }
     }
 
     pub fn create_device_key(account_id: &str, reason: &str) -> Result<SymmetricKey, Error> {
         authenticate(reason)?;
         delete_device_key(account_id);
         let key = SymmetricKey::generate();
-        set_generic_password_options(key.as_bytes(), options(account_id))
-            .map_err(|e| Error::Failed(format!("keychain: {e}")))?;
+        set_generic_password_options(key.as_bytes(), protected_options(account_id)?).map_err(keychain_error)?;
         Ok(key)
     }
 
     pub fn device_key(account_id: &str, reason: &str) -> Result<SymmetricKey, Error> {
-        #[allow(unused_variables)]
         let context = authenticate(reason)?;
-        #[allow(unused_mut)]
         let mut options = options(account_id);
-        // Reuse the authenticated context, so iOS does not prompt twice.
-        #[cfg(target_os = "ios")]
-        {
-            use core_foundation::base::{CFType, TCFType};
-            use core_foundation::string::CFString;
-            use security_framework_sys::item::kSecUseAuthenticationContext;
-            let raw = Retained::as_ptr(&context) as core_foundation::base::CFTypeRef;
-            #[allow(deprecated)]
-            options.query.push((unsafe { CFString::wrap_under_get_rule(kSecUseAuthenticationContext) }, unsafe {
-                CFType::wrap_under_get_rule(raw)
-            }));
-        }
-        let bytes = generic_password(options).map_err(|e| match e.code() {
-            -25300 => Error::Unavailable, // errSecItemNotFound
-            -128 => Error::Cancelled,     // errSecUserCanceled
-            _ => Error::Failed(format!("keychain: {e}")),
-        })?;
+        // Reuse the authenticated context, so the system does not prompt twice.
+        let raw = Retained::as_ptr(&context) as CFTypeRef;
+        #[allow(deprecated)]
+        options.query.push((unsafe { CFString::wrap_under_get_rule(kSecUseAuthenticationContext) }, unsafe {
+            CFType::wrap_under_get_rule(raw)
+        }));
+        let bytes = match generic_password(options) {
+            Ok(bytes) => Zeroizing::new(bytes),
+            // 2Secret before 1.9.4 kept the key in the Mac's login keychain,
+            // which knows no Touch ID protection: move it.
+            #[cfg(target_os = "macos")]
+            Err(e) if e.code() == -25300 => move_from_login_keychain(account_id)?,
+            Err(e) => return Err(keychain_error(e)),
+        };
         let key = SymmetricKey::from_slice(&bytes).map_err(|_| Error::Unavailable);
         drop(context);
         key
     }
 
+    #[cfg(target_os = "macos")]
+    fn move_from_login_keychain(account_id: &str) -> Result<Zeroizing<Vec<u8>>, Error> {
+        let legacy = || PasswordOptions::new_generic_password(SERVICE, account_id);
+        let bytes = Zeroizing::new(generic_password(legacy()).map_err(keychain_error)?);
+        set_generic_password_options(&bytes, protected_options(account_id)?).map_err(keychain_error)?;
+        let _ = delete_generic_password_options(legacy());
+        Ok(bytes)
+    }
+
     pub fn delete_device_key(account_id: &str) {
+        let _ = delete_generic_password_options(options(account_id));
+        // The login keychain item of 2Secret before 1.9.4 on a Mac.
+        #[cfg(target_os = "macos")]
         let _ = delete_generic_password_options(PasswordOptions::new_generic_password(SERVICE, account_id));
     }
 }

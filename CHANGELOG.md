@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **Mac: the Touch ID key is in the protected keychain.** The key that
+  unlocks 2Secret with Touch ID was in the login keychain, which has no
+  Touch ID protection of its own, so a copy of the Mac's disk opened with
+  the login password alone. It is now a keychain item that the Secure
+  Enclave releases only after Touch ID with the enrolled fingers, on this
+  Mac, like on the iPhone. The app moves the key on the next unlock. (On
+  the iPhone the key was already protected this way; if that protection
+  cannot be set up, the key is now not stored at all.)
+- Server: the database keeps a hash of each share link's proof instead of
+  the proof itself, so a copy of the database can neither open a link nor
+  use up its views. Links made before this version keep working.
+- Server: the per-address count of failed sign-ins is forgotten after its
+  window, like the other limits.
+- `docs/SECURITY.md` says more precisely what the server stores and which
+  limits apply.
+
 ## 1.9.3
 
 A new look on phones, and the iPhone app fills iPhone Duo.

@@ -204,7 +204,12 @@ pub fn app(state: AppState) -> Router {
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow::Result<()> {
     // Rate limiters hold client addresses and e-mail addresses in memory:
     // forget them as soon as their window has passed.
-    let limiters = [state.login_limiter.clone(), state.signup_limiter.clone(), state.share_limiter.clone()];
+    let limiters = [
+        state.login_limiter.clone(),
+        state.signup_limiter.clone(),
+        state.share_limiter.clone(),
+        state.attempt_limiter.clone(),
+    ];
     let db = state.db.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
