@@ -1,25 +1,19 @@
-2Secret 1.9.3
+2Secret 1.9.4
 
 WAT IS NIEUW
-- Nieuw uiterlijk in de stijl van Liquid Glass (iOS 26): Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin, met een zoekknop ernaast. De inhoud schuift door onder de menubalk, de statusbalk en de Dynamic Island. De statusbalk volgt het thema van 2Secret.
-- Lang drukken op een item geeft een menu: kopiëren, favoriet, bewerken, naam wijzigen, verplaatsen, dupliceren, delen, selecteren, prullenbak. Lang drukken op een kluis in het menu ook.
-- Meerdere items tegelijk selecteren (de knop met het vinkje boven de lijst) om ze favoriet te maken, te verplaatsen of naar de prullenbak te doen.
-- Zoeken toont je favorieten bovenaan.
-- In het menu kun je categorieën, kluizen en labels inklappen; labels staan standaard ingeklapt.
-- Website-icoontjes ophalen voor alle logins gaat door als je de instellingen verlaat, laat zien hoe ver het is, is veel sneller en vindt veel meer icoontjes.
-- iPhone Duo: 2Secret vult het hele scherm, opengeklapt en dichtgeklapt. Gebouwd met Xcode 27.1 voor iOS 27.
+Een beveiligingsupdate, na een doorlichting van de versleuteling van 2Secret tegen een gestolen serverdatabase, een gestolen apparaat en een kwaadwillende server. Aan het gebruik van de app verandert niets.
+- Bekende sleutels: 2Secret onthoudt de sleutels van iedereen met wie je een kluis deelt of die je als noodcontact vertrouwt. Geeft de server later andere sleutels voor die persoon op, dan wordt er niets naar hen gestuurd; je ziet beide vingerafdrukken en beslist zelf of je de nieuwe sleutels vertrouwt, na ze met die persoon te hebben vergeleken.
+- Een nieuwe kluissleutel die de server aanbiedt voor een kluis zonder andere leden, maar die niet van je eigen apparaten komt, wordt geweigerd. Na het synchroniseren meldt 2Secret welke kluizen een nieuwe sleutel van een ander lid kregen.
+- Deel-links: de server bewaart alleen een hash van wat een link opent, zodat een kopie van zijn database een link niet kan openen of opmaken.
+- Ontgrendelen met Face ID: kan iOS de sleutel niet met Face ID beschermen, dan wordt hij helemaal niet opgeslagen.
+- Bijgewerkte onderdelen.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID.
-2. De menubalk: tik op Dashboard, Items en Watchtower. Scroll door een lange lijst: de inhoud loopt onder de balk door en het laatste item komt er nog boven.
-3. Zoeken: tik op de zoekknop rechtsonder; de lijst opent met het toetsenbord al open. Zoek op iets dat ook in je favorieten staat: de favoriet staat bovenaan.
-4. Bovenin: scroll omhoog; de inhoud vervaagt onder de knoppen en de Dynamic Island. Kies bij Instellingen → Weergave → Thema licht en donker: de tijd en de batterij blijven leesbaar.
-5. Druk lang op een item en probeer de opties, zoals naam wijzigen en wachtwoord kopiëren. Na het loslaten opent het item niet ook nog en wordt er geen tekst geselecteerd. Scrollen opent geen menu.
-6. Druk lang op een kluis in het menu linksboven: nieuw item, bewerken, delen.
-7. Tik op de knop met het vinkje, kies een paar items en zet ze in de prullenbak; zet ze daar terug.
-8. Klap in het menu de labels open en dicht; na het herstarten van de app is dat onthouden.
-9. Instellingen → Website-icoontjes → Ophalen voor alle logins: ga naar een ander scherm; het ophalen gaat door en de icoontjes verschijnen.
-10. iPhone Duo: gebruik 2Secret dichtgeklapt en opengeklapt; de app vult het scherm.
-11. Eenmalige codes, automatisch invullen in Safari en de iPad werken zoals voorheen.
+1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID. Zet bij Instellingen ontgrendelen met Face ID uit en weer aan, en vergrendel en ontgrendel daarna met Face ID.
+2. Synchroniseer (Instellingen → Nu synchroniseren): dit lukt zonder waarschuwingen over je bestaande gedeelde kluizen of noodcontacten.
+3. Deel een kluis met een tweede account (menu → de kluis → Delen): de vingerafdruk van de ander wordt getoond en die krijgt de kluis. Verwijder de ander weer; de kluis krijgt een nieuwe sleutel.
+4. Noodtoegang (Instellingen): voeg een contact toe; de vingerafdruk wordt getoond. Verwijder het contact weer.
+5. Deel een item via een link (druk lang op een item → Delen via link…) en open de link in Safari; trek hem daarna in via de lijst met links bij Instellingen → Synchronisatie.
+6. Alles uit 1.9.3 als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, eenmalige codes, automatisch invullen in Safari en de iPad.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

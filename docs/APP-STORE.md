@@ -111,7 +111,7 @@ the version (`v1.3.0`). After Apple processes it (10–30 minutes) it appears in
 Then select the build on the version page and choose *Add for Review*.
 
 To build on your own Mac instead: `brew install xcodegen`, set the four
-variables above in your shell and run `scripts/ios-appstore.sh 1.9.3`
+variables above in your shell and run `scripts/ios-appstore.sh 1.9.4`
 (the build number defaults to the date and time). Without the variables the
 script only builds for the simulator. It uses a temporary keychain and
 restores your keychain list afterwards.

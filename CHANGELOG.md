@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.9.4
+
+Security improvements from a review of the cryptography against a stolen
+server database, a stolen device and a hostile server.
 
 - **Known keys.** The apps and the command line remember the public keys of
   everyone you sealed a vault key to (sharing a vault, replacing its key,

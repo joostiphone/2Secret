@@ -13,3 +13,5 @@ Beveiligingsverbeteringen:
 - Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt: een inlog wordt alleen op zijn eigen site voorgesteld.
 - 2Secret maakt alleen via https verbinding met een synchronisatieserver.
 - Veiliger synchroniseren van gedeelde kluizen.
+- 2Secret onthoudt de sleutels van de mensen met wie je kluizen deelt en van je noodcontacten, en waarschuwt je als de server andere sleutels voor hen opgeeft.
+- Deel-links: de server bewaart alleen een hash van wat een link opent.

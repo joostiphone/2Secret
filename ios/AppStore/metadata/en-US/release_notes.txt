@@ -13,3 +13,5 @@ Security improvements:
 - AutoFill is stricter on websites where everyone gets a subdomain of their own: a login is only suggested on its own site.
 - 2Secret connects to a sync server only over https.
 - Safer syncing of shared vaults.
+- 2Secret remembers the keys of the people you share vaults with and of your emergency contacts, and warns you when the server reports other keys for them.
+- Share links: the server keeps only a hash of what opens a link.
