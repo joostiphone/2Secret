@@ -6931,7 +6931,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-agent"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "ed25519-dalek",
  "serde",
@@ -6942,7 +6942,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-app"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -6983,7 +6983,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-cli"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7003,7 +7003,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-client"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "ed25519-dalek",
  "image",
@@ -7019,7 +7019,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-core"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -7058,7 +7058,7 @@ dependencies = [
 
 [[package]]
 name = "twosecret-server"
-version = "1.9.4"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "axum",
