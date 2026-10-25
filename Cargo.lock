@@ -6930,6 +6930,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "twosecret-agent"
+version = "1.9.4"
+dependencies = [
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
+ "twosecret-core",
+ "zeroize",
+]
+
+[[package]]
 name = "twosecret-app"
 version = "1.9.4"
 dependencies = [
@@ -6983,6 +6994,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "twosecret-agent",
  "twosecret-client",
  "twosecret-core",
  "twosecret-server",

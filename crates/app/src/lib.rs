@@ -2,6 +2,8 @@
 //! and the web. `src/main.rs` starts it; the iOS App Store build links this
 //! library into an Xcode project and calls [`twosecret_main`].
 
+#[cfg(feature = "desktop")]
+mod agent_access;
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -33,6 +35,8 @@ mod updater;
 
 use dioxus::prelude::*;
 
+#[cfg(feature = "desktop")]
+use agent_access::AgentPrompt;
 use components::actions::ContextMenu;
 use components::modals::ModalHost;
 use components::onboarding::{CreateAccount, LockScreen, NewAccount, SignIn, Welcome};
@@ -43,6 +47,12 @@ use components::widgets::{BusyOverlay, ToastHost};
 use quick::QuickShortcut;
 #[cfg(feature = "desktop")]
 use ssh_agent::SshPrompt;
+/// Only the desktop has Agent Access.
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn AgentPrompt() -> Element {
+    rsx! {}
+}
 /// Only the desktop has Quick Access.
 #[cfg(not(feature = "desktop"))]
 #[component]
@@ -359,6 +369,8 @@ fn App() -> Element {
     quick::use_quick_access();
     #[cfg(feature = "desktop")]
     ssh_agent::use_ssh_agent();
+    #[cfg(feature = "desktop")]
+    agent_access::use_agent_access();
     // The shortcut needs the preferences.
     #[cfg(feature = "desktop")]
     let quick_shortcut = PREFS.read().quick_access && *PHASE.read() != Phase::Loading;
@@ -422,6 +434,7 @@ fn App() -> Element {
                 QuickShortcut {}
             }
             SshPrompt {}
+            AgentPrompt {}
         }
     }
 }

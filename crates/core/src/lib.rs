@@ -8,6 +8,7 @@
 //! backend, which makes it usable on every target 2Secret ships to: macOS,
 //! Windows, Linux, the BSDs, iOS and the web (`wasm32-unknown-unknown`).
 
+pub mod agent;
 pub mod api;
 pub mod autofill;
 pub mod biometric;

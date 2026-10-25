@@ -212,6 +212,11 @@ fn sign(request: SignRequest) {
     });
 }
 
+/// Whether a question to the user is open (the agent prompt waits for it).
+pub fn has_prompt() -> bool {
+    !PROMPTS.read().is_empty()
+}
+
 /// The question to the user, above everything else.
 #[component]
 pub fn SshPrompt() -> Element {

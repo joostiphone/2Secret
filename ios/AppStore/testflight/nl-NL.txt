@@ -1,19 +1,13 @@
-2Secret 1.9.4
+2Secret 1.10.0
 
 WAT IS NIEUW
-Een beveiligingsupdate, na een doorlichting van de versleuteling van 2Secret tegen een gestolen serverdatabase, een gestolen apparaat en een kwaadwillende server. Aan het gebruik van de app verandert niets.
-- Bekende sleutels: 2Secret onthoudt de sleutels van iedereen met wie je een kluis deelt of die je als noodcontact vertrouwt. Geeft de server later andere sleutels voor die persoon op, dan wordt er niets naar hen gestuurd; je ziet beide vingerafdrukken en beslist zelf of je de nieuwe sleutels vertrouwt, na ze met die persoon te hebben vergeleken.
-- Een nieuwe kluissleutel die de server aanbiedt voor een kluis zonder andere leden, maar die niet van je eigen apparaten komt, wordt geweigerd. Na het synchroniseren meldt 2Secret welke kluizen een nieuwe sleutel van een ander lid kregen.
-- Deel-links: de server bewaart alleen een hash van wat een link opent, zodat een kopie van zijn database een link niet kan openen of opmaken.
-- Ontgrendelen met Face ID: kan iOS de sleutel niet met Face ID beschermen, dan wordt hij helemaal niet opgeslagen.
-- Bijgewerkte onderdelen.
+Agenttoegang voor de Mac-, Windows- en Linux-apps en de opdrachtregel: AI-hulpmiddelen zoals Claude Code, Claude Desktop en Cursor kunnen je logins gebruiken nadat je elk verzoek op je computer goedkeurt. Het hulpmiddel krijgt nooit een wachtwoord zonder jouw ja, programma's krijgen geheimen zonder dat de AI ze ziet, en alles wordt bijgehouden in de instellingen. De iPhone- en iPad-app heeft in deze versie geen nieuwe functies; hij krijgt dezelfde kernbibliotheek en bijgewerkte onderdelen.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID. Zet bij Instellingen ontgrendelen met Face ID uit en weer aan, en vergrendel en ontgrendel daarna met Face ID.
-2. Synchroniseer (Instellingen → Nu synchroniseren): dit lukt zonder waarschuwingen over je bestaande gedeelde kluizen of noodcontacten.
-3. Deel een kluis met een tweede account (menu → de kluis → Delen): de vingerafdruk van de ander wordt getoond en die krijgt de kluis. Verwijder de ander weer; de kluis krijgt een nieuwe sleutel.
-4. Noodtoegang (Instellingen): voeg een contact toe; de vingerafdruk wordt getoond. Verwijder het contact weer.
-5. Deel een item via een link (druk lang op een item → Delen via link…) en open de link in Safari; trek hem daarna in via de lijst met links bij Instellingen → Synchronisatie.
-6. Alles uit 1.9.3 als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, eenmalige codes, automatisch invullen in Safari en de iPad.
+1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID en met je hoofdwachtwoord.
+2. Synchroniseer (Instellingen → Nu synchroniseren): dit lukt zonder waarschuwingen.
+3. Automatisch invullen in Safari: log in op een website met een opgeslagen login, en gebruik een eenmalige code waar je die hebt.
+4. Deel een kluis met een tweede account en verwijder die weer; deel een item via een link en open de link in Safari.
+5. Alles uit 1.9.x als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, Watchtower.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

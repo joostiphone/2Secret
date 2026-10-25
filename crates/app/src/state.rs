@@ -220,6 +220,11 @@ pub struct Prefs {
     pub quick_access: bool,
     /// Desktop: the SSH agent (`ssh_agent`).
     pub ssh_agent: bool,
+    /// Desktop: Agent Access for AI tools (`agent_access`).
+    pub agent_access: bool,
+    /// Desktop: ask for Touch ID / Face ID / Windows Hello before an agent
+    /// gets a secret (when biometric unlock is set up).
+    pub agent_biometric: bool,
     /// The sections of the menu that are folded away ("categories",
     /// "vaults", "tags"); never the names in them, which are not stored
     /// unencrypted.
@@ -244,6 +249,8 @@ impl Default for Prefs {
             tray: true,
             quick_access: true,
             ssh_agent: false,
+            agent_access: false,
+            agent_biometric: true,
             // Tags can be many: folded until opened.
             folded: vec!["tags".to_string()],
         }
@@ -314,7 +321,7 @@ fn slot_key(base: &str, slot: usize) -> String {
     }
 }
 
-fn active_key(base: &str) -> String {
+pub fn active_key(base: &str) -> String {
     slot_key(base, *SLOT.peek())
 }
 
@@ -893,6 +900,9 @@ pub fn lock() {
 }
 
 const BIOMETRIC_KEY: &str = "biometric";
+/// The encrypted record of AI agents, their permissions and the log
+/// (`agent_access`).
+pub const AGENTS_KEY: &str = "agents";
 
 fn stored_biometric_unlock() -> Option<BiometricUnlock> {
     let json = platform::storage().read(&active_key(BIOMETRIC_KEY)).ok().flatten()?;
@@ -939,6 +949,7 @@ pub fn forget_device() {
     disable_biometric_unlock();
     let _ = platform::storage().delete(&active_key(PROFILE_KEY));
     let _ = platform::storage().delete(&active_key(DEVICE_KEY));
+    let _ = platform::storage().delete(&active_key(AGENTS_KEY));
     *SESSION.write() = None;
     reset_view();
     match other_profile() {

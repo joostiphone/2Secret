@@ -135,6 +135,20 @@ export DATABASE_PASSWORD=2s://Work/Postgres/password
 2secret run --env-file .env.2secret -- npm start
 ```
 
+## AI tools (MCP)
+
+`2secret mcp` serves the Model Context Protocol to an AI tool on stdin and
+stdout. Requests go to the running desktop app, which asks you before a secret
+leaves the vault; see [AGENTS.md](AGENTS.md) for the setup per tool and the
+list of tools.
+
+```sh
+claude mcp add 2secret -- 2secret mcp     # Claude Code
+2secret agent status                       # is the app reachable, which agents are known
+2secret mcp --standalone                   # without the app: only searching and generating
+2secret mcp --standalone --allow-run       # … plus run_command, without anyone approving
+```
+
 ## Tools
 
 ```sh

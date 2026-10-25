@@ -400,6 +400,25 @@ conflict never silently loses a password. Deletions are tombstones.
   keys are decrypted in memory for one signature and never leave 2Secret;
   adding keys, removing keys and agent extensions are refused. RSA keys sign
   with SHA-256 or SHA-512 only.
+- **Agent Access** (desktop, off by default): AI tools (Claude Code,
+  Cursor, any MCP client) reach the vault through `2secret mcp`, which talks
+  to the app over a Unix socket in the data directory (`access.sock`, `0600`)
+  or, on Windows, a named pipe per user. Each tool has its own Ed25519 key
+  and proves it with a signature over a nonce; the app shows the program on
+  the other end and the program that started it (as the operating system
+  reports them) and asks before the tool may connect. From then on the tool
+  can search titles, user names, websites and tags, never values of
+  concealed or one-time password fields and never notes. Every secret (a
+  field, a one-time code, saving or changing an item) needs the user's
+  consent in the app: once, for these items until 2Secret locks (kept in
+  memory), or for these items for 8 hours (stored). Optionally the app asks
+  for Touch ID, Face ID or Windows Hello before it answers. The record of
+  agents, permissions and the log of every request is encrypted with the
+  account key (`agents.json`) and dropped from memory at lock, when pending
+  questions are refused. `run_command` gives a program the values of `2s://`
+  references and replaces them by the references in the output the model
+  reads; the master password and shell session never reach the program.
+  See [AGENTS.md](AGENTS.md).
 - **QR codes on the screen** (desktop): *Scan QR code* takes a screenshot of
   the screens in memory, reads the QR code and drops the image; under
   Wayland the screenshot portal saves a file, which 2Secret deletes right
@@ -524,5 +543,12 @@ the apps warn about this.
 - The web vault is only as trustworthy as the server that serves its code. If
   you do not trust the server operator, use the desktop/mobile apps or the
   extension, whose code does not come from the server.
+- Agent Access treats an AI tool like any other program of the user: an
+  agent that also controls the computer can click *Allow* itself (the
+  optional biometric question helps, but a Windows Hello PIN or a Linux
+  desktop without biometrics is no barrier to it), and a value read with
+  `read_field` is in the AI provider's conversation from then on. The
+  program identity shown is what the operating system reports about the
+  socket's peer; code signatures are not checked yet.
 - 2Secret has not yet had an independent security audit. Reviews are very
   welcome.

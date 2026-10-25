@@ -1,6 +1,7 @@
 //! `2secret` – the 2Secret command line interface.
 
 mod account;
+mod agent;
 mod clipboard;
 mod context;
 mod emergency;
@@ -230,6 +231,25 @@ enum Command {
         revoke: Option<String>,
     },
 
+    /// Serve the Model Context Protocol to an AI tool (Claude Code, Claude Desktop, Cursor, Codex, …) on
+    /// stdin and stdout. Requests go to the running 2Secret app, which asks you before a secret leaves the vault.
+    Mcp {
+        /// Work on the vault directly, without the app. Nobody can be asked then: only searching, showing items
+        /// without secrets and generating passwords work.
+        #[arg(long)]
+        standalone: bool,
+        /// With --standalone: let run_command run programs with secrets in their environment anyway.
+        #[arg(long, requires = "standalone")]
+        allow_run: bool,
+        /// The name 2Secret shows for this agent (default: the AI tool's own name).
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// Agent Access: how AI tools on this computer reach 2Secret.
+    #[command(subcommand)]
+    Agent(agent::AgentCmd),
+
     #[command(hide = true)]
     ClipboardDaemon { seconds: u64 },
 }
@@ -359,6 +379,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             tools::share(&ctx, &item, &expires, views, password, &fields, !no_notes)
         }
         Command::Shares { revoke } => tools::shares(&ctx, revoke.as_deref()),
+        Command::Mcp { standalone, allow_run, name } => agent::mcp(&ctx, standalone, allow_run, name),
+        Command::Agent(cmd) => agent::run(&ctx, cmd),
         Command::ClipboardDaemon { .. } => Ok(()),
     }
 }

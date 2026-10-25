@@ -1,6 +1,7 @@
 # 2Secret: notes for AI assistants
 
-Read README.md and CONTRIBUTING.md first.
+Read README.md and CONTRIBUTING.md first. `docs/AGENTS.md` explains how an
+AI tool uses 2Secret itself (`2secret mcp`).
 
 ## Releasing
 

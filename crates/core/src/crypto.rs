@@ -625,7 +625,7 @@ impl AccountPublicKeys {
     }
 }
 
-fn fingerprint_of(digest: &[u8; 32]) -> String {
+pub(crate) fn fingerprint_of(digest: &[u8; 32]) -> String {
     digest[..8].chunks(2).map(|c| format!("{:02X}{:02X}", c[0], c[1])).collect::<Vec<_>>().join("-")
 }
 

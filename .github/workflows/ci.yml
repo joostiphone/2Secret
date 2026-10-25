@@ -57,7 +57,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test core, client, server and CLI
-        run: cargo test -p twosecret-core -p twosecret-client -p twosecret-server -p twosecret-cli --features twosecret-core/ssh-agent
+        run: cargo test -p twosecret-core -p twosecret-client -p twosecret-server -p twosecret-cli -p twosecret-agent --features twosecret-core/ssh-agent
 
   desktop:
     name: Desktop app (${{ matrix.os }})

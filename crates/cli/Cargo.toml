@@ -19,6 +19,7 @@ clipboard = ["dep:arboard"]
 [dependencies]
 twosecret-core.workspace = true
 twosecret-client.workspace = true
+twosecret-agent.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

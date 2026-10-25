@@ -53,6 +53,7 @@ is free, open source, and you can host the sync server yourself.
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. It can start there when you log in. |
 | 🔐 **SSH agent** | `ssh` and `git` use the SSH keys in your vault (Ed25519, ECDSA, RSA) after you allow it in 2Secret; the private keys never leave it. |
+| 🤖 **Agent Access** | AI tools (Claude Code, Claude Desktop, Cursor, Codex, any MCP client) use your items through `2secret mcp`: searching needs no question, every secret needs your yes in the app, programs get secrets through `2s://` references without the model seeing them, and everything is logged ([details](docs/AGENTS.md)). |
 | ⚡ **Quick Access** | `Ctrl+Shift+Space` (`⇧⌘Space` on the Mac) anywhere: find an item and copy its password, user name or one-time code without opening 2Secret. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |

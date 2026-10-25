@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.10.0
+
+**Agent Access**: AI tools use your vault, you stay in charge.
+
+- **AI agents in the desktop apps** (*Settings → Desktop app → AI agents*,
+  off by default). Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI and
+  any other tool that speaks the Model Context Protocol connect through
+  `2secret mcp`. The first time a tool connects 2Secret asks whether it may,
+  and shows the program behind it. A connected tool can search the titles,
+  user names, websites and tags of your items; it never gets a password,
+  one-time code or note without asking.
+- **Every secret needs your yes.** Reading a field, getting a one-time code,
+  saving or changing an item: 2Secret shows which tool asks, for which item
+  and fields, and why. Allow it once, for these items until 2Secret locks, or
+  for these items for 8 hours. Optionally 2Secret asks for Touch ID, Face ID
+  or Windows Hello first. Deny is the default; Enter and Escape refuse.
+- **Programs get secrets, the model does not.** The tool can run a program
+  with `2s://` references in its environment (`run_command`): 2Secret asks
+  once for all of them, the program gets the values, and in the output the
+  tool reads the values are replaced by their references. A new login can be
+  saved with a password 2Secret generates, so the tool never sees it.
+- **Agents, permissions and a log** in the settings: which tools are
+  connected (each with its own key), what they may do without asking, and
+  every request with your answer. Revoke a tool there. Everything is
+  encrypted with your account key and forgotten from memory when 2Secret
+  locks, when open questions are refused.
+- Command line: `2secret mcp` (and `--standalone` for use without the app:
+  only searching and generating), `2secret agent status`. New crate
+  `twosecret-agent`. See `docs/AGENTS.md`.
+
 ## 1.9.4
 
 Security improvements from a review of the cryptography against a stolen

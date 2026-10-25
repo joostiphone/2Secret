@@ -40,6 +40,7 @@ target including `wasm32-unknown-unknown`.
 | `watchtower` | Security audit and Have I Been Pwned k-anonymity helpers |
 | `import`, `export` | 1Password, Bitwarden, KeePass, CSV importers; JSON/CSV/encrypted export |
 | `secret_ref` | `2s://` references, template injection |
+| `agent` | Agent Access: the socket protocol, agent identity (Ed25519), consent (`Ask`, grants, the encrypted store and log) and running requests against a `Session` |
 | `emergency_kit` | Printable Emergency Kit |
 | `storage` | Key/value storage trait, file and memory backends |
 
@@ -59,7 +60,15 @@ connection (WAL mode) used through `spawn_blocking`.
 ### `twosecret-cli`
 
 The `2secret` binary (clap). Session caching for shells, clipboard helper
-process, secret references.
+process, secret references, `2secret mcp`.
+
+### `twosecret-agent`
+
+Agent Access for AI tools: the Model Context Protocol server (JSON-RPC 2.0
+over stdin/stdout, written by hand) with its tools, the client of the desktop
+app's socket (`access.sock`, a named pipe on Windows), one Ed25519 key per AI
+tool, and the filter that replaces secrets by their `2s://` references in a
+program's output. Used by the CLI; see [AGENTS.md](AGENTS.md).
 
 ### `twosecret-app`
 
@@ -112,4 +121,8 @@ password history) and repeat until nothing is pending.
 | Windows | `%APPDATA%\2Secret` |
 | Web / extension | IndexedDB database `2secret` (object store `kv`: `profile`, `device`, `prefs`) |
 
-`TWOSECRET_HOME` overrides the directory on desktop and CLI.
+`TWOSECRET_HOME` overrides the directory on desktop and CLI. Besides the
+profile and device secrets the desktop apps keep `prefs.json` (unencrypted
+preferences), `biometric.json`, `agents.json` (agents, permissions and log,
+encrypted with the account key), the SSH agent's `agent.sock` and Agent
+Access's `access.sock`; `2secret mcp` keeps `agent-key-<tool>.json`.

@@ -1,19 +1,13 @@
-2Secret 1.9.4
+2Secret 1.10.0
 
 WHAT'S NEW
-A security update, after a review of 2Secret's cryptography against a stolen server database, a stolen device and a hostile server. Nothing changes in how you use the app.
-- Known keys: 2Secret remembers the keys of everyone you share a vault with or trust as an emergency contact. If the server later reports other keys for that person, nothing is sent to them; you see both fingerprints and decide whether to trust the new keys after comparing them with that person.
-- A new vault key that the server offers for a vault without other members, but that did not come from your own devices, is refused. After a sync, 2Secret says which vaults got a new key from another member.
-- Share links: the server keeps only a hash of what opens a link, so a copy of its database can neither open a link nor use up its views.
-- Face ID unlock: if iOS cannot protect the key with Face ID, it is not stored at all.
-- Updated dependencies.
+Agent Access for the Mac, Windows and Linux apps and the command line: AI tools such as Claude Code, Claude Desktop and Cursor can use your logins after you approve each request on your computer. The tool never gets a password without your yes, programs get secrets without the AI seeing them, and everything is logged in the settings. The iPhone and iPad app has no new features in this version; it gets the same core library and updated dependencies.
 
 PLEASE TEST
-1. Update and open the app: all your vaults and items are there. Unlock with Face ID. Under Settings, turn Face ID unlock off and on again, then lock and unlock with Face ID.
-2. Sync (Settings → Sync now): it finishes without warnings about your existing shared vaults or emergency contacts.
-3. Share a vault with a second account (menu → the vault → Share): the fingerprint of the other person is shown and they get the vault. Remove them again; the vault gets a new key.
-4. Emergency access (Settings): add a contact; their fingerprint is shown. Remove the contact again.
-5. Share an item at a link (long-press an item → Share via link…) and open the link in Safari; then revoke it in the list of links under Settings → Sync.
-6. Everything from 1.9.3 as before: the tab bar, long-press menus, selecting several items, search with favorites first, one-time codes, AutoFill in Safari and the iPad.
+1. Update and open the app: all your vaults and items are there. Unlock with Face ID and with your master password.
+2. Sync (Settings → Sync now): it finishes without warnings.
+3. AutoFill in Safari: sign in to a website with a saved login, and use a one-time code where you have one.
+4. Share a vault with a second account and remove it again; share an item via a link and open the link in Safari.
+5. Everything from 1.9.x as before: the tab bar, long-press menus, selecting several items, search with favorites first, Watchtower.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

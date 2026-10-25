@@ -841,6 +841,7 @@ fn DesktopSection() -> Element {
             AutostartRow {}
             QuickAccessRow {}
             crate::ssh_agent::SshAgentRow {}
+            crate::agent_access::AgentAccessRow {}
         }
     }
 }
