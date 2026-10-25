@@ -842,6 +842,7 @@ fn DesktopSection() -> Element {
             QuickAccessRow {}
             crate::ssh_agent::SshAgentRow {}
             crate::agent_access::AgentAccessRow {}
+            crate::native_host::BrowserRow {}
         }
     }
 }

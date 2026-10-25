@@ -418,6 +418,18 @@ conflict never silently loses a password. Deletions are tombstones.
   questions are refused. `run_command` gives a program the values of `2s://`
   references and replaces them by the references in the output the model
   reads; the master password and shell session never reach the program.
+  An agent may also ask 2Secret to sign the user in on a website in the
+  user's own browser (`fill`): after consent the app hands the user name,
+  password and current one-time code of that one item, once, to the browser
+  extension, and the agent only hears whether it was filled. The extension
+  reaches the app through 2Secret's own program as a *native messaging host*
+  (started by the browser, talking to the app over the same socket as a
+  connection of role `browser`); the app only accepts that role from a
+  program with the same name and size as itself, and such a connection can
+  do nothing but wait for logins and report. The manifest that tells each
+  browser to start 2Secret names only the 2Secret extension (its store id,
+  plus development ids the user enters). Logins in flight are wiped from
+  memory when the browser answers, after 30 seconds, and at lock.
   See [AGENTS.md](AGENTS.md).
 - **QR codes on the screen** (desktop): *Scan QR code* takes a screenshot of
   the screens in memory, reads the QR code and drops the image; under
@@ -436,10 +448,15 @@ conflict never silently loses a password. Deletions are tombstones.
   the popup opens, the account key is kept in `chrome.storage.session` —
   browser memory that is only accessible to the extension and cleared when the
   browser closes — until the auto-lock time passes. Autofill injects a small
-  self-contained function into the active tab only when you click *Fill*.
-  Logins and one-time codes never pass through a content script. Right before filling, the tab's address and the address of every
-  frame are checked again against the item's websites, so credentials never
-  reach a frame from another site (an ad, a hostile embed) or a page the tab
+  self-contained function into the active tab only when you click *Fill*, or
+  when you allow a named AI agent's request in the desktop app (the login
+  then comes from the app through 2Secret's own native messaging host, and
+  the extension fills and submits the active tab that belongs to the item's
+  website; see *Agent Access* above). Logins and one-time codes never pass
+  through a content script and are never stored or logged by the extension.
+  Right before filling, the tab's address and the address of every frame are
+  checked again against the item's websites, so credentials never reach a
+  frame from another site (an ad, a hostile embed) or a page the tab
   navigated to after the popup opened. Websites are matched by registrable
   domain using the Public Suffix List (`alice.github.io` never matches
   `mallory.github.io`; an item for `github.io` itself only matches
@@ -506,7 +523,7 @@ Appearance → Website icons*.
 | Old accounts kept 1–5,000 PBKDF2 iterations for years | Argon2id (64 MiB, 3 passes) from day one, with an enforced minimum on client and server |
 | Short master passwords (8 characters) were allowed | At least 12 characters and a "good" strength rating |
 | Older vaults used AES-ECB/CBC without integrity protection | Authenticated encryption (XChaCha20-Poly1305) with every ciphertext bound to its place (associated data) |
-| Browser extension bugs let web pages and iframes trigger fills or read data | Fill only on an explicit click, page and every frame re-checked against the item; pages can only ask for a passkey, which opens 2Secret for the user to decide |
+| Browser extension bugs let web pages and iframes trigger fills or read data | Fill only on an explicit click, or after the user allows a named AI agent's request in the desktop app (the browser side is verified to be 2Secret itself); page and every frame re-checked against the item; pages can only ask for a passkey, which opens 2Secret for the user to decide |
 | Access to the vault storage by a compromised engineer exposed everything | The server never holds a key that decrypts anything; self-hosters keep their own infrastructure |
 
 ## Web vault hardening
@@ -547,7 +564,9 @@ the apps warn about this.
   agent that also controls the computer can click *Allow* itself (the
   optional biometric question helps, but a Windows Hello PIN or a Linux
   desktop without biometrics is no barrier to it), and a value read with
-  `read_field` is in the AI provider's conversation from then on. The
+  `read_field` is in the AI provider's conversation from then on. A login
+  that 2Secret fills in the browser for an agent can be read from the page
+  by an agent that drives that browser until the page is submitted. The
   program identity shown is what the operating system reports about the
   socket's peer; code signatures are not checked yet.
 - 2Secret has not yet had an independent security audit. Reviews are very

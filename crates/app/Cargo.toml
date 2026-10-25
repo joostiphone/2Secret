@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:gdk", "dep:libloading", "dep:rqrr", "twosecret-core/ssh-agent", "dep:libc"]
+desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:gdk", "dep:libloading", "dep:rqrr", "twosecret-core/ssh-agent", "dep:libc", "dep:twosecret-agent"]
 web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
 # Browser extension popup (Chrome, Edge, Firefox): the web app plus autofill.
 extension = ["web"]
@@ -28,6 +28,7 @@ mobile = ["dioxus/mobile", "dep:tokio"]
 
 [dependencies]
 twosecret-core.workspace = true
+twosecret-agent = { workspace = true, optional = true }
 twosecret-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true

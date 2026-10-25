@@ -204,7 +204,7 @@ pub fn url_matches(item_url: &str, page_url: &str) -> bool {
 
 /// Where an item's credentials may be filled: the browser extension checks
 /// the page and every frame against these rules at the moment of filling.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FillRule {
     /// Registrable domain; the page host must equal it or be a subdomain.
     pub domain: String,

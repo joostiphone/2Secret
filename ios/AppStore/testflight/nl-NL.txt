@@ -1,13 +1,13 @@
-2Secret 1.10.0
+2Secret 1.11.0
 
 WAT IS NIEUW
-Agenttoegang voor de Mac-, Windows- en Linux-apps en de opdrachtregel: AI-hulpmiddelen zoals Claude Code, Claude Desktop en Cursor kunnen je logins gebruiken nadat je elk verzoek op je computer goedkeurt. Het hulpmiddel krijgt nooit een wachtwoord zonder jouw ja, programma's krijgen geheimen zonder dat de AI ze ziet, en alles wordt bijgehouden in de instellingen. De iPhone- en iPad-app heeft in deze versie geen nieuwe functies; hij krijgt dezelfde kernbibliotheek en bijgewerkte onderdelen.
+Agenttoegang, deel twee, voor de Mac-, Windows- en Linux-apps met de browserextensie: een AI-agent die in je browser werkt (Claude for Chrome, Comet, Atlas, Playwright) kan 2Secret vragen je in te loggen. Jij staat het toe in de app, 2Secret vult de inlogpagina in en verzendt die, en de agent ziet het wachtwoord nooit. Met één knop verbind je de extensie met de app in Chrome, Edge, Brave, Vivaldi, Arc en Firefox. De iPhone- en iPad-app heeft in deze versie geen nieuwe functies; hij krijgt dezelfde kernbibliotheek.
 
 TEST ALSJEBLIEFT
 1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID en met je hoofdwachtwoord.
 2. Synchroniseer (Instellingen → Nu synchroniseren): dit lukt zonder waarschuwingen.
 3. Automatisch invullen in Safari: log in op een website met een opgeslagen login, en gebruik een eenmalige code waar je die hebt.
 4. Deel een kluis met een tweede account en verwijder die weer; deel een item via een link en open de link in Safari.
-5. Alles uit 1.9.x als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, Watchtower.
+5. Alles uit 1.10 als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, Watchtower.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

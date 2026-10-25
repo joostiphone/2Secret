@@ -159,8 +159,24 @@ pub fn definitions() -> Vec<Value> {
             false,
         ),
         tool(
+            "fill_login",
+            "Sign the user in on a website in their own browser without seeing the password: 2Secret fills the user \
+             name, password and one-time code of the item into the sign-in page that is the active tab of the user's \
+             browser (Chrome, Edge, Brave, Firefox with the 2Secret extension connected to the app) and submits the \
+             form. The user approves in 2Secret. Open the sign-in page first and make it the active tab; the page \
+             must belong to the item's website. On a sign-in with separate steps call it once per step.",
+            json!({ "type": "object", "additionalProperties": false, "required": ["item", "url"], "properties": {
+                "item": item,
+                "url": { "type": "string", "description": "The address of the sign-in page that is open." },
+                "submit": { "type": "boolean", "description": "Submit the form after filling (default true)." },
+                "reason": { "type": "string", "maxLength": 200, "description": "Why; shown to the user." }
+            } }),
+            false,
+        ),
+        tool(
             "agent_status",
-            "Whether 2Secret is reachable, as which agent this connection is known, and where it listens. For troubleshooting.",
+            "Whether 2Secret is reachable, as which agent this connection is known, which browsers are connected for \
+             fill_login, and where the app listens. For troubleshooting.",
             json!({ "type": "object", "additionalProperties": false, "properties": {} }),
             true,
         ),
@@ -201,6 +217,7 @@ pub fn call_tool(backend: &mut dyn Backend, name: &str, args: Value) -> ToolResu
             forward(backend, "create_item", args)
         }
         "update_item" => forward(backend, "update_item", args),
+        "fill_login" => forward(backend, "fill", args),
         "run_command" => run_command(backend, args),
         "agent_status" => ToolResult::json(&backend.status()),
         other => ToolResult::err(format!("unknown tool '{other}'")),
@@ -347,6 +364,7 @@ mod tests {
                     Ok(json!({ "values": values }))
                 }
                 "generate" => Ok(json!({ "value": "xyz", "entropy_bits": 10 })),
+                "fill" => Ok(json!({ "filled": true, "browser": "chrome", "submitted": true })),
                 other => Err(format!("unexpected {other}")),
             }
         }
@@ -361,7 +379,10 @@ mod tests {
     #[test]
     fn definitions_are_valid_schemas() {
         let tools = definitions();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
+        let fill = tools.iter().find(|t| t["name"] == "fill_login").unwrap();
+        assert_eq!(fill["annotations"]["readOnlyHint"], false);
+        assert_eq!(fill["inputSchema"]["required"], json!(["item", "url"]));
         for t in &tools {
             assert!(t["name"].is_string());
             assert!(t["description"].as_str().unwrap().len() > 20);
@@ -382,6 +403,9 @@ mod tests {
         let out = call_tool(&mut fake, "save_login", json!({ "title": "x", "generate_password": true }));
         assert!(out.is_error, "the fake has no create_item");
         assert_eq!(fake.calls.last().unwrap().1["generate"], true);
+        let out = call_tool(&mut fake, "fill_login", json!({ "item": "GitHub", "url": "https://github.com/login" }));
+        assert!(!out.is_error && out.text.contains("\"filled\":true"));
+        assert_eq!(fake.calls.last().unwrap().0, "fill");
         assert!(call_tool(&mut fake, "nope", json!({})).is_error);
         assert!(call_tool(&mut fake, "search_items", json!([1])).is_error);
         assert!(call_tool(&mut fake, "agent_status", Value::Null).text.contains("fake"));

@@ -23,6 +23,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::crypto::{decrypt_json, encrypt_json, fingerprint_of, sha256, EncString, SymmetricKey};
 use crate::generator::{GeneratorKind, GeneratorOptions};
@@ -30,7 +31,7 @@ use crate::item::{Category, Field, FieldKind, Item};
 use crate::secret_ref::{self, SecretRef};
 use crate::session::{ItemFilter, Session};
 use crate::totp::Totp;
-use crate::util::{b64, now, unb64};
+use crate::util::{b64, fill_rules, now, unb64, url_host, url_matches, FillRule};
 use crate::{Error, Result};
 
 /// Version of the socket protocol.
@@ -74,6 +75,10 @@ impl AgentError {
     pub const NOT_PAIRED: i64 = -32005;
     /// Agent Access is turned off in the app.
     pub const OFF: i64 = -32006;
+    /// No browser with the 2Secret extension is connected to the app.
+    pub const NO_BROWSER: i64 = -32007;
+    /// The browser could not fill: no matching tab, or no fields on the page.
+    pub const FILL_FAILED: i64 = -32008;
     pub const METHOD_NOT_FOUND: i64 = -32601;
     pub const INVALID_PARAMS: i64 = -32602;
     pub const INTERNAL: i64 = -32603;
@@ -98,6 +103,27 @@ impl AgentError {
     }
     pub fn invalid(message: impl Into<String>) -> Self {
         Self::new(Self::INVALID_PARAMS, message)
+    }
+    pub fn no_browser() -> Self {
+        Self::new(
+            Self::NO_BROWSER,
+            "no browser is connected to 2Secret: open a browser with the 2Secret extension and set up the \
+             browser connection under Settings → Desktop app → Browser connection",
+        )
+    }
+    /// Why a fill did not happen, for the agent: `host` is the website,
+    /// `browser` the browser (or browsers) that looked.
+    pub fn fill_failed(outcome: FillOutcome, host: &str, browser: &str) -> Self {
+        let message = match outcome {
+            FillOutcome::NoTab => {
+                format!("no open tab for {host} in {browser}: open the sign-in page and make it the active tab")
+            }
+            FillOutcome::Nothing => {
+                format!("nothing to fill on the {host} page in {browser}: no user name, password or code field")
+            }
+            FillOutcome::Filled => format!("the login was filled on {host} in {browser}"),
+        };
+        Self::new(Self::FILL_FAILED, message)
     }
     pub fn method_not_found(method: &str) -> Self {
         Self::new(Self::METHOD_NOT_FOUND, format!("unknown method '{method}'"))
@@ -173,6 +199,18 @@ pub fn clean_label(s: &str, max: usize) -> String {
     s.chars().filter(|c| !invisible(*c)).collect::<String>().trim().chars().take(max).collect()
 }
 
+/// What connects to the app: an AI agent (through `2secret mcp`) or the
+/// 2Secret extension in a browser (through the app's own native messaging
+/// host). A browser connection never reads the vault; it only receives the
+/// logins the user allowed an agent to fill, and reports the outcome.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    #[default]
+    Agent,
+    Browser,
+}
+
 /// Who asks, as far as the app can tell. `name`, `version` and
 /// `claimed_parent` are what the agent said about itself; `exe` and
 /// `parent` are what the operating system reports about the process on the
@@ -185,6 +223,11 @@ pub struct AgentIdentity {
     pub version: String,
     /// Ed25519 public key (base64).
     pub public_key: String,
+    #[serde(default)]
+    pub role: Role,
+    /// For a browser connection: `chrome`, `firefox`, ... (cleaned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
     /// Path of the program on the other end, verified by the OS.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe: Option<String>,
@@ -200,11 +243,19 @@ impl AgentIdentity {
     /// Builds the identity from a verified `hello`; cleans what the agent said.
     pub fn new(id: &str, hello: &HelloParams, exe: Option<String>, parent: Option<String>) -> Self {
         let name = clean_label(&hello.name, NAME_MAX);
+        let browser = hello.browser.as_deref().map(browser_name).filter(|b| !b.is_empty());
+        let fallback = match (hello.role, &browser) {
+            (Role::Browser, Some(b)) => format!("{} extension", browser_label(b)),
+            (Role::Browser, None) => "Browser extension".to_string(),
+            (Role::Agent, _) => "An AI agent".to_string(),
+        };
         Self {
             id: id.to_string(),
-            name: if name.is_empty() { "An AI agent".to_string() } else { name },
+            name: if name.is_empty() { fallback } else { name },
             version: clean_label(&hello.version, 40),
             public_key: hello.agent_key.clone(),
+            role: hello.role,
+            browser,
             exe,
             parent,
             claimed_parent: hello.parent.as_deref().map(|p| clean_label(p, NAME_MAX)).filter(|p| !p.is_empty()),
@@ -212,8 +263,15 @@ impl AgentIdentity {
     }
 
     /// `Claude Code (via 2secret mcp)`: the name, and the program when it is
-    /// known and says something more.
+    /// known and says something more. A browser connection is shown as
+    /// `Chrome extension`: its program is 2Secret itself.
     pub fn display(&self) -> String {
+        if self.role == Role::Browser {
+            return match &self.browser {
+                Some(b) => format!("{} extension", browser_label(b)),
+                None => self.name.clone(),
+            };
+        }
         let program = self.exe.as_deref().map(file_name).filter(|p| !p.eq_ignore_ascii_case(&self.name));
         match (program, self.parent.as_deref().map(file_name)) {
             (Some(p), Some(parent)) if !parent.eq_ignore_ascii_case(&self.name) => {
@@ -227,6 +285,45 @@ impl AgentIdentity {
 
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// A browser name as the protocol carries it: lowercase letters, digits
+/// and dashes (`chrome`, `firefox`, `edge`, `brave`, ...), at most 20.
+pub fn browser_name(raw: &str) -> String {
+    let mut out: String = raw
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    out.truncate(20);
+    out
+}
+
+/// The browser name as the user sees it: `chrome` → `Chrome`, `edge` → `Microsoft Edge`.
+pub fn browser_label(name: &str) -> String {
+    match name {
+        "chrome" => "Chrome".to_string(),
+        "chromium" => "Chromium".to_string(),
+        "edge" => "Microsoft Edge".to_string(),
+        "brave" => "Brave".to_string(),
+        "firefox" => "Firefox".to_string(),
+        "vivaldi" => "Vivaldi".to_string(),
+        "arc" => "Arc".to_string(),
+        "opera" => "Opera".to_string(),
+        "safari" => "Safari".to_string(),
+        other => {
+            let mut c = other.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +342,15 @@ pub struct HelloParams {
     /// The AI client the agent serves, as it sees it.
     #[serde(default)]
     pub parent: Option<String>,
+    /// An AI agent (default) or the browser extension.
+    #[serde(default)]
+    pub role: Role,
+    /// For a browser connection: which browser (`chrome`, `firefox`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    /// For a browser connection: the extension's origin or id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -404,6 +510,95 @@ pub struct UpdateParams {
     pub reason: Option<String>,
 }
 
+/// `fill`: fill a login in the user's browser (the agent never sees it).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FillParams {
+    /// Item id, exact title or a `2s://` reference.
+    pub item: String,
+    /// The page to fill; the item's first website when left out. The item
+    /// has to be a login for this website.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Submit the form after filling (default true).
+    #[serde(default)]
+    pub submit: Option<bool>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// What the browser extension fills, after the user allowed it. Secrets are
+/// wiped when it is dropped.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+pub struct FillCommand {
+    #[zeroize(skip)]
+    pub id: String,
+    /// The page the agent named (the extension only fills tabs whose
+    /// address matches `rules`, which come from the item).
+    #[zeroize(skip)]
+    pub url: String,
+    #[zeroize(skip)]
+    pub rules: Vec<FillRule>,
+    pub username: String,
+    pub password: String,
+    /// The current one-time code, or empty.
+    pub code: String,
+    #[zeroize(skip)]
+    pub submit: bool,
+}
+
+/// `browser.wait`: a fill for this browser, or nothing yet.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitResult {
+    pub job: Option<FillCommand>,
+}
+
+/// What the extension reports after a fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FillOutcome {
+    Filled,
+    /// No active tab for the item's website in this browser.
+    NoTab,
+    /// A matching tab, but no field to fill on the page.
+    Nothing,
+}
+
+/// `browser.result`
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FillOutcomeParams {
+    pub id: String,
+    pub outcome: FillOutcome,
+    #[serde(default)]
+    pub submitted: bool,
+}
+
+/// What the agent gets back from `fill`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FillResult {
+    pub filled: bool,
+    /// The browser that filled (`chrome`, `firefox`, ...).
+    pub browser: String,
+    pub submitted: bool,
+}
+
+/// A browser connected to the app.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserInfo {
+    pub browser: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    pub version: String,
+    /// Connected since (Unix seconds).
+    pub since: i64,
+}
+
+/// `status`
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatusResult {
+    pub app_version: String,
+    pub browsers: Vec<BrowserInfo>,
+}
+
 /// A request after `hello` and `auth`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Request {
@@ -415,14 +610,36 @@ pub enum Request {
     Generate(GenerateParams),
     CreateItem(CreateParams),
     UpdateItem(UpdateParams),
+    /// Fill a login in the user's browser (agents).
+    Fill(FillParams),
+    /// Wait for a login to fill (browsers).
+    BrowserWait,
+    /// Report how a fill went (browsers).
+    BrowserResult(FillOutcomeParams),
+    /// The app version and the connected browsers.
+    Status,
     Grants,
     Ping,
 }
 
 impl Request {
     /// The JSON-RPC method names.
-    pub const METHODS: [&'static str; 10] =
-        ["search", "item", "read", "read_many", "otp", "generate", "create_item", "update_item", "grants", "ping"];
+    pub const METHODS: [&'static str; 14] = [
+        "search",
+        "item",
+        "read",
+        "read_many",
+        "otp",
+        "generate",
+        "create_item",
+        "update_item",
+        "fill",
+        "browser.wait",
+        "browser.result",
+        "status",
+        "grants",
+        "ping",
+    ];
 
     pub fn parse(method: &str, params: Option<Value>) -> std::result::Result<Request, AgentError> {
         fn take<T: for<'de> Deserialize<'de>>(params: Option<Value>) -> std::result::Result<T, AgentError> {
@@ -437,6 +654,10 @@ impl Request {
             "generate" => Request::Generate(take(params)?),
             "create_item" => Request::CreateItem(take(params)?),
             "update_item" => Request::UpdateItem(take(params)?),
+            "fill" => Request::Fill(take(params)?),
+            "browser.wait" => Request::BrowserWait,
+            "browser.result" => Request::BrowserResult(take(params)?),
+            "status" => Request::Status,
             "grants" => Request::Grants,
             "ping" => Request::Ping,
             other => return Err(AgentError::method_not_found(other)),
@@ -453,6 +674,10 @@ impl Request {
             Request::Generate(_) => "generate",
             Request::CreateItem(_) => "create_item",
             Request::UpdateItem(_) => "update_item",
+            Request::Fill(_) => "fill",
+            Request::BrowserWait => "browser.wait",
+            Request::BrowserResult(_) => "browser.result",
+            Request::Status => "status",
             Request::Grants => "grants",
             Request::Ping => "ping",
         }
@@ -461,7 +686,23 @@ impl Request {
     /// Whether the request can be answered without the vault (it needs no
     /// unlock and no consent).
     pub fn without_vault(&self) -> bool {
-        matches!(self, Request::Generate(_) | Request::Ping)
+        matches!(
+            self,
+            Request::Generate(_) | Request::Ping | Request::BrowserWait | Request::BrowserResult(_) | Request::Status
+        )
+    }
+
+    /// Whether only a browser connection may send it.
+    pub fn browser_only(&self) -> bool {
+        matches!(self, Request::BrowserWait | Request::BrowserResult(_))
+    }
+
+    /// What a browser connection may send: its own requests, `status` and `ping`.
+    pub fn allowed_for(&self, role: Role) -> bool {
+        match role {
+            Role::Agent => !self.browser_only(),
+            Role::Browser => self.browser_only() || matches!(self, Request::Status | Request::Ping),
+        }
     }
 
     /// Whether the request changes the vault.
@@ -476,6 +717,7 @@ impl Request {
             Request::ReadMany(p) => p.reason.as_deref(),
             Request::CreateItem(p) => p.reason.as_deref(),
             Request::UpdateItem(p) => p.reason.as_deref(),
+            Request::Fill(p) => p.reason.as_deref(),
             _ => None,
         };
         raw.map(|r| clean_label(r, REASON_MAX)).filter(|r| !r.is_empty())
@@ -614,7 +856,7 @@ pub enum ActionKind {
     Create,
     /// Change an item.
     Update,
-    /// Fill a login in the browser (a later version).
+    /// Fill a login in the user's browser.
     Fill,
 }
 
@@ -685,7 +927,26 @@ pub fn ask_for(session: &Session, request: &Request) -> std::result::Result<Opti
     let target =
         |item: &Item, fields: Vec<String>| Target { item_id: item.id.clone(), title: item.title.clone(), fields };
     Ok(match request {
-        Request::Search(_) | Request::Item(_) | Request::Generate(_) | Request::Grants | Request::Ping => None,
+        Request::Search(_)
+        | Request::Item(_)
+        | Request::Generate(_)
+        | Request::Grants
+        | Request::Ping
+        | Request::BrowserWait
+        | Request::BrowserResult(_)
+        | Request::Status => None,
+        Request::Fill(p) => {
+            let item = resolve_item(session, &p.item)?;
+            let page = fill_page(item, p.url.as_deref())?;
+            let fields = fill_fields(item);
+            if fields.is_empty() {
+                return Err(AgentError::new(
+                    AgentError::NOT_FOUND,
+                    format!("'{}' has no user name, password or one-time password to fill", item.title),
+                ));
+            }
+            Some(Ask { action: ActionKind::Fill, targets: vec![target(item, fields)], detail: url_host(&page), reason })
+        }
         Request::Read(p) => {
             let (item, field) = resolve_field(session, &p.item, p.field.as_deref())?;
             Some(Ask { action: ActionKind::Read, targets: vec![target(item, vec![field])], detail: None, reason })
@@ -796,6 +1057,60 @@ fn resolve_field<'a>(
     Ok((item, field.to_lowercase()))
 }
 
+/// The page a fill is for: `url`, or the item's first website; it has to be
+/// one of the item's websites (matched like autofill does).
+fn fill_page(item: &Item, url: Option<&str>) -> std::result::Result<String, AgentError> {
+    let websites: Vec<&str> = item.urls.iter().map(|u| u.trim()).filter(|u| !u.is_empty()).collect();
+    if websites.is_empty() {
+        return Err(AgentError::invalid(format!("'{}' has no website; add one to the item first", item.title)));
+    }
+    let page = match url.map(str::trim).filter(|u| !u.is_empty()) {
+        Some(u) => u.to_string(),
+        None => websites[0].to_string(),
+    };
+    if !websites.iter().any(|w| url_matches(w, &page)) {
+        return Err(AgentError::new(
+            AgentError::NOT_FOUND,
+            format!("'{}' is not a login for {}", item.title, url_host(&page).unwrap_or_else(|| page.clone())),
+        ));
+    }
+    Ok(page)
+}
+
+/// Which of `username`, `password` and `otp` an item can fill.
+fn fill_fields(item: &Item) -> Vec<String> {
+    let mut fields = Vec::new();
+    if item.username().is_some_and(|u| !u.is_empty()) {
+        fields.push("username".to_string());
+    }
+    if item.password().is_some_and(|p| !p.is_empty()) {
+        fields.push("password".to_string());
+    }
+    if item.totp_secret().is_some() {
+        fields.push("otp".to_string());
+    }
+    fields
+}
+
+/// What the browser gets after the user allowed `fill`: the values and the
+/// rules that say where they may go. `id` names the job on the way back.
+pub fn fill_command(item: &Item, url: &str, submit: bool, id: String) -> std::result::Result<FillCommand, AgentError> {
+    let page = fill_page(item, Some(url))?;
+    let code = match item.totp_secret() {
+        Some(secret) => Totp::parse(secret)?.now().0,
+        None => String::new(),
+    };
+    Ok(FillCommand {
+        id,
+        url: page,
+        rules: fill_rules(&item.urls),
+        username: item.username().unwrap_or_default().to_string(),
+        password: item.password().unwrap_or_default().to_string(),
+        code,
+        submit,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // The store: paired agents, grants, log
 // ---------------------------------------------------------------------------
@@ -810,8 +1125,22 @@ pub struct AgentRecord {
     pub exe: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    #[serde(default)]
+    pub role: Role,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
     pub first_seen: i64,
     pub last_seen: i64,
+}
+
+impl AgentRecord {
+    /// The name as the user sees it (see [`AgentIdentity::display`]).
+    pub fn display(&self) -> String {
+        match (&self.role, &self.browser) {
+            (Role::Browser, Some(b)) => format!("{} extension", browser_label(b)),
+            _ => self.name.clone(),
+        }
+    }
 }
 
 /// Permission to do `action` with one item without asking, until `expires_at`.
@@ -899,6 +1228,8 @@ impl AgentStore {
                 a.name = identity.name.clone();
                 a.exe = identity.exe.clone();
                 a.parent = identity.parent.clone();
+                a.role = identity.role;
+                a.browser = identity.browser.clone();
                 a.last_seen = now;
             }
             None => self.agents.push(AgentRecord {
@@ -907,6 +1238,8 @@ impl AgentStore {
                 public_key: identity.public_key.clone(),
                 exe: identity.exe.clone(),
                 parent: identity.parent.clone(),
+                role: identity.role,
+                browser: identity.browser.clone(),
                 first_seen: now,
                 last_seen: now,
             }),
@@ -1054,6 +1387,9 @@ pub fn execute(session: &Session, request: &Request) -> std::result::Result<Valu
         }
         Request::CreateItem(_) | Request::UpdateItem(_) => {
             return Err(AgentError::new(AgentError::INTERNAL, "writing needs the vault for writing"))
+        }
+        Request::Fill(_) | Request::BrowserWait | Request::BrowserResult(_) | Request::Status => {
+            return Err(AgentError::new(AgentError::INTERNAL, "handled by the app"))
         }
     })
 }
@@ -1220,6 +1556,9 @@ mod tests {
             version: "1".into(),
             agent_key: pk.clone(),
             parent: Some("claude".into()),
+            role: Role::Agent,
+            browser: None,
+            extension: None,
         };
         AgentIdentity::new(&agent_id(key.verifying_key().as_bytes()), &hello, Some("/usr/bin/2secret".into()), None)
     }
@@ -1252,8 +1591,35 @@ mod tests {
             version: String::new(),
             agent_key: String::new(),
             parent: None,
+            role: Role::Agent,
+            browser: None,
+            extension: None,
         };
         assert_eq!(AgentIdentity::new("x", &hello, None, None).name, "An AI agent");
+        let hello = HelloParams {
+            role: Role::Browser,
+            browser: Some(" Google Chrome! ".into()),
+            extension: Some("chrome-extension://abc/".into()),
+            ..hello
+        };
+        let ext =
+            AgentIdentity::new("x", &hello, Some("/Applications/2Secret.app/Contents/MacOS/2-secret".into()), None);
+        assert_eq!(ext.browser.as_deref(), Some("google-chrome"));
+        assert_eq!(ext.name, "Google-chrome extension");
+        assert_eq!(ext.display(), "Google-chrome extension");
+        let mut ext = ext;
+        ext.browser = Some("edge".into());
+        assert_eq!(ext.display(), "Microsoft Edge extension");
+        assert_eq!(browser_name("Firefox"), "firefox");
+        assert_eq!(browser_label("brave"), "Brave");
+        // A hello from a 1.10 client has no role: it is an agent.
+        let old: HelloParams =
+            serde_json::from_str(r#"{"protocol":1,"name":"x","version":"1","agent_key":"k"}"#).unwrap();
+        assert_eq!(old.role, Role::Agent);
+        let old: AgentRecord =
+            serde_json::from_str(r#"{"id":"a","name":"x","public_key":"k","first_seen":1,"last_seen":2}"#).unwrap();
+        assert_eq!(old.role, Role::Agent);
+        assert_eq!(old.display(), "x");
     }
 
     #[test]
@@ -1370,6 +1736,81 @@ mod tests {
         assert_eq!(ask.detail.as_deref(), Some("New → Personal"));
         let req = Request::parse("update_item", Some(serde_json::json!({"item": "GitHub"}))).unwrap();
         assert_eq!(ask_for(&s, &req).unwrap_err().code, AgentError::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn fills_are_asked_and_built() {
+        let (mut s, id) = session_with_items();
+        for (method, params) in [
+            ("fill", serde_json::json!({"item": "GitHub"})),
+            ("browser.wait", serde_json::json!({})),
+            ("browser.result", serde_json::json!({"id": "f-1", "outcome": "no_tab"})),
+            ("status", serde_json::json!({})),
+        ] {
+            let req = Request::parse(method, Some(params)).unwrap();
+            assert_eq!(req.method(), method);
+            assert!(Request::METHODS.contains(&method));
+            assert_eq!(execute(&s, &req).unwrap_err().code, AgentError::INTERNAL, "the app answers {method}");
+        }
+        assert_eq!(Request::METHODS.len(), 14);
+        let wait = Request::parse("browser.wait", None).unwrap();
+        assert!(wait.without_vault() && wait.browser_only());
+        assert!(wait.allowed_for(Role::Browser) && !wait.allowed_for(Role::Agent));
+        let fill = Request::parse("fill", Some(serde_json::json!({"item": "GitHub", "reason": "deploy"}))).unwrap();
+        assert!(!fill.without_vault() && !fill.browser_only());
+        assert!(fill.allowed_for(Role::Agent) && !fill.allowed_for(Role::Browser));
+        assert!(Request::Status.allowed_for(Role::Browser) && Request::Ping.allowed_for(Role::Browser));
+        assert!(!Request::Search(SearchParams::default()).allowed_for(Role::Browser));
+        assert_eq!(fill.reason().as_deref(), Some("deploy"));
+
+        let ask = ask_for(&s, &fill).unwrap().unwrap();
+        assert_eq!(ask.action, ActionKind::Fill);
+        assert!(ask.action.grantable());
+        assert_eq!(ask.targets[0].item_id, id);
+        assert_eq!(ask.targets[0].fields, vec!["username", "password", "otp"]);
+        assert_eq!(ask.detail.as_deref(), Some("github.com"));
+
+        let other_site =
+            Request::parse("fill", Some(serde_json::json!({"item": "GitHub", "url": "https://example.com/login"})))
+                .unwrap();
+        assert_eq!(ask_for(&s, &other_site).unwrap_err().code, AgentError::NOT_FOUND);
+        let http =
+            Request::parse("fill", Some(serde_json::json!({"item": "GitHub", "url": "http://github.com/"}))).unwrap();
+        assert_eq!(ask_for(&s, &http).unwrap_err().code, AgentError::NOT_FOUND, "https item, http page");
+        let sub =
+            Request::parse("fill", Some(serde_json::json!({"item": "GitHub", "url": "https://gist.github.com/x"})))
+                .unwrap();
+        assert!(ask_for(&s, &sub).unwrap().is_some());
+        let v = s.default_vault_id().unwrap();
+        s.add_item(&v, Item::login("No site", "me", "pw", None)).unwrap();
+        let nosite = Request::parse("fill", Some(serde_json::json!({"item": "No site"}))).unwrap();
+        assert_eq!(ask_for(&s, &nosite).unwrap_err().code, AgentError::INVALID_PARAMS);
+        let mut empty = Item::login("Empty", "", "", Some("https://empty.example"));
+        empty.set_value("username", "");
+        s.add_item(&v, empty).unwrap();
+        let nothing = Request::parse("fill", Some(serde_json::json!({"item": "Empty"}))).unwrap();
+        assert_eq!(ask_for(&s, &nothing).unwrap_err().code, AgentError::NOT_FOUND);
+
+        let item = s.item(&id).unwrap();
+        let cmd = fill_command(item, "https://github.com/login", true, "f-7".into()).unwrap();
+        assert_eq!(cmd.username, "octo");
+        assert_eq!(cmd.password, "hunter2");
+        assert_eq!(cmd.code.len(), 6);
+        assert!(cmd.submit);
+        assert_eq!(cmd.rules, vec![FillRule { domain: "github.com".into(), https: true, port: None, exact: false }]);
+        let json = serde_json::to_string(&WaitResult { job: Some(cmd.clone()) }).unwrap();
+        let back: WaitResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.job.as_ref(), Some(&cmd));
+        assert_eq!(serde_json::to_string(&WaitResult { job: None }).unwrap(), r#"{"job":null}"#);
+        assert!(fill_command(item, "https://example.com", true, "f-8".into()).is_err());
+
+        let outcome: FillOutcomeParams =
+            serde_json::from_str(r#"{"id":"f-7","outcome":"filled","submitted":true}"#).unwrap();
+        assert_eq!(outcome.outcome, FillOutcome::Filled);
+        let err = AgentError::fill_failed(FillOutcome::NoTab, "github.com", "chrome");
+        assert_eq!(err.code, AgentError::FILL_FAILED);
+        assert!(err.message.contains("github.com") && err.message.contains("chrome"));
+        assert_eq!(AgentError::no_browser().code, AgentError::NO_BROWSER);
     }
 
     #[test]

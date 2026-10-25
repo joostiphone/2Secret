@@ -20,11 +20,18 @@ mkdir -p "$out/icons"
 cp -R "$root/crates/app/dist/public/." "$out/"
 cp "$here/manifest.json" "$out/manifest.json"
 cp "$here/background.js" "$out/background.js"
+cp "$here/fill.js" "$out/fill.js"
 mkdir -p "$out/passkeys" && cp "$here"/passkeys/*.js "$out/passkeys/"
 for s in 16 32 64 128; do cp "$root/crates/app/assets/icon-$s.png" "$out/icons/icon-$s.png"; done
 
 # Extension pages may not load scripts from absolute "/./" paths in Firefox.
 sed -i.bak 's#"/\./#"./#g' "$out/index.html" && rm -f "$out/index.html.bak"
+# The popup shares the fill code with the background worker (fill.js), loaded
+# before the app's own module.
+grep -q 'src="./fill.js"' "$out/index.html" || {
+  sed -i.bak 's#<script type="module"#<script src="./fill.js"></script><script type="module"#' "$out/index.html" && rm -f "$out/index.html.bak"
+}
+grep -q 'src="./fill.js"' "$out/index.html" || { echo "fill.js was not added to index.html" >&2; exit 1; }
 
 cd "$out" && rm -f "$here/2secret-extension.zip" && zip -qr "$here/2secret-extension.zip" .
 echo "Extension built in $out"

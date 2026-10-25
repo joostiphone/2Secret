@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
-use twosecret_core::agent::{AgentError, AuthResult, HelloParams, HelloResult, MAX_LINE, PROTOCOL};
+use twosecret_core::agent::{AgentError, AuthResult, HelloParams, HelloResult, Role, MAX_LINE, PROTOCOL};
 
 use crate::key::AgentKey;
 
@@ -98,16 +98,26 @@ pub struct AppClient {
     next_id: u64,
     /// The id the app gave this agent.
     pub agent_id: Option<String>,
+    /// The app's version, from `hello`.
+    pub app_version: Option<String>,
 }
 
 impl AppClient {
-    /// Connect to the app for the data directory `home`.
+    /// Connect to the app for the data directory `home`; answers are
+    /// waited for at most [`READ_TIMEOUT`].
     pub fn connect(home: &Path) -> Result<AppClient, ClientError> {
-        let (reader, writer) = open(home).map_err(ClientError::NotRunning)?;
-        Ok(AppClient { reader: BufReader::new(reader), writer, next_id: 1, agent_id: None })
+        Self::connect_with_timeout(home, Some(READ_TIMEOUT))
     }
 
-    /// Introduce the agent and prove its key.
+    /// Connect, waiting at most `timeout` for every answer (`None`: as long
+    /// as it takes; the browser host does that, because the app answers a
+    /// browser's `auth` only once the vault is unlocked).
+    pub fn connect_with_timeout(home: &Path, timeout: Option<Duration>) -> Result<AppClient, ClientError> {
+        let (reader, writer) = open(home, timeout).map_err(ClientError::NotRunning)?;
+        Ok(AppClient { reader: BufReader::new(reader), writer, next_id: 1, agent_id: None, app_version: None })
+    }
+
+    /// Introduce an AI agent and prove its key.
     pub fn hello_auth(
         &mut self,
         key: &AgentKey,
@@ -121,7 +131,17 @@ impl AppClient {
             version: version.to_string(),
             agent_key: key.public_key_b64(),
             parent: parent.map(str::to_string),
+            role: Role::Agent,
+            browser: None,
+            extension: None,
         };
+        self.hello_auth_as(key, &hello)
+    }
+
+    /// Introduce whoever `hello` describes (an agent, or the browser
+    /// extension through the native messaging host) and prove the key.
+    pub fn hello_auth_as(&mut self, key: &AgentKey, hello: &HelloParams) -> Result<AuthResult, ClientError> {
+        let hello = HelloParams { protocol: PROTOCOL, agent_key: key.public_key_b64(), ..hello.clone() };
         let answer: HelloResult = self.call("hello", serde_json::to_value(&hello)?)?;
         if answer.protocol != PROTOCOL {
             return Err(ClientError::Protocol(format!(
@@ -129,6 +149,7 @@ impl AppClient {
                 answer.protocol
             )));
         }
+        self.app_version = Some(answer.app_version.clone());
         let signature = key.sign_hello(&answer.nonce).map_err(|e| ClientError::Protocol(e.to_string()))?;
         let auth: AuthResult = self.call("auth", json!({ "signature": signature }))?;
         self.agent_id = Some(auth.agent_id.clone());
@@ -181,16 +202,17 @@ impl AppClient {
 }
 
 #[cfg(unix)]
-fn open(home: &Path) -> io::Result<(Box<dyn Stream>, Box<dyn Stream>)> {
+fn open(home: &Path, timeout: Option<Duration>) -> io::Result<(Box<dyn Stream>, Box<dyn Stream>)> {
     use std::os::unix::net::UnixStream;
     let stream = UnixStream::connect(socket_path(home))?;
-    stream.set_read_timeout(Some(READ_TIMEOUT))?;
+    stream.set_read_timeout(timeout)?;
     let writer = stream.try_clone()?;
     Ok((Box::new(stream), Box::new(writer)))
 }
 
 #[cfg(windows)]
-fn open(home: &Path) -> io::Result<(Box<dyn Stream>, Box<dyn Stream>)> {
+fn open(home: &Path, _timeout: Option<Duration>) -> io::Result<(Box<dyn Stream>, Box<dyn Stream>)> {
+    // A pipe read has no timeout; the app answers or closes.
     let file = std::fs::OpenOptions::new().read(true).write(true).open(pipe_name(home))?;
     let writer = file.try_clone()?;
     Ok((Box::new(file), Box::new(writer)))

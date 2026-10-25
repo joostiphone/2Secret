@@ -144,7 +144,7 @@ list of tools.
 
 ```sh
 claude mcp add 2secret -- 2secret mcp     # Claude Code
-2secret agent status                       # is the app reachable, which agents are known
+2secret agent status                       # is the app reachable, which agents are known, which browsers are set up
 2secret mcp --standalone                   # without the app: only searching and generating
 2secret mcp --standalone --allow-run       # … plus run_command, without anyone approving
 ```

@@ -225,6 +225,12 @@ pub struct Prefs {
     /// Desktop: ask for Touch ID / Face ID / Windows Hello before an agent
     /// gets a secret (when biometric unlock is set up).
     pub agent_biometric: bool,
+    /// Desktop: the browser extension is connected to the app through the
+    /// native messaging host (`native_host`), so agents can fill logins.
+    pub browser_host: bool,
+    /// Desktop: ids of development builds of the extension that may connect
+    /// (the store build is always allowed).
+    pub extension_ids: Vec<String>,
     /// The sections of the menu that are folded away ("categories",
     /// "vaults", "tags"); never the names in them, which are not stored
     /// unencrypted.
@@ -251,6 +257,8 @@ impl Default for Prefs {
             ssh_agent: false,
             agent_access: false,
             agent_biometric: true,
+            browser_host: false,
+            extension_ids: Vec::new(),
             // Tags can be many: folded until opened.
             folded: vec!["tags".to_string()],
         }

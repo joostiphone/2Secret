@@ -68,14 +68,21 @@ Agent Access for AI tools: the Model Context Protocol server (JSON-RPC 2.0
 over stdin/stdout, written by hand) with its tools, the client of the desktop
 app's socket (`access.sock`, a named pipe on Windows), one Ed25519 key per AI
 tool, and the filter that replaces secrets by their `2s://` references in a
-program's output. Used by the CLI; see [AGENTS.md](AGENTS.md).
+program's output. Used by the CLI. It also holds the browser side of agentic
+autofill: the native messaging host loop (`host`, run by the desktop app when
+a browser starts it, 4-byte-length frames on stdin/stdout, connected to the
+app as role `browser`) and where each browser looks for the host manifest
+(`native_host`). See [AGENTS.md](AGENTS.md).
 
 ### `twosecret-app`
 
 Dioxus 0.7 app with features `desktop`, `web`, `mobile` and `extension`.
 `platform.rs` contains the few platform-specific pieces (storage, timers,
 background work, clipboard, downloads); `extension.rs` the browser-extension
-bridge; `components/` the UI; `i18n.rs` English and Dutch strings.
+bridge; `agent_access.rs` the socket for AI agents and browsers with the
+consent flow, `fill_queue.rs` the logins waiting for a browser, and
+`native_host.rs` the host registration per browser and the host mode of the
+binary; `components/` the UI; `i18n.rs` English and Dutch strings.
 
 ## HTTP API (`/api/v1`)
 
@@ -125,4 +132,6 @@ password history) and repeat until nothing is pending.
 profile and device secrets the desktop apps keep `prefs.json` (unencrypted
 preferences), `biometric.json`, `agents.json` (agents, permissions and log,
 encrypted with the account key), the SSH agent's `agent.sock` and Agent
-Access's `access.sock`; `2secret mcp` keeps `agent-key-<tool>.json`.
+Access's `access.sock`; `2secret mcp` keeps `agent-key-<tool>.json`, the
+browser connection `agent-key-browser-<browser>.json` (and on Windows the
+host manifests under `native-host/`).

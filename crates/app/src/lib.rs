@@ -15,12 +15,16 @@ mod biometric;
 mod code_setup;
 mod components;
 mod extension;
+#[cfg(feature = "desktop")]
+mod fill_queue;
 mod i18n;
 mod icons;
 #[cfg(all(target_os = "ios", feature = "mobile"))]
 mod ios_view;
 #[cfg(all(feature = "desktop", not(target_os = "macos")))]
 mod link_handler;
+#[cfg(feature = "desktop")]
+mod native_host;
 mod platform;
 #[cfg(feature = "desktop")]
 mod quick;
@@ -105,6 +109,12 @@ pub(crate) const HIDDEN_UPDATES_JS: &str = r#"<script>
 
 /// Start the app (does not return).
 pub fn run() {
+    // A browser started this program as the extension's native messaging
+    // host: serve the browser on stdin and stdout, nothing else.
+    #[cfg(feature = "desktop")]
+    if let Some(code) = native_host::main_if_host() {
+        std::process::exit(code);
+    }
     // Windows, Linux, BSDs: a setup link that started another 2Secret goes to
     // the one that runs.
     #[cfg(all(feature = "desktop", not(target_os = "macos")))]
@@ -116,7 +126,10 @@ pub fn run() {
         use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
         // Started at login: only the icon in the menu bar or system tray.
         let hidden = autostart::started_hidden() && state::stored_prefs().tray && tray::supported();
-        std::thread::spawn(autostart::refresh);
+        std::thread::spawn(|| {
+            autostart::refresh();
+            native_host::refresh();
+        });
         let window = WindowBuilder::new()
             .with_title("2Secret")
             .with_inner_size(LogicalSize::new(1200.0, 780.0))

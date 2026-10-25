@@ -1,13 +1,13 @@
-2Secret 1.10.0
+2Secret 1.11.0
 
 WHAT'S NEW
-Agent Access for the Mac, Windows and Linux apps and the command line: AI tools such as Claude Code, Claude Desktop and Cursor can use your logins after you approve each request on your computer. The tool never gets a password without your yes, programs get secrets without the AI seeing them, and everything is logged in the settings. The iPhone and iPad app has no new features in this version; it gets the same core library and updated dependencies.
+Agent Access, part two, for the Mac, Windows and Linux apps with the browser extension: an AI agent that works in your browser (Claude for Chrome, Comet, Atlas, Playwright) can ask 2Secret to sign you in. You allow it in the app, 2Secret fills and submits the sign-in page, and the agent never sees the password. One button connects the extension to the app in Chrome, Edge, Brave, Vivaldi, Arc and Firefox. The iPhone and iPad app has no new features in this version; it gets the same core library.
 
 PLEASE TEST
 1. Update and open the app: all your vaults and items are there. Unlock with Face ID and with your master password.
 2. Sync (Settings → Sync now): it finishes without warnings.
 3. AutoFill in Safari: sign in to a website with a saved login, and use a one-time code where you have one.
 4. Share a vault with a second account and remove it again; share an item via a link and open the link in Safari.
-5. Everything from 1.9.x as before: the tab bar, long-press menus, selecting several items, search with favorites first, Watchtower.
+5. Everything from 1.10 as before: the tab bar, long-press menus, selecting several items, search with favorites first, Watchtower.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

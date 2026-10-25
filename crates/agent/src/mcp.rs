@@ -33,6 +33,8 @@ pub const INSTRUCTIONS: &str = "2Secret is the user's password manager. search_i
     without secrets and need no approval. read_field and get_otp hand a secret to you after the user approves it in \
     the 2Secret app; use them only when you really need the value yourself. When a program needs a secret, use \
     run_command with environment variables set to 2s:// references instead: the program gets the value, you do not. \
+    To sign the user in on a website in their own browser, use fill_login: 2Secret fills and submits the sign-in page \
+    that is the active tab, and you never see the password. \
     Approvals are given in the 2Secret desktop app; if a call fails because 2Secret is locked or not running, tell the user.";
 
 pub enum Mode {
@@ -113,10 +115,15 @@ impl Backend for AppBackend {
 
     fn status(&mut self) -> Value {
         let endpoint = endpoint(&self.home);
+        let agent_name = self.agent_name();
         match self.connect() {
             Ok(client) => match client.call_value("ping", json!({})) {
                 Ok(_) => {
-                    json!({ "mode": "app", "connected": true, "agent_id": client.agent_id, "agent_name": self.agent_name(), "endpoint": endpoint })
+                    // Browsers connected for fill_login (an older app has no `status`).
+                    let status = client.call_value("status", json!({})).unwrap_or(Value::Null);
+                    let browsers = status.get("browsers").cloned().unwrap_or_else(|| json!([]));
+                    json!({ "mode": "app", "connected": true, "agent_id": client.agent_id, "agent_name": agent_name,
+                        "app_version": client.app_version, "browsers": browsers, "endpoint": endpoint })
                 }
                 Err(e) => {
                     self.client = None;

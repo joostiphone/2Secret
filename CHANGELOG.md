@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.11.0
+
+**Agent Access, part two**: an AI agent in your browser gets signed in by
+2Secret, without ever seeing the password.
+
+- **Sign in for an agent** (`fill_login`). An AI agent that works in your
+  browser (Claude for Chrome, Perplexity Comet, ChatGPT Atlas, a browser
+  driven by Playwright or Browser Use) asks 2Secret to sign in with an item
+  on the page it has open. 2Secret asks you ("Claude wants to sign in to
+  github.com with “GitHub” in Chrome"), with the same choices as for other
+  requests and the optional Touch ID, Face ID or Windows Hello question.
+  After *Allow* the browser extension fills the sign-in page that is the
+  active tab (only a tab that belongs to the item's website, never one the
+  agent names) and submits it. The agent only hears that it was filled, or
+  why not. Logged as *fill in the browser*.
+- **Browser connection** (*Settings → Desktop app → Browser connection*):
+  one button sets the extension up to talk to the app in Chrome, Chromium,
+  Brave, Microsoft Edge, Vivaldi, Arc and Firefox on macOS, Windows and
+  Linux. 2Secret itself is the browser's native messaging host; the app
+  only accepts that connection from its own program, and the browser can do
+  nothing but wait for the logins you allow. The connected browsers are
+  listed with the agents and can be revoked there.
+- **Browser extension 1.11**: connects to the app when it is set up
+  (permissions `nativeMessaging` and `alarms`), one copy of the fill code for
+  the popup and the background, and a fixed id for the store and unpacked
+  builds alike. The Fill button is unchanged and still never submits.
+- Command line: `2secret agent status` also shows which browsers are set up;
+  `agent_status` lists the connected browsers.
+- Windows: the app no longer builds as a console program.
+- Documentation: *Filling a login in your browser* in `docs/AGENTS.md`,
+  `docs/EXTENSION.md` (building, ids, publishing in the stores),
+  `docs/SECURITY.md`.
+
 ## 1.10.0
 
 **Agent Access**: AI tools use your vault, you stay in charge.

@@ -118,6 +118,7 @@ jobs:
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
           xvfb-run -a node extension/tests/passkeys.js
+          xvfb-run -a node extension/tests/fill.js
       - uses: actions/upload-artifact@v4
         with:
           name: 2secret-extension

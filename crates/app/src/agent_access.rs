@@ -11,25 +11,34 @@
 //! the program on the other end, and hand every request to the UI, which
 //! holds the vault and asks the user. The listener is `access.sock` in the
 //! data directory (a named pipe per user on Windows).
+//!
+//! The browser extension connects over the same socket as a *browser*
+//! (through 2Secret's own native messaging host, `native_host`): it never
+//! reads the vault, it only waits for the logins the user allows an agent to
+//! fill (`fill`) and reports how the filling went. Those jobs wait in
+//! `fill_queue` and are served on the browsers' own threads.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
 use serde_json::{json, Value};
 use tokio::sync::Notify;
 use twosecret_core::agent::{
-    self, ActionKind, AgentError, AgentIdentity, AgentStore, Ask, AuthParams, AuthResult, Decision, HelloParams,
-    HelloResult, Outcome, Request, UntilLock, GRANT_HOURS, MAX_LINE, PROTOCOL,
+    self, browser_label, ActionKind, AgentError, AgentIdentity, AgentStore, Ask, AuthParams, AuthResult, BrowserInfo,
+    Decision, FillOutcomeParams, FillParams, HelloParams, HelloResult, Outcome, Request, Role, StatusResult, UntilLock,
+    WaitResult, GRANT_HOURS, MAX_LINE, PROTOCOL,
 };
 use twosecret_core::crypto::EncString;
 use twosecret_core::util::{now, unb64};
+use zeroize::Zeroizing;
 
 use crate::biometric;
 use crate::components::shell::relative_time;
+use crate::fill_queue::FillQueue;
 use crate::i18n::t;
 use crate::icons::{either, Icon};
 use crate::platform;
@@ -37,6 +46,10 @@ use crate::state::*;
 
 /// How long a client waits for an unlock or the user's answer.
 const WAIT: Duration = Duration::from_secs(120);
+/// How long a browser gets to fill a login after the user allowed it.
+const FILL_WAIT: Duration = Duration::from_secs(30);
+/// How long `browser.wait` holds the line before answering "nothing yet".
+const POLL: Duration = Duration::from_secs(25);
 
 /// Requests for the UI thread.
 static REQUESTS: Mutex<Vec<AccessRequest>> = Mutex::new(Vec::new());
@@ -50,6 +63,29 @@ static UNLOCKED: AtomicBool = AtomicBool::new(false);
 /// Bumped to stop the running listener.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
+
+type Reply = mpsc::Sender<Result<Value, AgentError>>;
+
+/// The logins allowed for filling, waiting for a browser; served on the
+/// browsers' threads, pushed by the UI thread.
+static FILLS: Mutex<FillQueue<Reply>> = Mutex::new(FillQueue::new());
+/// A job arrived, a connection was kicked, or the queue was cleared.
+static FILL_READY: Condvar = Condvar::new();
+static SWEEPER: AtomicBool = AtomicBool::new(false);
+/// The browsers connected now.
+static BROWSERS: Mutex<Vec<BrowserConn>> = Mutex::new(Vec::new());
+static BROWSERS_CHANGED: Notify = Notify::const_new();
+
+/// A browser extension connected through the native messaging host.
+struct BrowserConn {
+    id: u64,
+    agent_id: String,
+    info: BrowserInfo,
+    /// Set when the user revokes the browser: its thread then stops.
+    kicked: Arc<AtomicBool>,
+}
 
 enum Kind {
     /// `auth` succeeded: may the agent connect?
@@ -76,6 +112,8 @@ pub enum Status {
 }
 
 pub static STATUS: GlobalSignal<Status> = Signal::global(|| Status::Off);
+/// The browsers connected now, for the settings.
+pub static BROWSERS_UI: GlobalSignal<Vec<BrowserInfo>> = Signal::global(Vec::new);
 /// Requests that wait for the user, oldest first.
 static PROMPTS: GlobalSignal<Vec<Prompt>> = Signal::global(Vec::new);
 /// The agents, their permissions and the log, while the vault is unlocked.
@@ -120,8 +158,21 @@ fn wait_unlocked() -> bool {
     false
 }
 
-/// Hand a request to the UI and wait for the answer.
-fn ask_ui(kind: Kind, generation: u64) -> Result<Value, AgentError> {
+/// Wait for the vault without bringing the window up: a browser connects
+/// whenever it starts, which is no reason to show 2Secret. Gives up when
+/// the listener stops or the browser goes.
+fn wait_unlocked_quiet(generation: u64, gone: &AtomicBool) -> bool {
+    while !UNLOCKED.load(Ordering::SeqCst) {
+        if GENERATION.load(Ordering::SeqCst) != generation || gone.load(Ordering::SeqCst) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    true
+}
+
+/// Hand a request to the UI and wait at most `wait` for the answer.
+fn ask_ui(kind: Kind, generation: u64, wait: Duration) -> Result<Value, AgentError> {
     if GENERATION.load(Ordering::SeqCst) != generation {
         return Err(AgentError::off());
     }
@@ -132,7 +183,7 @@ fn ask_ui(kind: Kind, generation: u64) -> Result<Value, AgentError> {
     let (reply, answer) = mpsc::channel();
     REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).push(AccessRequest { id, kind, reply });
     REQUEST.notify_one();
-    match answer.recv_timeout(WAIT) {
+    match answer.recv_timeout(wait) {
         Ok(result) => result,
         Err(_) => {
             CANCELLED.lock().unwrap_or_else(|e| e.into_inner()).push(id);
@@ -185,7 +236,8 @@ fn write_reply(writer: &mut impl Write, id: &Value, result: Result<Value, AgentE
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(e) => json!({ "jsonrpc": "2.0", "id": id, "error": e }),
     };
-    let mut text = reply.to_string();
+    // A reply may carry a login for a browser: wiped after writing.
+    let mut text = Zeroizing::new(reply.to_string());
     text.push('\n');
     writer.write_all(text.as_bytes())?;
     writer.flush()
@@ -258,13 +310,32 @@ fn serve(reader: impl Read, mut writer: impl Write, peer: Peer, generation: u64)
             return;
         }
     };
-    let identity = AgentIdentity::new(&agent_id, &hello, peer.exe, peer.parent);
+    let identity = AgentIdentity::new(&agent_id, &hello, peer.exe.clone(), peer.parent);
+    // A browser connection receives logins, so it has to be 2Secret's own
+    // native messaging host: the same program as this one.
+    if identity.role == Role::Browser && !crate::native_host::same_program(peer.exe.as_deref()) {
+        let _ = write_reply(
+            &mut writer,
+            &id,
+            Err(AgentError::new(AgentError::DENIED, "only 2Secret's own browser connection may connect as a browser")),
+        );
+        return;
+    }
+    let kicked = Arc::new(AtomicBool::new(false));
+    // A browser waits for the vault without bringing the window up.
+    if identity.role == Role::Browser && !wait_unlocked_quiet(generation, &kicked) {
+        let _ = write_reply(&mut writer, &id, Err(AgentError::off()));
+        return;
+    }
     // 3. The user allows the agent (the first time).
-    let result = ask_ui(Kind::Connect(identity.clone()), generation);
+    let result = ask_ui(Kind::Connect(identity.clone()), generation, WAIT);
     let connected = result.is_ok();
     if write_reply(&mut writer, &id, result).is_err() || !connected {
         return;
     }
+    let connection = NEXT_CONNECTION.fetch_add(1, Ordering::SeqCst);
+    let _browser =
+        (identity.role == Role::Browser).then(|| BrowserGuard::register(connection, &identity, &hello, kicked.clone()));
     // 4. Requests, one at a time.
     while let Ok(true) = read_line(&mut reader, &mut line) {
         let (id, method, params) = match envelope(&line) {
@@ -276,17 +347,148 @@ fn serve(reader: impl Read, mut writer: impl Write, peer: Peer, generation: u64)
         };
         let result = match Request::parse(&method, params) {
             Err(e) => Err(e),
+            Ok(request) if !request.allowed_for(identity.role) => Err(AgentError::new(
+                AgentError::DENIED,
+                match identity.role {
+                    Role::Browser => "a browser connection only waits for logins to fill",
+                    Role::Agent => "only the browser extension may send this",
+                },
+            )),
             Ok(Request::Ping) => Ok(json!({})),
+            Ok(Request::Status) => {
+                serde_json::to_value(status_result()).map_err(|e| AgentError::invalid(e.to_string()))
+            }
             Ok(Request::Generate(p)) => {
                 let opts = p.options();
                 Ok(json!({ "value": opts.generate(), "entropy_bits": opts.entropy_bits().round() }))
             }
-            Ok(request) => ask_ui(Kind::Call { agent: identity.clone(), request: Box::new(request) }, generation),
+            Ok(Request::BrowserWait) => {
+                let job = wait_for_fill(connection, &kicked);
+                serde_json::to_value(WaitResult { job }).map_err(|e| AgentError::invalid(e.to_string()))
+            }
+            Ok(Request::BrowserResult(p)) => {
+                browser_result(connection, &identity, p);
+                Ok(json!({}))
+            }
+            Ok(Request::Fill(_)) if BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).is_empty() => {
+                Err(AgentError::no_browser())
+            }
+            Ok(request @ Request::Fill(_)) => {
+                ask_ui(Kind::Call { agent: identity.clone(), request: Box::new(request) }, generation, WAIT + FILL_WAIT)
+            }
+            Ok(request) => ask_ui(Kind::Call { agent: identity.clone(), request: Box::new(request) }, generation, WAIT),
         };
-        if write_reply(&mut writer, &id, result).is_err() {
+        if write_reply(&mut writer, &id, result).is_err() || kicked.load(Ordering::SeqCst) {
             break;
         }
     }
+}
+
+/// A browser's place in [`BROWSERS`] for as long as its connection lives.
+struct BrowserGuard(u64);
+
+impl BrowserGuard {
+    fn register(id: u64, identity: &AgentIdentity, hello: &HelloParams, kicked: Arc<AtomicBool>) -> Self {
+        let info = BrowserInfo {
+            browser: identity.browser.clone().unwrap_or_else(|| "browser".to_string()),
+            extension: hello.extension.as_deref().map(|e| agent::clean_label(e, 120)).filter(|e| !e.is_empty()),
+            version: identity.version.clone(),
+            since: now(),
+        };
+        BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).push(BrowserConn {
+            id,
+            agent_id: identity.id.clone(),
+            info,
+            kicked,
+        });
+        BROWSERS_CHANGED.notify_one();
+        Self(id)
+    }
+}
+
+impl Drop for BrowserGuard {
+    fn drop(&mut self) {
+        BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).retain(|b| b.id != self.0);
+        // What it was filling may go to another browser.
+        FILLS.lock().unwrap_or_else(|e| e.into_inner()).drop_conn(self.0);
+        FILL_READY.notify_all();
+        BROWSERS_CHANGED.notify_one();
+    }
+}
+
+fn connected_browsers() -> Vec<BrowserInfo> {
+    BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|b| b.info.clone()).collect()
+}
+
+fn status_result() -> StatusResult {
+    StatusResult { app_version: env!("CARGO_PKG_VERSION").to_string(), browsers: connected_browsers() }
+}
+
+/// `browser.wait`: the next login for this browser, or `None` after [`POLL`].
+fn wait_for_fill(connection: u64, kicked: &AtomicBool) -> Option<agent::FillCommand> {
+    let deadline = Instant::now() + POLL;
+    let mut queue = FILLS.lock().unwrap_or_else(|e| e.into_inner());
+    loop {
+        if kicked.load(Ordering::SeqCst) {
+            return None;
+        }
+        if let Some(job) = queue.take(connection, Instant::now()) {
+            return Some(job);
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        queue = FILL_READY.wait_timeout(queue, left).unwrap_or_else(|e| e.into_inner()).0;
+    }
+}
+
+/// `browser.result`: the browser reported; the agent hears when the job is done.
+fn browser_result(connection: u64, identity: &AgentIdentity, p: FillOutcomeParams) {
+    let connected: Vec<u64> = BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|b| b.id).collect();
+    let browser = identity.browser.clone().unwrap_or_else(|| "browser".to_string());
+    let done = FILLS.lock().unwrap_or_else(|e| e.into_inner()).result(
+        &p.id,
+        connection,
+        p.outcome,
+        p.submitted,
+        &browser,
+        &connected,
+    );
+    match done {
+        Some((reply, result)) => {
+            let _ = reply.send(result);
+        }
+        // Another browser may try.
+        None => FILL_READY.notify_all(),
+    }
+}
+
+/// Lets jobs nobody picks up expire; started with the first job.
+fn start_sweeper() {
+    if SWEEPER.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| loop {
+        let queue = FILLS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut queue = if queue.is_empty() {
+            FILL_READY.wait(queue).unwrap_or_else(|e| e.into_inner())
+        } else {
+            FILL_READY.wait_timeout(queue, Duration::from_secs(1)).unwrap_or_else(|e| e.into_inner()).0
+        };
+        for (reply, error) in queue.expire(Instant::now()) {
+            let _ = reply.send(Err(error));
+        }
+    });
+}
+
+/// Drop every waiting login (2Secret locked); their agents hear why.
+fn clear_fills(error: AgentError) {
+    let replies = FILLS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    for reply in replies {
+        let _ = reply.send(Err(error.clone()));
+    }
+    FILL_READY.notify_all();
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +504,12 @@ pub fn use_agent_access() {
                 if *PHASE.peek() != Phase::Unlocked {
                     crate::tray::show();
                 }
+            }
+        });
+        spawn(async {
+            loop {
+                BROWSERS_CHANGED.notified().await;
+                *BROWSERS_UI.write() = connected_browsers();
             }
         });
         spawn(async {
@@ -356,6 +564,7 @@ pub fn use_agent_access() {
                 // Dropping the requests refuses them.
                 PROMPTS.write().clear();
             }
+            clear_fills(AgentError::locked());
         }
     });
 }
@@ -455,7 +664,7 @@ fn handle(request: AccessRequest) {
                             store.touch(&agent.id, ts);
                         }
                         save_store();
-                        let _ = request.reply.send(run(req));
+                        complete(&ask, request);
                     } else {
                         prompt(agent.clone(), ask, request);
                     }
@@ -475,8 +684,66 @@ fn prompt(identity: AgentIdentity, ask: Ask, request: AccessRequest) {
     crate::tray::show();
 }
 
+/// Answer an allowed request: run it, or hand a login to the browsers.
+fn complete(ask: &Ask, request: AccessRequest) {
+    match &request.kind {
+        Kind::Call { request: req, .. } if matches!(**req, Request::Fill(_)) => {
+            let Request::Fill(params) = &**req else { unreachable!() };
+            let params = params.clone();
+            start_fill(ask, &params, request);
+        }
+        Kind::Call { request: req, .. } => {
+            let result = run(req);
+            let _ = request.reply.send(result);
+        }
+        Kind::Connect(identity) => {
+            let _ = request.reply.send(Ok(auth_result(identity)));
+        }
+    }
+}
+
+/// The user allowed a fill: build the login (with the one-time code of
+/// right now) and queue it for the browsers; the agent's reply waits with it.
+fn start_fill(ask: &Ask, params: &FillParams, request: AccessRequest) {
+    let host = ask.detail.clone().unwrap_or_default();
+    let command = {
+        let guard = SESSION.peek();
+        let Some(session) = guard.as_ref() else {
+            let _ = request.reply.send(Err(AgentError::locked()));
+            return;
+        };
+        let item = ask.targets.first().and_then(|t| session.item(&t.item_id));
+        let Some(item) = item else {
+            let _ = request.reply.send(Err(AgentError::new(AgentError::NOT_FOUND, "the item is gone")));
+            return;
+        };
+        let url = params.url.clone().unwrap_or_else(|| item.urls.first().cloned().unwrap_or_default());
+        let job_id = format!("f-{}", NEXT_JOB.fetch_add(1, Ordering::SeqCst));
+        agent::fill_command(item, &url, params.submit.unwrap_or(true), job_id)
+    };
+    match command {
+        Err(e) => {
+            let _ = request.reply.send(Err(e));
+        }
+        Ok(command) => {
+            FILLS.lock().unwrap_or_else(|e| e.into_inner()).push(
+                request.id,
+                command,
+                request.reply,
+                host,
+                Instant::now() + FILL_WAIT,
+            );
+            FILL_READY.notify_all();
+            start_sweeper();
+        }
+    }
+}
+
 /// The client stopped waiting: the question goes, the log says so.
 fn cancel(id: u64) {
+    if FILLS.lock().unwrap_or_else(|e| e.into_inner()).remove_request(id).is_some() {
+        FILL_READY.notify_all();
+    }
     let prompt = {
         let mut prompts = PROMPTS.write();
         let Some(at) = prompts.iter().position(|p| p.id == id) else { return };
@@ -553,20 +820,37 @@ fn finish(identity: AgentIdentity, ask: Ask, request: AccessRequest, decision: D
         store.touch(&identity.id, ts);
     }
     save_store();
-    let result = match &request.kind {
-        Kind::Connect(_) => Ok(auth_result(&identity)),
-        Kind::Call { request, .. } => run(request),
-    };
-    let _ = request.reply.send(result);
+    complete(&ask, request);
 }
 
-/// Forget an agent: it has to be allowed again to connect.
+/// Forget an agent: it has to be allowed again to connect. A browser's
+/// connection is cut as well.
 pub fn revoke(agent_id: &str) {
     if let Some(store) = STORE.write().as_mut() {
         store.revoke_agent(agent_id);
     }
     UNTIL_LOCK.with_borrow_mut(UntilLock::clear);
     save_store();
+    for b in BROWSERS.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|b| b.agent_id == agent_id) {
+        b.kicked.store(true, Ordering::SeqCst);
+    }
+    FILL_READY.notify_all();
+}
+
+/// The browsers connected now, for the question to the user.
+fn browsers_text() -> String {
+    let mut names: Vec<String> = Vec::new();
+    for b in connected_browsers() {
+        let label = browser_label(&b.browser);
+        if !names.contains(&label) {
+            names.push(label);
+        }
+    }
+    if names.is_empty() {
+        t("agent.your_browser").to_string()
+    } else {
+        names.join(", ")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -590,12 +874,29 @@ pub fn AgentPrompt() -> Element {
     drop(prompts);
     let who = prompt.identity.display();
     let ask = prompt.ask.clone();
+    let is_browser = prompt.identity.role == Role::Browser;
     let title = match ask.action {
+        ActionKind::Connect if is_browser => t("agent.title_connect_browser"),
         ActionKind::Connect => t("agent.title_connect"),
+        ActionKind::Fill => t("agent.title_fill"),
         _ => t("agent.title"),
     };
+    // Whether the agent asked to sign in (submit) or only to fill.
+    let submit = prompt.request.borrow().as_ref().is_some_and(|r| match &r.kind {
+        Kind::Call { request, .. } => match &**request {
+            Request::Fill(p) => p.submit.unwrap_or(true),
+            _ => true,
+        },
+        Kind::Connect(_) => true,
+    });
     let text = match (ask.action, ask.targets.as_slice()) {
+        (ActionKind::Connect, _) if is_browser => t("agent.connect_browser_ask").replace("{browser}", &who),
         (ActionKind::Connect, _) => t("agent.connect_ask").replace("{agent}", &who),
+        (ActionKind::Fill, targets) => t(if submit { "agent.fill_ask" } else { "agent.fill_only_ask" })
+            .replace("{agent}", &who)
+            .replace("{item}", &targets.first().map(|t| t.title.clone()).unwrap_or_default())
+            .replace("{host}", ask.detail.as_deref().unwrap_or_default())
+            .replace("{browser}", &browsers_text()),
         (ActionKind::Read, [one]) => t("agent.read_ask")
             .replace("{agent}", &who)
             .replace("{fields}", &join(&one.fields))
@@ -607,7 +908,7 @@ pub fn AgentPrompt() -> Element {
         (ActionKind::Create, _) => t("agent.create_ask")
             .replace("{agent}", &who)
             .replace("{detail}", ask.detail.as_deref().unwrap_or_default()),
-        (ActionKind::Update | ActionKind::Fill, targets) => {
+        (ActionKind::Update, targets) => {
             let target = targets.first();
             t("agent.update_ask")
                 .replace("{agent}", &who)
@@ -640,6 +941,9 @@ pub fn AgentPrompt() -> Element {
                 }
                 div { class: "modal-body col",
                     p { "{text}" }
+                    if ask.action == ActionKind::Fill {
+                        p { class: "small", {t("agent.fill_hint")} }
+                    }
                     if many {
                         ul {
                             for target in ask.targets.iter() {
@@ -713,10 +1017,15 @@ pub fn AgentAccessRow() -> Element {
     let ts = now();
     let grants = |id: &str| store.as_ref().map(|s| s.grants_of(id, ts).len()).unwrap_or(0);
     let log: Vec<_> = store.as_ref().map(|s| s.log.iter().rev().take(50).cloned().collect()).unwrap_or_default();
+    let connected = BROWSERS_UI.read();
     let agent_rows = agents
         .iter()
-        .map(|a| (a.id.clone(), a.id.clone(), a.name.clone(), a.exe.clone(), a.last_seen, grants(&a.id)))
+        .map(|a| {
+            let online = a.role == Role::Browser && connected.iter().any(|b| Some(&b.browser) == a.browser.as_ref());
+            (a.id.clone(), a.id.clone(), a.display(), a.exe.clone(), a.last_seen, grants(&a.id), online)
+        })
         .collect::<Vec<_>>();
+    drop(connected);
     drop(store);
     rsx! {
         div { class: "settings-row",
@@ -748,7 +1057,7 @@ pub fn AgentAccessRow() -> Element {
                     if agent_rows.is_empty() {
                         div { class: "d", {t("agent.none")} }
                     }
-                    for (id, revoke_id, name, exe, last_seen, count) in agent_rows.iter().cloned() {
+                    for (id, revoke_id, name, exe, last_seen, count, online) in agent_rows.iter().cloned() {
                         div { class: "row", key: "{id}", style: "align-items:center;gap:8px;margin-top:4px",
                             div { class: "grow",
                                 div { "{name} " span { class: "small muted mono", "{id}" } }
@@ -756,6 +1065,9 @@ pub fn AgentAccessRow() -> Element {
                                     div { class: "small muted mono", "{exe}" }
                                 }
                                 div { class: "small muted",
+                                    if online {
+                                        {t("agent.connected_now")} " · "
+                                    }
                                     {t("agent.last_used").replace("{time}", &relative_time(last_seen))}
                                     if count > 0 {
                                         " · " {t("agent.grants").replace("{count}", &count.to_string())}
@@ -935,7 +1247,7 @@ mod os {
 }
 
 #[cfg(windows)]
-mod os {
+pub(crate) mod os {
     use std::os::windows::io::FromRawHandle;
     use std::sync::atomic::Ordering;
 
@@ -1022,7 +1334,7 @@ mod os {
         let _ = std::fs::OpenOptions::new().read(true).write(true).open(pipe());
     }
 
-    fn image_path(pid: u32) -> Option<String> {
+    pub(crate) fn image_path(pid: u32) -> Option<String> {
         let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
         let mut buffer = vec![0u16; 1024];
         let mut size = buffer.len() as u32;
@@ -1033,7 +1345,7 @@ mod os {
         Some(String::from_utf16_lossy(&buffer[..size as usize]))
     }
 
-    fn parent_pid(pid: u32) -> Option<u32> {
+    pub(crate) fn parent_pid(pid: u32) -> Option<u32> {
         let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }.ok()?;
         let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
         let mut parent = None;

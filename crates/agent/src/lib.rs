@@ -10,10 +10,17 @@
 //! The agent has its own Ed25519 key ([`key`]), so the app recognises it
 //! the next time. Secrets that an agent runs a command with are filtered out
 //! of the command's output before the model sees it ([`scrub`]).
+//!
+//! The same crate holds the browser side of agentic autofill: the native
+//! messaging host that the 2Secret browser extension starts ([`host`]), which
+//! connects to the app as a browser and fills the logins the user allows an
+//! agent to use, and where each browser looks for it ([`native_host`]).
 
 pub mod client;
+pub mod host;
 pub mod key;
 pub mod mcp;
+pub mod native_host;
 pub mod scrub;
 pub mod tools;
 

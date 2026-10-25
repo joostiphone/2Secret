@@ -28,77 +28,10 @@ export async function activeTabUrl() {
   return tab && tab.url ? tab.url : "";
 }
 
-// Is a page location allowed to receive an item's credentials? `rules` are
-// the item's registrable domains, with the https and port requirements; an
-// `exact` domain is a public suffix (github.io), whose subdomains are other
-// people's sites.
-function twosecretAllowed(loc, rules) {
-  const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
-  if (!host || !/^https?:$/.test(loc.protocol)) return false;
-  return rules.some((r) =>
-    (host === r.domain || (!r.exact && host.endsWith("." + r.domain)))
-    && (!r.https || loc.protocol === "https:")
-    && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
-}
-
-// Runs inside every frame of the page (serialised by the browser, not eval'd
-// here, so it has to be self-contained and repeats the check above). Each
-// frame checks its own address, so credentials never reach a frame from
-// another site or a page the tab navigated to in the meantime.
-function twosecretFill(username, password, code, rules) {
-  const allowed = (loc) => {
-    const host = (loc.hostname || "").toLowerCase().replace(/\.$/, "");
-    if (!host || !/^https?:$/.test(loc.protocol)) return false;
-    return rules.some((r) =>
-      (host === r.domain || (!r.exact && host.endsWith("." + r.domain)))
-      && (!r.https || loc.protocol === "https:")
-      && (r.port === null || (loc.port || (loc.protocol === "https:" ? "443" : "80")) === String(r.port)));
-  };
-  if (!allowed(window.location)) return "mismatch";
-  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-    && getComputedStyle(el).visibility !== "hidden" && !el.disabled && !el.readOnly;
-  const setValue = (el, value) => {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
-    el.focus();
-    setter.call(el, value);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-  const hint = (el) => `${el.name} ${el.id} ${el.placeholder || ""} ${el.getAttribute("aria-label") || ""}`.toLowerCase();
-  const inputs = Array.from(document.querySelectorAll("input")).filter(visible);
-  const passwords = inputs.filter((i) => i.type === "password");
-  const texty = (i) => ["text", "email", "tel", ""].includes(i.type);
-  let filled = false;
-  if (password && passwords.length) {
-    setValue(passwords[0], password);
-    filled = true;
-  }
-  if (username) {
-    let user = inputs.find((i) => texty(i) && (i.autocomplete || "").includes("username"))
-      || inputs.find((i) => texty(i) && /user|e-?mail|login|account|identifier/.test(hint(i)));
-    if (!user && passwords.length) {
-      const idx = inputs.indexOf(passwords[0]);
-      user = inputs.slice(0, idx).reverse().find(texty);
-    }
-    if (!user && !passwords.length) {
-      user = inputs.find(texty);
-    }
-    if (user) {
-      setValue(user, username);
-      filled = true;
-    }
-  }
-  if (code && !passwords.length) {
-    const otp = inputs.find((i) => (i.autocomplete || "") === "one-time-code")
-      || inputs.find((i) => texty(i) && /otp|totp|2fa|mfa|code|token|verification/.test(hint(i)));
-    if (otp) {
-      setValue(otp, code);
-      filled = true;
-    }
-  }
-  return filled ? "filled" : "nothing";
-}
+// The page check and the filling itself live in fill.js (shared with the
+// background worker, which fills logins that AI agents may use), loaded by
+// index.html before this module.
+const twosecretAllowed = (loc, rules) => globalThis.twosecretAllowed(loc, rules);
 
 export async function fillActiveTab(username, password, code, rulesJson) {
   const rules = JSON.parse(rulesJson);
@@ -106,12 +39,14 @@ export async function fillActiveTab(username, password, code, rulesJson) {
   if (!tab || tab.id === undefined || !tab.url) return "nothing";
   // The tab may have navigated since the popup opened: check it again now.
   if (!twosecretAllowed(new URL(tab.url), rules)) return "mismatch";
+  // The Fill button never submits; that is for the user (or an agent the
+  // user allowed, through the app).
   const results = await api.scripting.executeScript({
     target: { tabId: tab.id, allFrames: true },
-    func: twosecretFill,
-    args: [username, password, code, rules],
+    func: globalThis.twosecretFill,
+    args: [username, password, code, rules, false],
   });
-  const outcomes = results.map((r) => r && r.result);
+  const outcomes = results.map((r) => r && r.result && r.result.outcome);
   if (outcomes.includes("filled")) return "filled";
   return outcomes.includes("nothing") ? "nothing" : "mismatch";
 }

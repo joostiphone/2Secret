@@ -46,14 +46,14 @@ is free, open source, and you can host the sync server yourself.
 | 📊 **Dashboard** | After unlocking: your favourites, recent changes, vaults and security score at a glance, without showing any secrets. Or start with all items, favourites or Watchtower. |
 | 🎲 **Password generator** | Random passwords, memorable passphrases (EFF wordlist) and PINs with entropy and strength estimates (zxcvbn). In the item editor each password can have its own rules (length, character sets), which the item keeps for the next new password. SSH Key items can generate a new Ed25519 key pair (OpenSSH format). |
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
-| 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. |
+| 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. Connected to the desktop app it also signs you in for AI agents ([details](docs/EXTENSION.md)). |
 | 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
 | 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. |
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. It can start there when you log in. |
 | 🔐 **SSH agent** | `ssh` and `git` use the SSH keys in your vault (Ed25519, ECDSA, RSA) after you allow it in 2Secret; the private keys never leave it. |
-| 🤖 **Agent Access** | AI tools (Claude Code, Claude Desktop, Cursor, Codex, any MCP client) use your items through `2secret mcp`: searching needs no question, every secret needs your yes in the app, programs get secrets through `2s://` references without the model seeing them, and everything is logged ([details](docs/AGENTS.md)). |
+| 🤖 **Agent Access** | AI tools (Claude Code, Claude Desktop, Cursor, Codex, any MCP client) use your items through `2secret mcp`: searching needs no question, every secret needs your yes in the app, programs get secrets through `2s://` references without the model seeing them, an agent in your browser gets signed in by 2Secret without ever seeing the password, and everything is logged ([details](docs/AGENTS.md)). |
 | ⚡ **Quick Access** | `Ctrl+Shift+Space` (`⇧⌘Space` on the Mac) anywhere: find an item and copy its password, user name or one-time code without opening 2Secret. |
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
@@ -77,7 +77,7 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 | iOS / iPadOS | native app | `dx bundle --platform ios` (on macOS with Xcode) |
 | Android | native app (`.apk`, `.aab`) | `scripts/android.sh` (Android SDK + NDK) |
 | Web | web vault in any browser (WebAssembly) | served by `2secret-server` |
-| Browsers | extension for Chrome, Edge, Brave, Firefox | `extension/build.sh` |
+| Browsers | extension for Chrome, Edge, Brave, Firefox ([EXTENSION.md](docs/EXTENSION.md)) | `extension/build.sh` |
 | Terminal | `2secret` CLI | `cargo install --path crates/cli` |
 
 ## Quick start

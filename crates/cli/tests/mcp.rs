@@ -120,6 +120,15 @@ fn fake_app(home: &Path) -> Arc<Mutex<Seen>> {
                             "favorite": false, "has_password": true, "has_totp": false, "has_notes": false,
                             "updated_at": 0, "fields": []}]})),
                         "read" => Err(AgentError::denied()),
+                        "fill" => {
+                            if params["url"].as_str().is_some_and(|u| u.contains("github.com")) {
+                                Ok(json!({"filled": true, "browser": "chrome", "submitted": params["submit"] != false}))
+                            } else {
+                                Err(AgentError::new(AgentError::NOT_FOUND, "'GitHub' is not a login for example.com"))
+                            }
+                        }
+                        "status" => Ok(json!({"app_version": "test", "browsers": [{"browser": "chrome",
+                            "extension": "chrome-extension://gnkfgnlegljjfnihdefkjepdoaphccfd/", "version": "1.11.0", "since": 1}]})),
                         "read_many" => {
                             let values: serde_json::Map<String, Value> = params["refs"]
                                 .as_array()
@@ -159,13 +168,15 @@ fn mcp_talks_to_the_app() {
     messages.push(call(6, "agent_status", json!({})));
     messages.push(json!({"jsonrpc":"2.0","id":7,"method":"ping"}));
     messages.push(json!({"jsonrpc":"2.0","id":8,"method":"nope"}));
+    messages.push(call(9, "fill_login", json!({"item": "GitHub", "url": "https://github.com/login"})));
+    messages.push(call(10, "fill_login", json!({"item": "GitHub", "url": "https://example.com/login"})));
 
     let output = cli(&home).args(["mcp"]).write_stdin(lines(&messages)).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!out.contains("hunter2"), "the secret must not reach the model:\n{out}");
     let answers = answers(&output.stdout);
-    assert_eq!(answers.len(), 8, "{out}");
+    assert_eq!(answers.len(), 10, "{out}");
 
     assert_eq!(answers[0]["id"], 1);
     assert_eq!(answers[0]["result"]["protocolVersion"], "2025-06-18");
@@ -195,12 +206,21 @@ fn mcp_talks_to_the_app() {
     assert_eq!(status["connected"], true);
     assert_eq!(status["agent_name"], "test-client");
     assert!(status["agent_id"].as_str().unwrap().len() == 19);
+    assert_eq!(status["browsers"][0]["browser"], "chrome", "{status}");
 
     assert_eq!(answers[6]["id"], 7);
     assert!(answers[6]["result"].is_object());
     // Unknown methods are refused, which still counts as an answer.
     assert_eq!(answers[7]["id"], 8);
     assert_eq!(answers[7]["error"]["code"], -32601);
+
+    let (text, is_error) = tool_text(&answers[8]);
+    assert!(!is_error, "{text}");
+    let filled: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(filled["filled"], true);
+    assert_eq!(filled["browser"], "chrome");
+    let (text, is_error) = tool_text(&answers[9]);
+    assert!(is_error && text.contains("not a login for example.com"), "{text}");
 
     let seen = seen.lock().unwrap();
     let hello = seen.hello.as_ref().expect("the agent introduced itself");
@@ -210,14 +230,15 @@ fn mcp_talks_to_the_app() {
     assert!(unb64(hello["agent_key"].as_str().unwrap()).unwrap().len() == 32);
     assert_eq!(seen.methods.iter().filter(|m| *m == "hello").count(), 1, "one connection for the whole session");
     assert!(seen.methods.contains(&"read_many".to_string()));
+    assert_eq!(seen.methods.iter().filter(|m| *m == "fill").count(), 2);
 
     // The key stays, so the app knows the agent next time.
     assert!(home.join("agent-key-test-client.json").exists());
-    cli(&home)
-        .args(["agent", "status"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("reachable for agents").and(predicate::str::contains("test-client")));
+    cli(&home).args(["agent", "status"]).assert().success().stdout(
+        predicate::str::contains("reachable for agents")
+            .and(predicate::str::contains("test-client"))
+            .and(predicate::str::contains("Browsers:")),
+    );
 }
 
 #[test]

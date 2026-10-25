@@ -62,6 +62,22 @@ pub static STATUS: GlobalSignal<Status> = Signal::global(Status::default);
 
 pub use imp::{apply_at_start, background, check, install, mode, restart};
 
+/// The file that marks an update being installed: while it exists the
+/// program file is about to be replaced, so a native messaging host (this
+/// program, started by a browser) leaves at once. Only Windows cannot
+/// replace a running program.
+#[cfg(feature = "desktop")]
+pub fn update_marker() -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    {
+        Some(imp::marker())
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 #[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 mod imp {
     use std::cell::{Cell, RefCell};
@@ -185,6 +201,12 @@ mod imp {
             let _ = std::fs::remove_dir_all(dir());
             *START_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(e);
         }
+    }
+
+    /// The marker file of an installation in progress.
+    #[cfg(windows)]
+    pub fn marker() -> PathBuf {
+        dir().join(ATTEMPT)
     }
 
     /// Install the downloaded update and start the new version (exits).
