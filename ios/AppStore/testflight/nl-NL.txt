@@ -1,13 +1,13 @@
-2Secret 1.11.0
+2Secret 1.11.1
 
 WAT IS NIEUW
-Agenttoegang, deel twee, voor de Mac-, Windows- en Linux-apps met de browserextensie: een AI-agent die in je browser werkt (Claude for Chrome, Comet, Atlas, Playwright) kan 2Secret vragen je in te loggen. Jij staat het toe in de app, 2Secret vult de inlogpagina in en verzendt die, en de agent ziet het wachtwoord nooit. Met één knop verbind je de extensie met de app in Chrome, Edge, Brave, Vivaldi, Arc en Firefox. De iPhone- en iPad-app heeft in deze versie geen nieuwe functies; hij krijgt dezelfde kernbibliotheek.
+Het paneel van automatisch invullen in de eigen stijl van 2Secret: als je een wachtwoord, passkey of verificatiecode invult in Safari of een andere app, toont het paneel nu het logo en de kleuren van 2Secret, volgt het het thema dat je in de app koos (licht, donker of systeem), noemt het de website waarvoor je invult, en staan je logins erin met het icoon van hun website. De Face ID-dialoog zegt wat er gebeurt ("2Secret probeert je kluis te ontgrendelen voor github.com"). Aan wat automatisch invullen kan invullen is niets veranderd.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app: al je kluizen en items zijn er. Ontgrendel met Face ID en met je hoofdwachtwoord.
-2. Synchroniseer (Instellingen → Nu synchroniseren): dit lukt zonder waarschuwingen.
-3. Automatisch invullen in Safari: log in op een website met een opgeslagen login, en gebruik een eenmalige code waar je die hebt.
-4. Deel een kluis met een tweede account en verwijder die weer; deel een item via een link en open de link in Safari.
-5. Alles uit 1.10 als voorheen: de menubalk, menu's na lang drukken, meerdere items selecteren, zoeken met favorieten bovenaan, Watchtower.
+1. Werk bij en open de app één keer (dat ververst wat automatisch invullen mag invullen), log dan in Safari in op een website via de wachtwoordsuggestie en via "Wachtwoorden…" onderaan de lijst: het paneel heeft bovenaan het 2Secret-logo en de naam van de website.
+2. Zet het thema in 2Secret (Instellingen → Weergave) op donker en op licht, open de app één keer en vul opnieuw in: het paneel volgt.
+3. In de lijst toont een login met een website-icoon in 2Secret dat icoon; een login zonder toont het sleutelsymbool.
+4. Vul een eenmalige code in waar je die hebt, en log in met een passkey waar je die hebt.
+5. Al het andere als in 1.11: ontgrendelen met Face ID en met je hoofdwachtwoord, synchroniseren, delen, Watchtower.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

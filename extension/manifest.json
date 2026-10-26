@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "2Secret",
   "short_name": "2Secret",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1FT6MfmN7RWKYg2nsLnetjgNDAcZA5D3P9Uo04IXffmjqJrD5S8nelqU13pVi/tGgWwEg7XY0BUFzCFuFIXC1AUsujCNTyKV2YlXeecoCskB5QvK0EsjP9Z9TwHg6sPNLnoFe/UujnLODT8FVXhKOwZ8/zIZCu4zCa148tU7QSznuwGEIy6pYrytIUMPqk2bpBPDnTLs/TDuVCJRUocmPIaImBNwhPPc9I3mzDqentzUCkVoOUFJFznlD9AyuQRoY/TD1nBsJV6pIP0Ha1ojpINyV2dajw/ucC+i8IljAJjrZZYZDzKE8ZjpvLQOD6OhpcdKfwmIuh4FiVKqGiNXkQIDAQAB",
   "description": "Free, open-source password manager. Fill logins, one-time codes and passkeys from your end-to-end encrypted 2Secret vault.",
   "homepage_url": "https://github.com/joostiphone/2Secret",

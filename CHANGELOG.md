@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.11.1
 
 - **AutoFill on the Mac and iPhone in 2Secret's own look**: the panel that
   opens when you fill a password, passkey or verification code now has the

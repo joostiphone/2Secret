@@ -1,13 +1,13 @@
-2Secret 1.11.0
+2Secret 1.11.1
 
 WHAT'S NEW
-Agent Access, part two, for the Mac, Windows and Linux apps with the browser extension: an AI agent that works in your browser (Claude for Chrome, Comet, Atlas, Playwright) can ask 2Secret to sign you in. You allow it in the app, 2Secret fills and submits the sign-in page, and the agent never sees the password. One button connects the extension to the app in Chrome, Edge, Brave, Vivaldi, Arc and Firefox. The iPhone and iPad app has no new features in this version; it gets the same core library.
+The AutoFill panel in 2Secret's own look: when you fill a password, passkey or verification code in Safari or another app, the panel now shows the 2Secret logo and colours, follows the theme you chose in the app (light, dark or system), names the website it is for, and lists your logins with their website icons. The Face ID dialog says what happens ("2Secret is trying to unlock your vault for github.com"). Nothing changed in what AutoFill can fill.
 
 PLEASE TEST
-1. Update and open the app: all your vaults and items are there. Unlock with Face ID and with your master password.
-2. Sync (Settings → Sync now): it finishes without warnings.
-3. AutoFill in Safari: sign in to a website with a saved login, and use a one-time code where you have one.
-4. Share a vault with a second account and remove it again; share an item via a link and open the link in Safari.
-5. Everything from 1.10 as before: the tab bar, long-press menus, selecting several items, search with favorites first, Watchtower.
+1. Update and open the app once (that refreshes what AutoFill may fill), then sign in to a website in Safari through the password suggestion and through "Passwords…" at the bottom of the list: the panel has the 2Secret logo and the website name at the top.
+2. Switch the theme in 2Secret (Settings → Appearance) to dark and to light, open the app once, and fill again: the panel follows.
+3. In the list, a login with a website icon in 2Secret shows that icon; one without shows the key symbol.
+4. Fill a one-time code where you have one, and sign in with a passkey where you have one.
+5. Everything else as in 1.11: unlock with Face ID and your master password, sync, sharing, Watchtower.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.
