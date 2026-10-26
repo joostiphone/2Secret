@@ -25,6 +25,9 @@ targets:
     sources:
       - path: AutoFill
       - path: ../ios/AutoFill/Vault.swift
+      # The app icon for the panel's header.
+      - path: ../crates/app/assets/icon-128.png
+        buildPhase: resources
     info:
       path: AutoFill/Info.plist
       properties:

@@ -369,9 +369,11 @@ conflict never silently loses a password. Deletions are tombstones.
   opens the vault on that device: its protection rests on the Secure Enclave
   or the TPM, not on the master password.
 - **AutoFill on iOS and macOS** (only while biometric unlock is on): the app
-  shares the logins, passkeys and one-time password secrets AutoFill may fill
-  with its extension through a file in the app group, encrypted with
-  ChaCha20-Poly1305 under a new random key on every write. The key is a
+  shares the logins, passkeys, one-time password secrets and website icons
+  AutoFill may fill and show with its extension through a file in the app
+  group, encrypted with ChaCha20-Poly1305 under a new random key on every
+  write (the app's theme choice sits next to it unencrypted, so the panel
+  matches the app before the vault is unlocked). The key is a
   keychain item that opens only after Face ID or Touch ID with the current
   enrolment, on this device; on macOS it is in the data protection keychain,
   shared only with the extension (same Team ID and access group), and the

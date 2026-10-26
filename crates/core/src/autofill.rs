@@ -53,6 +53,10 @@ pub struct AutofillLogin {
     /// macOS 15).
     #[serde(default)]
     pub totp: Option<AutofillTotp>,
+    /// The website's icon as a checked `data:image/…` URL (at most 24 KB),
+    /// for the list the extension shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -129,6 +133,7 @@ impl Session {
                         })
                         .collect(),
                     totp: totp.as_ref().map(AutofillTotp::from),
+                    icon: i.icon.as_ref().and_then(|icon| icon.safe_image()).map(str::to_string),
                 }
             })
             .collect();
@@ -175,6 +180,7 @@ impl AutofillCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::favicon::WebsiteIcon;
     use crate::item::Item;
     use crate::passkey::{self, CreationOptions};
     use crate::session::tests::new_session;
@@ -183,7 +189,9 @@ mod tests {
     fn cache_holds_what_autofill_needs() {
         let (mut s, _) = new_session();
         let v = s.default_vault_id().unwrap();
-        s.add_item(&v, Item::login("Bank", "jan", "pw-1", Some("https://login.mybank.co.uk/"))).unwrap();
+        let mut bank = Item::login("Bank", "jan", "pw-1", Some("https://login.mybank.co.uk/"));
+        bank.icon = Some(WebsiteIcon { host: "login.mybank.co.uk".into(), image: "data:image/png;base64,AA==".into() });
+        s.add_item(&v, bank).unwrap();
         s.add_item(&v, Item::login("Empty", "nobody", "", Some("https://example.com"))).unwrap();
         let mut codes = Item::login("Codes", "me", "", Some("https://codes.example.org"));
         codes.set_value(
@@ -217,6 +225,8 @@ mod tests {
         // A tenant's site is not its neighbour's: no "pythonanywhere.com".
         assert_eq!(cache.logins[3].domains, ["www.pythonanywhere.com"]);
         assert_eq!(cache.logins[3].exact_hosts, ["github.io"]);
+        assert_eq!(cache.logins[0].icon.as_deref(), Some("data:image/png;base64,AA=="));
+        assert!(cache.logins[3].icon.is_none(), "no icon, no field");
         assert!(cache.logins[0].totp.is_none());
         let totp = cache.logins[1].totp.as_ref().unwrap();
         assert_eq!(totp.secret, b64url(b"12345678901234567890"));

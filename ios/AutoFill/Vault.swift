@@ -3,6 +3,11 @@ import CryptoKit
 import Foundation
 import LocalAuthentication
 import Security
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// What the 2Secret app shares with AutoFill (crates/core/src/autofill.rs).
 struct AutofillCache: Decodable {
@@ -25,6 +30,8 @@ struct Login: Decodable {
     let passkeys: [Passkey]
     /// The login's one-time password, if it has one.
     let totp: OneTimePassword?
+    /// The website's icon as a `data:image/…;base64,…` URL, when the app has one.
+    let icon: String?
 
     /// Whether the login is for the page or app: one of its domains is among
     /// `candidates` (see `Vault.candidates`), or an exact host is in `hosts`.
@@ -110,17 +117,49 @@ enum Vault {
     #endif
     static let maxAge: Int64 = 14 * 86_400
 
+    /// One context for the whole process: a Touch ID or Face ID given a
+    /// moment ago is reused for up to five minutes, so two fills in a row ask
+    /// once, as long as the system keeps the extension alive in between.
+    private static let context: LAContext = {
+        let context = LAContext()
+        context.touchIDAuthenticationAllowableReuseDuration = LATouchIDAuthenticationMaximumAllowableReuseDuration
+        return context
+    }()
+
+    private static var container: URL? {
+        guard !appGroup.isEmpty else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
+    }
+
+    /// The theme the app uses (`system`, `light` or `dark`), which it writes
+    /// next to the cache so the panel matches before the vault is unlocked.
+    static func theme() -> String {
+        guard let dir = container,
+              let text = try? String(contentsOf: dir.appendingPathComponent("autofill.theme"), encoding: .utf8)
+        else { return "system" }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The bytes of a website icon (`data:image/…;base64,…`), for the image
+    /// types the panel shows. SVG is left out: UIKit cannot draw it.
+    static func imageData(dataURL: String?) -> Data? {
+        guard let dataURL, dataURL.hasPrefix("data:image/"), let marker = dataURL.range(of: ";base64,") else { return nil }
+        let mime = String(dataURL[dataURL.index(dataURL.startIndex, offsetBy: 5) ..< marker.lowerBound])
+        guard ["image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon"].contains(mime) else { return nil }
+        return Data(base64Encoded: String(dataURL[marker.upperBound...]))
+    }
+
     /// Read the cache. The key is in the keychain and only released after
     /// Face ID / Touch ID, so this shows the system prompt; call it off the
     /// main thread.
     static func load(reason: String) throws -> AutofillCache {
-        guard !appGroup.isEmpty,
-              let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup),
+        guard let dir = container,
               let sealed = try? Data(contentsOf: dir.appendingPathComponent("autofill.cache"))
         else { throw VaultError.notSetUp }
 
-        let context = LAContext()
+        let context = Self.context
         context.localizedReason = reason
+        context.localizedCancelTitle = L.cancel
         #if os(macOS)
         // Where the app keeps the key: access groups and Touch ID protection
         // need the data protection keychain, which macOS only uses when asked.
@@ -231,11 +270,24 @@ enum L {
     private static let dutch = Locale.preferredLanguages.first?.hasPrefix("nl") ?? false
     private static func t(_ en: String, _ nl: String) -> String { dutch ? nl : en }
 
-    static let reason = t("fill with 2Secret", "invullen met 2Secret")
+    /// The reason in the system's Touch ID / Face ID dialog, which starts
+    /// with "2Secret is trying to" (Dutch: "2Secret probeert").
+    static func reason(host: String?) -> String {
+        if let host, !host.isEmpty {
+            return t("unlock your vault for \(host)", "je kluis te ontgrendelen voor \(host)")
+        }
+        return t("unlock your vault", "je kluis te ontgrendelen")
+    }
+
+    static func forSite(_ host: String) -> String { t("for \(host)", "voor \(host)") }
     static let cancel = t("Cancel", "Annuleren")
     static let close = t("Close", "Sluiten")
     static let search = t("Search", "Zoeken")
+    #if os(macOS)
+    static let unlocking = t("Unlocking with Touch ID…", "Ontgrendelen met Touch ID…")
+    #else
     static let unlocking = t("Unlocking…", "Ontgrendelen…")
+    #endif
     static let suggested = t("Suggested", "Voorgesteld")
     static let all = t("All logins", "Alle logins")
     static let passkeys = t("Passkeys", "Passkeys")
@@ -277,5 +329,56 @@ enum L {
         "Save new passkeys with the 2Secret browser extension on your computer. They then sync to this device.",
         "Bewaar nieuwe passkeys met de 2Secret-browserextensie op je computer. Ze synchroniseren dan naar dit apparaat."
     )
+    #endif
+}
+
+#if os(macOS)
+typealias BrandColor = NSColor
+typealias BrandImage = NSImage
+#else
+typealias BrandColor = UIColor
+typealias BrandImage = UIImage
+#endif
+
+/// The app's look (crates/app/src/style.css): its colours for light and dark,
+/// and its logo. The colours follow the panel's appearance.
+enum Brand {
+    static let bg = color(light: 0xF4F5F8, dark: 0x11131A)
+    static let panel = color(light: 0xFFFFFF, dark: 0x181B24)
+    static let panel2 = color(light: 0xF8F9FB, dark: 0x1D2130)
+    static let text = color(light: 0x1A1D26, dark: 0xE7E9EF)
+    static let muted = color(light: 0x687083, dark: 0x959CB0)
+    static let border = color(light: 0xE2E5EC, dark: 0x2A2F3E)
+    static let accent = color(light: 0x3B5BDB, dark: 0x5C7CFA)
+    static let accentSoft = color(light: 0xE7ECFF, dark: 0x232B4F)
+    static let selected = color(light: 0xE5EBFF, dark: 0x27305A)
+    static let selectedText = color(light: 0x2741B8, dark: 0xC5D0FF)
+    static let radius: CGFloat = 10
+
+    private static func channels(_ hex: UInt32) -> (CGFloat, CGFloat, CGFloat) {
+        (CGFloat((hex >> 16) & 0xFF) / 255, CGFloat((hex >> 8) & 0xFF) / 255, CGFloat(hex & 0xFF) / 255)
+    }
+
+    #if os(macOS)
+    private static func color(light: UInt32, dark: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let (r, g, b) = channels(isDark ? dark : light)
+            return NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+        }
+    }
+
+    /// The app icon, bundled with the extension (macos/project.yml).
+    static let logo: NSImage? = Bundle.main.image(forResource: "icon-128")
+    #else
+    private static func color(light: UInt32, dark: UInt32) -> UIColor {
+        UIColor { traits in
+            let (r, g, b) = channels(traits.userInterfaceStyle == .dark ? dark : light)
+            return UIColor(red: r, green: g, blue: b, alpha: 1)
+        }
+    }
+
+    /// The app icon, bundled with the extension (ios/project.yml).
+    static let logo: UIImage? = UIImage(named: "icon-128")
     #endif
 }

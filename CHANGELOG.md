@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **AutoFill on the Mac and iPhone in 2Secret's own look**: the panel that
+  opens when you fill a password, passkey or verification code now has the
+  app's logo, colours and theme (light, dark or system, as set in 2Secret),
+  shows the website it is for, and lists logins with their website icons.
+  The Touch ID and Face ID dialog says what happens ("2Secret is trying to
+  unlock your vault for github.com") instead of "fill with 2Secret". A Touch
+  ID given a moment ago is reused for a few minutes when the system keeps the
+  extension running, so two fills in a row ask once.
+
 ## 1.11.0
 
 **Agent Access, part two**: an AI agent in your browser gets signed in by

@@ -5,7 +5,8 @@ import AuthenticationServices
 /// Safari and other apps (System Settings → General → AutoFill & Passwords →
 /// 2Secret). Like the iOS extension it fills from the cache the 2Secret app
 /// keeps while unlocking with Touch ID is on (see ios/AutoFill/Vault.swift);
-/// it cannot change the vault.
+/// it cannot change the vault. The panel looks like the app: its colours
+/// (`Brand`), its logo, its theme, and the websites' icons.
 @objc(CredentialProviderViewController)
 final class CredentialProviderViewController: ASCredentialProviderViewController,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate
@@ -22,11 +23,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    private let hostLabel = NSTextField(labelWithString: "")
     private let searchField = NSSearchField()
-    private let messageLabel = NSTextField(wrappingLabelWithString: L.unlocking)
-    private let messageButton = NSButton(title: L.close, target: nil, action: nil)
+    private let card = ColorView(color: Brand.panel)
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private let stateStack = NSStackView()
+    private let bigLogo = LogoView(size: 56)
+    private let spinner = NSProgressIndicator()
+    private let messageLabel = NSTextField(wrappingLabelWithString: L.unlocking)
+    private let messageHost = NSTextField(labelWithString: "")
+    private let messageButton = NSButton(title: L.close, target: nil, action: nil)
     private var cache: AutofillCache?
     private var serviceIdentifiers: [ASCredentialServiceIdentifier] = []
     private var passkeyParameters: ASPasskeyCredentialRequestParameters?
@@ -35,21 +42,59 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var rows: [Row] = []
     private var messageAction: (() -> Void)?
 
+    /// The website the request is for, as shown in the header and the Touch
+    /// ID dialog (`www.` left out).
+    private var host: String? {
+        let hosts = Vault.hosts(serviceIdentifiers).map { h -> String in
+            h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+        }
+        return hosts.sorted().first
+    }
+
     // MARK: - Layout
 
     override func loadView() {
-        // No nib: the view is built in code.
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 460))
+        // No nib: the view is built in code, on the app's background colour.
+        let root = ColorView(color: Brand.bg)
+        root.frame = NSRect(x: 0, y: 0, width: 420, height: 480)
+        view = root
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        preferredContentSize = NSSize(width: 420, height: 460)
+        preferredContentSize = NSSize(width: 420, height: 480)
+        // The app's theme; "system" follows macOS.
+        switch Vault.theme() {
+        case "dark": view.appearance = NSAppearance(named: .darkAqua)
+        case "light": view.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
 
+        // Header: logo, name, the website, Cancel.
+        let logo = LogoView(size: 28)
         let title = NSTextField(labelWithString: "2Secret")
-        title.font = .systemFont(ofSize: NSFont.systemFontSize + 2, weight: .semibold)
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.textColor = Brand.text
+        hostLabel.font = .systemFont(ofSize: 12)
+        hostLabel.textColor = Brand.muted
+        hostLabel.lineBreakMode = .byTruncatingMiddle
+        hostLabel.isHidden = true
+        let names = NSStackView(views: [title, hostLabel])
+        names.orientation = .vertical
+        names.alignment = .leading
+        names.spacing = 1
         let cancel = NSButton(title: L.cancel, target: self, action: #selector(cancelTapped))
+        cancel.isBordered = false
+        cancel.font = .systemFont(ofSize: 13)
+        cancel.contentTintColor = Brand.accent
         cancel.keyEquivalent = "\u{1b}"
+        cancel.setContentHuggingPriority(.required, for: .horizontal)
+        let header = NSStackView(views: [logo, names, cancel])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 10
+        names.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        names.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         searchField.placeholderString = L.search
         searchField.delegate = self
@@ -58,18 +103,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         searchField.action = #selector(searchChanged)
         searchField.isHidden = true
 
-        messageLabel.alignment = .center
-        messageLabel.textColor = .secondaryLabelColor
-        messageButton.target = self
-        messageButton.action = #selector(messageButtonTapped)
-        messageButton.isHidden = true
-
+        // The list, in a card like the app's panels.
+        card.cornerRadius = Brand.radius
+        card.borderColor = Brand.border
+        card.isHidden = true
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.headerView = nil
-        tableView.style = .inset
+        tableView.style = .plain
+        tableView.backgroundColor = .clear
+        tableView.gridStyleMask = []
+        tableView.intercellSpacing = NSSize(width: 0, height: 0)
+        tableView.selectionHighlightStyle = .regular
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -77,29 +124,60 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
-        scrollView.isHidden = true
+        scrollView.contentInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: card.topAnchor, constant: 1),
+            scrollView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 1),
+            scrollView.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -1),
+            scrollView.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -1),
+        ])
 
-        for subview in [title, cancel, searchField, scrollView, messageLabel, messageButton] as [NSView] {
+        // Unlocking, and messages: logo, spinner, text, website, a button.
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        spinner.startAnimation(nil)
+        messageLabel.alignment = .center
+        messageLabel.font = .systemFont(ofSize: 13)
+        messageLabel.textColor = Brand.text
+        messageLabel.preferredMaxLayoutWidth = 340
+        messageHost.alignment = .center
+        messageHost.font = .systemFont(ofSize: 12)
+        messageHost.textColor = Brand.muted
+        messageHost.isHidden = true
+        messageButton.target = self
+        messageButton.action = #selector(messageButtonTapped)
+        messageButton.isHidden = true
+        for subview in [bigLogo, spinner, messageLabel, messageHost, messageButton] {
+            stateStack.addArrangedSubview(subview)
+        }
+        stateStack.orientation = .vertical
+        stateStack.alignment = .centerX
+        stateStack.spacing = 12
+        stateStack.setCustomSpacing(18, after: bigLogo)
+
+        for subview in [header, searchField, card, stateStack] as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: view.topAnchor, constant: 14),
-            title.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            cancel.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            cancel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            searchField.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 12),
+            header.topAnchor.constraint(equalTo: view.topAnchor, constant: 14),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            searchField.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             searchField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             searchField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            messageLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 10),
-            messageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            messageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
-            messageButton.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 14),
-            messageButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            card.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 10),
+            card.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            card.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            card.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+            stateStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stateStack.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 16),
+            stateStack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),
+            stateStack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),
+            messageLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
         ])
     }
 
@@ -110,10 +188,21 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    /// Show the website in the header and under the unlocking message.
+    private func showHost() {
+        _ = view
+        let site = host ?? ""
+        hostLabel.stringValue = site
+        hostLabel.isHidden = site.isEmpty
+        messageHost.stringValue = L.forSite(site)
+        messageHost.isHidden = site.isEmpty
+    }
+
     // MARK: - Requests from the system
 
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         self.serviceIdentifiers = serviceIdentifiers
+        showHost()
         unlock { [weak self] _ in self?.reload() }
     }
 
@@ -123,6 +212,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     ) {
         self.serviceIdentifiers = serviceIdentifiers
         passkeyParameters = requestParameters
+        showHost()
         unlock { [weak self] _ in self?.reload() }
     }
 
@@ -131,6 +221,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         self.serviceIdentifiers = serviceIdentifiers
         oneTimeCodes = true
+        showHost()
         unlock { [weak self] _ in self?.reload() }
     }
 
@@ -141,6 +232,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func prepareInterfaceToProvideCredential(for credentialRequest: ASCredentialRequest) {
+        serviceIdentifiers = [credentialRequest.credentialIdentity.serviceIdentifier]
+        showHost()
         unlock { [weak self] cache in
             guard let self else { return }
             if let request = credentialRequest as? ASPasskeyCredentialRequest,
@@ -187,8 +280,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             use(cache)
             return
         }
+        let reason = L.reason(host: host)
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try Vault.load(reason: L.reason) }
+            let result = Result { try Vault.load(reason: reason) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {
@@ -259,13 +353,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     private func show(message: String, button: String, action: @escaping () -> Void) {
         _ = view
+        spinner.stopAnimation(nil)
+        bigLogo.isHidden = false
         messageLabel.stringValue = message
-        messageLabel.isHidden = false
+        messageLabel.textColor = Brand.muted
+        messageHost.isHidden = true
         messageButton.title = button
         messageButton.isHidden = false
         messageButton.keyEquivalent = "\r"
         messageAction = action
-        scrollView.isHidden = true
+        stateStack.isHidden = false
+        card.isHidden = true
         searchField.isHidden = true
     }
 
@@ -309,10 +407,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         self.rows = rows
         tableView.reloadData()
 
+        spinner.stopAnimation(nil)
         searchField.isHidden = false
-        scrollView.isHidden = rows.isEmpty
-        messageLabel.isHidden = !rows.isEmpty
+        card.isHidden = rows.isEmpty
+        stateStack.isHidden = !rows.isEmpty
+        bigLogo.isHidden = true
         messageLabel.stringValue = oneTimeCodes && query.isEmpty ? L.noCodes : L.nothing
+        messageLabel.textColor = Brand.muted
+        messageHost.isHidden = true
         messageButton.isHidden = true
         select(rows.firstIndex(where: \.selectable))
         if view.window?.firstResponder !== searchField.currentEditor() {
@@ -376,71 +478,174 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         rows.count
     }
 
-    func tableView(_: NSTableView, isGroupRow row: Int) -> Bool {
-        rows.indices.contains(row) && !rows[row].selectable
-    }
-
     func tableView(_: NSTableView, shouldSelectRow row: Int) -> Bool {
         rows.indices.contains(row) && rows[row].selectable
     }
 
     func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
-        rows.indices.contains(row) && !rows[row].selectable ? 26 : 40
+        rows.indices.contains(row) && !rows[row].selectable ? 28 : 46
+    }
+
+    func tableView(_: NSTableView, rowViewForRow _: Int) -> NSTableRowView? {
+        BrandRowView()
     }
 
     func tableView(_: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
         case let .header(title):
-            let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-            label.textColor = .secondaryLabelColor
-            return cell([label])
+            let label = NSTextField(labelWithString: title.uppercased())
+            label.font = .systemFont(ofSize: 11, weight: .semibold)
+            label.textColor = Brand.muted
+            return cell([label], inset: 14)
         case let .login(login):
-            return item(symbol: "key.fill", title: login.title, subtitle: login.username)
+            return item(icon: login.icon, symbol: "key.fill", title: login.title, subtitle: login.username)
         case let .passkey(login, passkey):
             return item(
+                icon: login.icon,
                 symbol: "person.badge.key.fill",
                 title: passkey.userName.isEmpty ? login.username : passkey.userName,
                 subtitle: "\(login.title) · \(passkey.rpId)"
             )
         case let .code(login):
-            return item(symbol: "clock.fill", title: login.title, subtitle: login.username)
+            return item(icon: login.icon, symbol: "clock.fill", title: login.title, subtitle: login.username)
         }
     }
 
-    private func item(symbol: String, title: String, subtitle: String) -> NSView {
-        let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
-        image.contentTintColor = .controlAccentColor
-        image.setContentHuggingPriority(.required, for: .horizontal)
+    private func item(icon: String?, symbol: String, title: String, subtitle: String) -> NSView {
         let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        titleLabel.textColor = Brand.text
         titleLabel.lineBreakMode = .byTruncatingTail
         let subtitleLabel = NSTextField(labelWithString: subtitle)
-        subtitleLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        subtitleLabel.textColor = .secondaryLabelColor
+        subtitleLabel.font = .systemFont(ofSize: 11)
+        subtitleLabel.textColor = Brand.muted
         subtitleLabel.lineBreakMode = .byTruncatingTail
         let texts = NSStackView(views: [titleLabel, subtitleLabel])
         texts.orientation = .vertical
         texts.alignment = .leading
         texts.spacing = 1
-        return cell([image, texts])
+        return cell([IconView(icon: icon, symbol: symbol), texts], inset: 10)
     }
 
     /// A row: the views side by side, vertically centred.
-    private func cell(_ views: [NSView]) -> NSView {
+    private func cell(_ views: [NSView], inset: CGFloat) -> NSView {
         let row = NSStackView(views: views)
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 10
-        row.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
         let cell = NSTableCellView()
         row.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
+            row.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: inset),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -inset),
             row.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
+    }
+}
+
+// MARK: - Views in the app's look
+
+/// A view painted in one of the app's colours, optionally rounded with a
+/// border; drawn, not layered, so it follows light and dark.
+class ColorView: NSView {
+    var color: NSColor { didSet { needsDisplay = true } }
+    var cornerRadius: CGFloat = 0 { didSet { needsDisplay = true } }
+    var borderColor: NSColor? { didSet { needsDisplay = true } }
+
+    init(color: NSColor) {
+        self.color = color
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("not used")
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_: NSRect) {
+        let rect = borderColor == nil ? bounds : bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
+        color.setFill()
+        path.fill()
+        if let borderColor {
+            borderColor.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
+    }
+}
+
+/// The app icon, rounded like an app icon.
+final class LogoView: NSImageView {
+    init(size: CGFloat) {
+        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        image = Brand.logo
+        imageScaling = .scaleProportionallyUpOrDown
+        wantsLayer = true
+        layer?.cornerRadius = size * 0.24
+        layer?.masksToBounds = true
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: size),
+            heightAnchor.constraint(equalToConstant: size),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("not used")
+    }
+}
+
+/// A login's website icon, or a symbol in the accent colour on a soft tile.
+final class IconView: ColorView {
+    init(icon: String?, symbol: String) {
+        let website = Vault.imageData(dataURL: icon).flatMap(NSImage.init(data:))
+        super.init(color: website == nil ? Brand.accentSoft : .clear)
+        cornerRadius = 7
+        let image = website ?? NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+        let imageView = NSImageView(image: image ?? NSImage())
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.contentTintColor = Brand.accent
+        imageView.wantsLayer = true
+        imageView.layer?.cornerRadius = 6
+        imageView.layer?.masksToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+        let side: CGFloat = website == nil ? 16 : 28
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 28),
+            heightAnchor.constraint(equalToConstant: 28),
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: side),
+            imageView.heightAnchor.constraint(equalToConstant: side),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("not used")
+    }
+}
+
+/// A row whose selection is the app's: a rounded, soft highlight.
+final class BrandRowView: NSTableRowView {
+    override var isEmphasized: Bool {
+        get { false }
+        set {}
+    }
+
+    override func drawSelection(in _: NSRect) {
+        guard selectionHighlightStyle != .none else { return }
+        Brand.selected.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: 8, yRadius: 8).fill()
     }
 }

@@ -27,6 +27,9 @@ use twosecret_core::autofill::AutofillCache;
 const SERVICE: &str = "2Secret AutoFill";
 const ACCOUNT: &str = "cache-key";
 const FILE: &str = "autofill.cache";
+/// The app's theme (`system`, `light`, `dark`) for the extension's panel,
+/// which it reads before the vault is unlocked; no secret.
+const THEME_FILE: &str = "autofill.theme";
 
 /// The app group (also the keychain access group) shared with the extension.
 /// ios/project.yml declares it for both.
@@ -86,9 +89,21 @@ fn key_options(group: &str) -> PasswordOptions {
 /// `dx serve`).
 pub fn write(cache: &AutofillCache) {
     let Some(group) = group() else { return };
+    write_theme();
     match try_write(&group, cache) {
         Ok(()) => publish_identities(cache),
         Err(e) => eprintln!("2Secret: AutoFill is not available: {e}"),
+    }
+}
+
+/// Tell the extension which theme the app uses, so its panel matches.
+pub fn write_theme() {
+    let Some(dir) = group().and_then(|g| container(&g)) else { return };
+    let theme = crate::state::PREFS.peek().theme.id().to_string();
+    let path = dir.join(THEME_FILE);
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(theme.as_str()) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&path, theme);
     }
 }
 
@@ -186,5 +201,6 @@ pub fn clear() {
     let _ = delete_generic_password_options(key_options(&group));
     if let Some(dir) = container(&group) {
         let _ = std::fs::remove_file(dir.join(FILE));
+        let _ = std::fs::remove_file(dir.join(THEME_FILE));
     }
 }

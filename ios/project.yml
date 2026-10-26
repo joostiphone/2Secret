@@ -84,6 +84,9 @@ targets:
     platform: iOS
     sources:
       - path: AutoFill
+      # The app icon for the panel's header.
+      - path: ../crates/app/assets/icon-128.png
+        buildPhase: resources
     info:
       path: AutoFill/Info.plist
       properties:
