@@ -796,7 +796,7 @@ fn AppearanceSection() -> Element {
                         PREFS.write().theme = match e.value().as_str() { "light" => Theme::Light, "dark" => Theme::Dark, _ => Theme::System };
                         save_prefs();
                         #[cfg(any(target_os = "ios", target_os = "macos"))]
-                        crate::apple_autofill::write_theme();
+                        crate::apple_autofill::write_theme(PREFS.peek().theme.id());
                     },
                     for (th , label) in [(Theme::System, t("settings.theme_system")), (Theme::Light, t("settings.theme_light")), (Theme::Dark, t("settings.theme_dark"))] {
                         option { key: "{th.id()}", value: "{th.id()}", selected: prefs.theme == th, "{label}" }

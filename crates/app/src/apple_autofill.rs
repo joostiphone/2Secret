@@ -89,19 +89,18 @@ fn key_options(group: &str) -> PasswordOptions {
 /// `dx serve`).
 pub fn write(cache: &AutofillCache) {
     let Some(group) = group() else { return };
-    write_theme();
     match try_write(&group, cache) {
         Ok(()) => publish_identities(cache),
         Err(e) => eprintln!("2Secret: AutoFill is not available: {e}"),
     }
 }
 
-/// Tell the extension which theme the app uses, so its panel matches.
-pub fn write_theme() {
+/// Tell the extension which theme the app uses (`system`, `light`, `dark`),
+/// so its panel matches.
+pub fn write_theme(theme: &str) {
     let Some(dir) = group().and_then(|g| container(&g)) else { return };
-    let theme = crate::state::PREFS.peek().theme.id().to_string();
     let path = dir.join(THEME_FILE);
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(theme.as_str()) {
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(theme) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::write(&path, theme);
     }

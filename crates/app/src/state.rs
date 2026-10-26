@@ -579,6 +579,7 @@ pub fn refresh_autofill() {
         let Some(config) = biometric_unlock() else { return };
         let cache = SESSION.peek().as_ref().map(|s| s.autofill_cache(config.password_entered_at));
         if let Some(cache) = cache {
+            crate::apple_autofill::write_theme(PREFS.peek().theme.id());
             crate::apple_autofill::write(&cache);
         }
     }
