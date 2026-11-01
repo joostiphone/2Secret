@@ -1,13 +1,14 @@
-2Secret 1.11.1
+2Secret 1.12.0
 
 WAT IS NIEUW
-Het paneel van automatisch invullen in de eigen stijl van 2Secret: als je een wachtwoord, passkey of verificatiecode invult in Safari of een andere app, toont het paneel nu het logo en de kleuren van 2Secret, volgt het het thema dat je in de app koos (licht, donker of systeem), noemt het de website waarvoor je invult, en staan je logins erin met het icoon van hun website. De Face ID-dialoog zegt wat er gebeurt ("2Secret probeert je kluis te ontgrendelen voor github.com"). Aan wat automatisch invullen kan invullen is niets veranderd.
+Agents op afstand. Een AI-agent die niet op jouw computer draait (Claude Code in de cloud, een agent op een server, een tweede machine) kan 2Secret nu via je synchronisatieserver om je items vragen, en jij antwoordt op je iPhone. Onder Instellingen → Agents op afstand koppel je zo'n agent met een code die de app toont, bevestig je hem na het vergelijken van zijn vingerafdruk, en zie je de agents die je koppelde. Elk verzoek (een wachtwoord, een eenmalige code, een item opslaan) komt bij je ontgrendelde 2Secret, op de telefoon of de desktop, als dezelfde vraag als bij een lokale agent; het eerste antwoord telt en op je andere apparaten sluit de vraag. De server geeft alleen verzegelde enveloppen door; hij kan ze niet lezen of vervalsen. Voor wie geen AI-agents gebruikt verandert er niets.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app één keer (dat ververst wat automatisch invullen mag invullen), log dan in Safari in op een website via de wachtwoordsuggestie en via "Wachtwoorden…" onderaan de lijst: het paneel heeft bovenaan het 2Secret-logo en de naam van de website.
-2. Zet het thema in 2Secret (Instellingen → Weergave) op donker en op licht, open de app één keer en vul opnieuw in: het paneel volgt.
-3. In de lijst toont een login met een website-icoon in 2Secret dat icoon; een login zonder toont het sleutelsymbool.
-4. Vul een eenmalige code in waar je die hebt, en log in met een passkey waar je die hebt.
-5. Al het andere als in 1.11: ontgrendelen met Face ID en met je hoofdwachtwoord, synchroniseren, delen, Watchtower.
+1. Werk bij, ontgrendel, open Instellingen: de nieuwe sectie "Agents op afstand" staat er, met "Agent koppelen" als je account met een server synchroniseert.
+2. Koppel een agent: voer op een computer met de 2Secret-opdrachtregel "2secret agent pair" uit met de code (of de link) die de telefoon toont. De dialoog op de telefoon noemt dan de agent en toont een vingerafdruk; "2secret agent status" op de computer toont dezelfde. Bevestig.
+3. Laat op die computer een AI-hulpmiddel via "2secret mcp --remote" je items zoeken en één wachtwoord lezen. De telefoon toont de vraag met de naam en vingerafdruk van de agent; probeer Toestaan en Weigeren, en "voor deze items tot 2Secret vergrendelt".
+4. Vergrendel 2Secret op de telefoon terwijl een vraag openstaat: de agent hoort dat het geweigerd is. Ontgrendel en vraag opnieuw.
+5. Trek de agent in onder Instellingen → Agents op afstand: het volgende verzoek van de agent mislukt en zegt dat hij is ingetrokken.
+6. Al het andere als in 1.11: ontgrendelen met Face ID en met je hoofdwachtwoord, automatisch invullen in Safari, synchroniseren, delen, Watchtower.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

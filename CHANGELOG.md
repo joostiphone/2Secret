@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.12.0
 
 **Agent Access, part three**: an AI agent on another computer asks your
 2Secret through your sync server, and you answer on your computer or phone.

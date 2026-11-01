@@ -1,13 +1,14 @@
-2Secret 1.11.1
+2Secret 1.12.0
 
 WHAT'S NEW
-The AutoFill panel in 2Secret's own look: when you fill a password, passkey or verification code in Safari or another app, the panel now shows the 2Secret logo and colours, follows the theme you chose in the app (light, dark or system), names the website it is for, and lists your logins with their website icons. The Face ID dialog says what happens ("2Secret is trying to unlock your vault for github.com"). Nothing changed in what AutoFill can fill.
+Agents elsewhere. An AI agent that does not run on your computer (Claude Code in the cloud, an agent on a server, a second machine) can now ask your 2Secret for your items through your sync server, and you answer on your iPhone. Under Settings → Agents elsewhere you pair such an agent with a code the app shows, confirm it after comparing its fingerprint, and see the agents you paired. Every request (a password, a one-time code, saving an item) comes to your unlocked 2Secret, on the phone or the desktop, as the same question as for a local agent; the first answer counts and the question closes on your other devices. The server only passes sealed envelopes along; it cannot read or forge them. Nothing changed for people who do not use AI agents.
 
 PLEASE TEST
-1. Update and open the app once (that refreshes what AutoFill may fill), then sign in to a website in Safari through the password suggestion and through "Passwords…" at the bottom of the list: the panel has the 2Secret logo and the website name at the top.
-2. Switch the theme in 2Secret (Settings → Appearance) to dark and to light, open the app once, and fill again: the panel follows.
-3. In the list, a login with a website icon in 2Secret shows that icon; one without shows the key symbol.
-4. Fill a one-time code where you have one, and sign in with a passkey where you have one.
-5. Everything else as in 1.11: unlock with Face ID and your master password, sync, sharing, Watchtower.
+1. Update, unlock, open Settings: the new section "Agents elsewhere" is there, with "Pair an agent" when your account syncs with a server.
+2. Pair an agent: on a computer with the 2Secret command line installed, run "2secret agent pair" with the code (or the link) the phone shows. The dialog on the phone then names the agent and shows a fingerprint; "2secret agent status" on the computer shows the same one. Confirm.
+3. On that computer, run "2secret mcp --remote" through an AI tool, or ask directly: "2secret agent fill" is for a browser there; for a simple test, let the AI tool search your items and read one password. The phone shows the question with the agent's name and fingerprint; try Allow and Deny, and "for these items until 2Secret locks".
+4. Lock the phone's 2Secret while a question is open: the agent is told it was refused. Unlock and ask again.
+5. Revoke the agent in Settings → Agents elsewhere: the agent's next request fails and says it was revoked.
+6. Everything else as in 1.11: unlock with Face ID and your master password, AutoFill in Safari, sync, sharing, Watchtower.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.
