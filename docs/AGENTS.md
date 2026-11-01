@@ -6,7 +6,9 @@ use the items in your vault through the [Model Context Protocol](https://modelco
 password it was not given, and whatever a program ran with stays out of the
 conversation. An AI agent that drives your browser can let 2Secret sign you in
 on a website without ever seeing the password (*Filling a login in your
-browser* below).
+browser* below). An agent on another computer than your 2Secret reaches it
+through your sync server, which cannot read what passes (*Agents elsewhere*
+below).
 
 ## How it works
 
@@ -195,10 +197,70 @@ at another data folder.
 | `save_login` | yes | A new item; with `generate_password` 2Secret makes the password and the model never sees it |
 | `update_item` | yes | Change title, user name, password, notes, websites or fields |
 | `run_command` | yes, once for all references | Run a program with `2s://` references in its environment; secrets are filtered out of the output |
-| `fill_login` | yes | Sign the user in on a website in their own browser: 2Secret fills and submits the sign-in page that is the active tab; the model never sees the password |
-| `agent_status` | no | Whether 2Secret is reachable, as which agent this connection is known, and which browsers are connected |
+| `fill_login` | yes | Sign the user in on a website in their own browser: 2Secret fills and submits the sign-in page that is the active tab; the model never sees the password. From elsewhere: the browser on the agent's computer, through its debugging port |
+| `agent_status` | no | Whether 2Secret is reachable, as which agent this connection is known, and which browsers are connected (or, elsewhere, the pairing and the debugging port) |
 
 Items are named by id (from `search_items`), exact title or a `2s://` reference.
+
+## Agents elsewhere
+
+An agent that does not run on your computer (Claude Code in the cloud, an
+agent on a server, a second machine) cannot reach the app's socket. It can
+reach your 2Secret through your sync server instead:
+
+```
+AI tool on the other computer
+   │ MCP
+   ▼
+2secret mcp --remote              its own keys (X25519, ML-KEM-768, Ed25519), kept in remote-<name>.json
+   │ sealed request, signed        the server relays envelopes it cannot open
+   ▼
+sync server (sync.2secret.app or yours)
+   │ long-poll
+   ▼
+your unlocked 2Secret             on your computer or your phone: the same question as for a local agent
+```
+
+Setting it up:
+
+1. In 2Secret, *Settings → Agents elsewhere → Pair an agent*. The dialog
+   shows a code (and a QR code of the link), valid for ten minutes, once.
+2. On the other computer, with the 2Secret command line installed, run
+   `2secret agent pair <code>` (paste the link, or the code with `--server`
+   when your server is not `sync.2secret.app`). Give the agent a name with
+   `--name` if you like; the computer's name is the default. The command
+   prints the agent's fingerprint.
+3. Back in 2Secret the dialog now names the agent and shows the same
+   fingerprint; press *Confirm agent*. Only an agent that holds the code can
+   get this far: the code carries a secret the server never sees, which the
+   agent proves to your app, and a hash of your account's keys, which the
+   agent checks against what the server hands it.
+4. Add 2Secret to the AI tool there with `2secret mcp --remote` (name the
+   pairing when there are several: `--remote <name>`), for example
+   `claude mcp add 2secret -- 2secret mcp --remote`.
+
+From then on the tools are the same as for a local agent. Each request is
+sealed to your account and signed by the agent; every unlocked 2Secret of
+yours (desktop and phone) shows the question, the first answer counts, and
+the answer travels back encrypted with a key only that request held. A
+request waits for your answer for ten minutes. Your permissions ("until
+2Secret locks", "for 8 hours") and the log are kept per device, as for local
+agents. Revoke an agent under *Settings → Agents elsewhere* on any device;
+`2secret agent unpair` forgets the pairing on the agent's computer.
+
+`fill_login` from elsewhere fills the browser on the *agent's* computer: start
+that browser with `--remote-debugging-port=9222` (Chrome, Edge, Brave,
+Chromium; a profile the agent uses, not your own) and 2Secret there with
+`2secret mcp --remote --cdp 127.0.0.1:9222`. After you allow it, 2Secret on
+that computer puts the login into the tab that belongs to the item's website
+through the browser's debugging port and submits it; the model only hears
+how it went. `2secret agent fill --item … --url …` does the same from the
+command line.
+
+The server sees agent ids, public keys and the sizes and times of requests,
+never a method, an item or a value. The wire format is in
+[AGENT-PROTOCOL.md](AGENT-PROTOCOL.md); the server needs 2Secret 1.12 or
+later (`sync.2secret.app` has it).
 
 ## Without the desktop app
 
@@ -230,5 +292,12 @@ and you decide. Keep in mind:
 - Agent Access is off by default and only in the desktop apps (macOS,
   Windows, Linux). The web vault and the phone apps have no socket; the
   browser extension only receives the logins you allow, through the app.
+  Agents elsewhere are answered by the desktop and the phone apps, only for
+  agents you paired and confirmed, and never by the web vault.
+- An agent elsewhere that is allowed to fill a login gets that login (the
+  2Secret program next to it does, to put it into the browser there); treat
+  a fill as giving that agent that one login for that one website, as with
+  the local browser. The other computer has to be one you trust with what
+  you allow it.
 
 See [docs/SECURITY.md](SECURITY.md) for the full picture.

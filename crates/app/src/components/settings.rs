@@ -29,6 +29,7 @@ pub fn SettingsPage() -> Element {
                 SecuritySection {}
                 AppearanceSection {}
                 DesktopSection {}
+                RemoteAgentsSection {}
                 ImportSection {}
                 ExportSection {}
                 UpdatesSection {}
@@ -853,6 +854,15 @@ fn DesktopSection() -> Element {
 #[cfg(not(feature = "desktop"))]
 #[component]
 fn DesktopSection() -> Element {
+    rsx! {}
+}
+
+#[cfg(any(feature = "desktop", feature = "mobile"))]
+use crate::remote_agents::RemoteAgentsSection;
+/// Only the desktop and the phone apps answer agents elsewhere.
+#[cfg(not(any(feature = "desktop", feature = "mobile")))]
+#[component]
+fn RemoteAgentsSection() -> Element {
     rsx! {}
 }
 

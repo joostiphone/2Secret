@@ -22,6 +22,10 @@ pub trait Backend {
     fn status(&mut self) -> Value;
     /// Whether `run_command` may run programs.
     fn may_run(&self) -> bool;
+    /// What the model is told at `initialize`.
+    fn instructions(&self) -> &'static str {
+        crate::mcp::INSTRUCTIONS
+    }
 }
 
 /// What a tool returns to the model.
@@ -222,6 +226,12 @@ pub fn call_tool(backend: &mut dyn Backend, name: &str, args: Value) -> ToolResu
         "agent_status" => ToolResult::json(&backend.status()),
         other => ToolResult::err(format!("unknown tool '{other}'")),
     }
+}
+
+/// For `2secret agent fill`: the login the owner allowed (the result of
+/// `fill` through the relay) into the browser, as the `fill_login` tool does.
+pub fn fill_through_browser(backend: &mut crate::remote::RemoteBackend, login: Value) -> Result<Value, String> {
+    backend.fill_login(login).map_err(|e| e.to_string())
 }
 
 fn forward(backend: &mut dyn Backend, method: &str, args: Value) -> ToolResult {

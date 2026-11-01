@@ -119,6 +119,10 @@ jobs:
           npx playwright install --with-deps chromium
           xvfb-run -a node extension/tests/passkeys.js
           xvfb-run -a node extension/tests/fill.js
+      - name: Filling through the browser's debugging port (agents elsewhere)
+        run: |
+          CHROME="$(node -e "console.log(require('playwright').chromium.executablePath())")" \
+            cargo test -p twosecret-agent --test cdp -- --ignored
       - uses: actions/upload-artifact@v4
         with:
           name: 2secret-extension

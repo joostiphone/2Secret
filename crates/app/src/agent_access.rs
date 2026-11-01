@@ -17,6 +17,14 @@
 //! reads the vault, it only waits for the logins the user allows an agent to
 //! fill (`fill`) and reports how the filling went. Those jobs wait in
 //! `fill_queue` and are served on the browsers' own threads.
+//!
+//! Agents on other computers reach the app through the sync server
+//! (`remote_agents`): their requests arrive opened and verified and take
+//! the same road to the user as a local agent's ([`submit_remote`]), on the
+//! desktop and on the phone. The socket and the browsers exist only on the
+//! desktop; on the phone that part of this module is not used.
+
+#![cfg_attr(not(feature = "desktop"), allow(dead_code))]
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -66,7 +74,21 @@ static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 
-type Reply = mpsc::Sender<Result<Value, AgentError>>;
+/// Where a request's answer goes: a socket thread waiting on a channel, or
+/// the task that relays it to an agent elsewhere.
+pub(crate) enum Reply {
+    Thread(mpsc::Sender<Result<Value, AgentError>>),
+    Remote(futures_channel::oneshot::Sender<Result<Value, AgentError>>),
+}
+
+impl Reply {
+    fn send(self, result: Result<Value, AgentError>) -> Result<(), ()> {
+        match self {
+            Reply::Thread(tx) => tx.send(result).map_err(|_| ()),
+            Reply::Remote(tx) => tx.send(result).map_err(|_| ()),
+        }
+    }
+}
 
 /// The logins allowed for filling, waiting for a browser; served on the
 /// browsers' threads, pushed by the UI thread.
@@ -99,7 +121,7 @@ enum Kind {
 struct AccessRequest {
     id: u64,
     kind: Kind,
-    reply: mpsc::Sender<Result<Value, AgentError>>,
+    reply: Reply,
 }
 
 #[derive(Clone, PartialEq)]
@@ -181,7 +203,7 @@ fn ask_ui(kind: Kind, generation: u64, wait: Duration) -> Result<Value, AgentErr
     }
     let id = NEXT_REQUEST.fetch_add(1, Ordering::SeqCst);
     let (reply, answer) = mpsc::channel();
-    REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).push(AccessRequest { id, kind, reply });
+    REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).push(AccessRequest { id, kind, reply: Reply::Thread(reply) });
     REQUEST.notify_one();
     match answer.recv_timeout(wait) {
         Ok(result) => result,
@@ -313,6 +335,7 @@ fn serve(reader: impl Read, mut writer: impl Write, peer: Peer, generation: u64)
     let identity = AgentIdentity::new(&agent_id, &hello, peer.exe.clone(), peer.parent);
     // A browser connection receives logins, so it has to be 2Secret's own
     // native messaging host: the same program as this one.
+    #[cfg(feature = "desktop")]
     if identity.role == Role::Browser && !crate::native_host::same_program(peer.exe.as_deref()) {
         let _ = write_reply(
             &mut writer,
@@ -502,7 +525,7 @@ pub fn use_agent_access() {
             loop {
                 UNLOCK.notified().await;
                 if *PHASE.peek() != Phase::Unlocked {
-                    crate::tray::show();
+                    show_window();
                 }
             }
         });
@@ -527,6 +550,7 @@ pub fn use_agent_access() {
         });
     });
     // Start or stop with the setting (once the preferences are read).
+    #[cfg(feature = "desktop")]
     use_effect(|| {
         let phase = PHASE.read().clone();
         let on = PREFS.read().agent_access;
@@ -547,13 +571,19 @@ pub fn use_agent_access() {
             *STATUS.write() = Status::Off;
         }
     });
-    // The store while unlocked; nothing is allowed after locking.
+    // The store while unlocked (local agents and agents elsewhere alike);
+    // nothing is allowed after locking. The socket threads only get through
+    // while the setting is on.
     use_effect(|| {
-        let unlocked = *PHASE.read() == Phase::Unlocked && PREFS.read().agent_access;
-        UNLOCKED.store(unlocked, Ordering::SeqCst);
+        let unlocked = *PHASE.read() == Phase::Unlocked;
+        let listening = unlocked && PREFS.read().agent_access;
+        UNLOCKED.store(listening, Ordering::SeqCst);
         if unlocked {
             if STORE.peek().is_none() {
                 *STORE.write() = Some(load_store());
+            }
+            if !listening {
+                clear_fills(AgentError::off());
             }
         } else {
             UNTIL_LOCK.with_borrow_mut(UntilLock::clear);
@@ -610,6 +640,42 @@ fn run(request: &Request) -> Result<Value, AgentError> {
         let guard = SESSION.peek();
         let session = guard.as_ref().ok_or_else(AgentError::locked)?;
         agent::execute(session, request)
+    }
+}
+
+/// A request from an agent elsewhere (`remote_agents`): opened and
+/// verified against the keys the owner confirmed, so the agent counts as
+/// paired; grants and the log work as for a local agent. Returns the id
+/// for [`withdraw`] and [`dismiss`].
+pub(crate) fn submit_remote(
+    identity: AgentIdentity,
+    request: Request,
+    reply: futures_channel::oneshot::Sender<Result<Value, AgentError>>,
+) -> u64 {
+    let id = NEXT_REQUEST.fetch_add(1, Ordering::SeqCst);
+    if let Some(store) = STORE.write().as_mut() {
+        store.pair(&identity, now());
+    }
+    handle(AccessRequest {
+        id,
+        kind: Kind::Call { agent: identity, request: Box::new(request) },
+        reply: Reply::Remote(reply),
+    });
+    id
+}
+
+/// The agent elsewhere stopped waiting (its request expired): the question
+/// goes, the log says so.
+pub(crate) fn withdraw(id: u64) {
+    cancel(id);
+}
+
+/// Another device of the owner answered: the question goes without a word
+/// in the log. Dropping the request refuses it here.
+pub(crate) fn dismiss(id: u64) {
+    let mut prompts = PROMPTS.write();
+    if let Some(at) = prompts.iter().position(|p| p.id == id) {
+        prompts.remove(at);
     }
 }
 
@@ -681,16 +747,29 @@ fn prompt(identity: AgentIdentity, ask: Ask, request: AccessRequest) {
         ask,
         request: std::rc::Rc::new(std::cell::RefCell::new(Some(request))),
     });
+    show_window();
+}
+
+/// Bring the window up for a question (the desktop may be in the tray).
+fn show_window() {
+    #[cfg(feature = "desktop")]
     crate::tray::show();
 }
 
 /// Answer an allowed request: run it, or hand a login to the browsers.
 fn complete(ask: &Ask, request: AccessRequest) {
     match &request.kind {
-        Kind::Call { request: req, .. } if matches!(**req, Request::Fill(_)) => {
+        Kind::Call { agent, request: req } if matches!(**req, Request::Fill(_)) => {
             let Request::Fill(params) = &**req else { unreachable!() };
             let params = params.clone();
-            start_fill(ask, &params, request);
+            if agent.remote {
+                // The agent's own 2Secret fills the page it controls (through
+                // the browser's debugging port); the model never sees this.
+                let result = build_fill(ask, &params).and_then(|c| Ok(serde_json::to_value(&c)?));
+                let _ = request.reply.send(result);
+            } else {
+                start_fill(ask, &params, request);
+            }
         }
         Kind::Call { request: req, .. } => {
             let result = run(req);
@@ -702,25 +781,26 @@ fn complete(ask: &Ask, request: AccessRequest) {
     }
 }
 
-/// The user allowed a fill: build the login (with the one-time code of
-/// right now) and queue it for the browsers; the agent's reply waits with it.
+/// The login the user allowed to be filled, with the one-time code of
+/// right now.
+fn build_fill(ask: &Ask, params: &FillParams) -> Result<agent::FillCommand, AgentError> {
+    let guard = SESSION.peek();
+    let session = guard.as_ref().ok_or_else(AgentError::locked)?;
+    let item = ask
+        .targets
+        .first()
+        .and_then(|t| session.item(&t.item_id))
+        .ok_or_else(|| AgentError::new(AgentError::NOT_FOUND, "the item is gone"))?;
+    let url = params.url.clone().unwrap_or_else(|| item.urls.first().cloned().unwrap_or_default());
+    let job_id = format!("f-{}", NEXT_JOB.fetch_add(1, Ordering::SeqCst));
+    agent::fill_command(item, &url, params.submit.unwrap_or(true), job_id)
+}
+
+/// The user allowed a fill: build the login and queue it for the browsers;
+/// the agent's reply waits with it.
 fn start_fill(ask: &Ask, params: &FillParams, request: AccessRequest) {
     let host = ask.detail.clone().unwrap_or_default();
-    let command = {
-        let guard = SESSION.peek();
-        let Some(session) = guard.as_ref() else {
-            let _ = request.reply.send(Err(AgentError::locked()));
-            return;
-        };
-        let item = ask.targets.first().and_then(|t| session.item(&t.item_id));
-        let Some(item) = item else {
-            let _ = request.reply.send(Err(AgentError::new(AgentError::NOT_FOUND, "the item is gone")));
-            return;
-        };
-        let url = params.url.clone().unwrap_or_else(|| item.urls.first().cloned().unwrap_or_default());
-        let job_id = format!("f-{}", NEXT_JOB.fetch_add(1, Ordering::SeqCst));
-        agent::fill_command(item, &url, params.submit.unwrap_or(true), job_id)
-    };
+    let command = build_fill(ask, params);
     match command {
         Err(e) => {
             let _ = request.reply.send(Err(e));
@@ -866,6 +946,7 @@ fn join(words: &[String]) -> String {
 pub fn AgentPrompt() -> Element {
     let mut scope = use_signal(|| Decision::Once);
     // The SSH agent's question goes first; two at once would overlap.
+    #[cfg(feature = "desktop")]
     if crate::ssh_agent::has_prompt() {
         return rsx! {};
     }
@@ -889,9 +970,14 @@ pub fn AgentPrompt() -> Element {
         },
         Kind::Connect(_) => true,
     });
+    let remote = prompt.identity.remote;
     let text = match (ask.action, ask.targets.as_slice()) {
         (ActionKind::Connect, _) if is_browser => t("agent.connect_browser_ask").replace("{browser}", &who),
         (ActionKind::Connect, _) => t("agent.connect_ask").replace("{agent}", &who),
+        (ActionKind::Fill, targets) if remote => t(if submit { "remote.fill_ask" } else { "remote.fill_only_ask" })
+            .replace("{agent}", &who)
+            .replace("{item}", &targets.first().map(|t| t.title.clone()).unwrap_or_default())
+            .replace("{host}", ask.detail.as_deref().unwrap_or_default()),
         (ActionKind::Fill, targets) => t(if submit { "agent.fill_ask" } else { "agent.fill_only_ask" })
             .replace("{agent}", &who)
             .replace("{item}", &targets.first().map(|t| t.title.clone()).unwrap_or_default())
@@ -941,7 +1027,7 @@ pub fn AgentPrompt() -> Element {
                 }
                 div { class: "modal-body col",
                     p { "{text}" }
-                    if ask.action == ActionKind::Fill {
+                    if ask.action == ActionKind::Fill && !remote {
                         p { class: "small", {t("agent.fill_hint")} }
                     }
                     if many {
@@ -954,6 +1040,9 @@ pub fn AgentPrompt() -> Element {
                     if let Some(reason) = ask.reason.as_deref() {
                         p { class: "small", {t("agent.reason").replace("{reason}", reason)} }
                     }
+                    if remote {
+                        div { class: "small muted", {crate::remote_agents::describe(&prompt.identity.id)} }
+                    } else {
                     match (&prompt.identity.exe, &prompt.identity.parent) {
                         (Some(exe), Some(parent)) => rsx! {
                             div { class: "small muted mono", {t("agent.program").replace("{path}", exe)} }
@@ -961,6 +1050,7 @@ pub fn AgentPrompt() -> Element {
                         },
                         (Some(exe), None) => rsx! { div { class: "small muted mono", {t("agent.program").replace("{path}", exe)} } },
                         _ => rsx! { div { class: "small muted", {t("agent.unverified")} } },
+                    }
                     }
                     if grantable {
                         label { class: "checkbox",
@@ -1013,7 +1103,8 @@ pub fn AgentAccessRow() -> Element {
     let gate_possible = kind.is_some() && biometric_unlock().is_some();
     let gate = PREFS.read().agent_biometric;
     let store = STORE.read();
-    let agents: Vec<_> = store.as_ref().map(|s| s.agents.clone()).unwrap_or_default();
+    let agents: Vec<_> =
+        store.as_ref().map(|s| s.agents.iter().filter(|a| !a.remote).cloned().collect()).unwrap_or_default();
     let ts = now();
     let grants = |id: &str| store.as_ref().map(|s| s.grants_of(id, ts).len()).unwrap_or(0);
     let log: Vec<_> = store.as_ref().map(|s| s.log.iter().rev().take(50).cloned().collect()).unwrap_or_default();
@@ -1127,7 +1218,7 @@ fn outcome_id(outcome: Outcome) -> &'static str {
 // The listener per operating system
 // ---------------------------------------------------------------------------
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "desktop"))]
 mod os {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
@@ -1246,7 +1337,7 @@ mod os {
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "desktop"))]
 pub(crate) mod os {
     use std::os::windows::io::FromRawHandle;
     use std::sync::atomic::Ordering;

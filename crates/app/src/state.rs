@@ -153,6 +153,8 @@ pub enum Modal {
     /// The server reports other public keys for someone than this device
     /// knew; the person can trust the new keys after comparing them.
     KeysChanged(twosecret_core::profile::KeyChange),
+    /// Pair an AI agent on another computer (`remote_agents`).
+    PairAgent,
 }
 
 /// What a menu opened with a long press or a right click is for.

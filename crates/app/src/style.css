@@ -499,6 +499,8 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2); color: var(--text); }
 
 /* Configuration to copy (SSH agent) */
+.qr-box { display: inline-block; line-height: 0; padding: 8px; border-radius: 8px; background: #fff; border: 1px solid var(--border); }
+.qr-box svg { display: block; width: 200px; height: 200px; }
 .code-block { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--code); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; user-select: text; }
 
 /* Phones (the iPhone and Android apps, the web vault on a phone): Liquid

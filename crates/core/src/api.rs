@@ -7,7 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{EncString, EncryptedKeyset, KdfParams, WrappedKey};
+use crate::agent_remote::RemotePublicKeys;
+use crate::crypto::{EncString, EncryptedKeyset, HybridSealedBox, KdfParams, WrappedKey};
 use crate::profile::Role;
 
 pub const API_VERSION: &str = "v1";
@@ -443,4 +444,122 @@ pub struct EmergencyOverview {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmergencyRevoked {
     pub vault_ids: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Agents elsewhere (`crate::agent_remote`)
+// ---------------------------------------------------------------------------
+
+/// The owner registers a pairing code: the server keeps only the hash of
+/// its token (`agent_remote::pairing_token_hash`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreatePairingRequest {
+    pub token_hash: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreatePairingResponse {
+    pub expires_at: i64,
+}
+
+/// What an agent with a valid token learns before it pairs: the account's
+/// public keys to seal its proof to (it checks them against the code).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PairingInfo {
+    pub x25519: String,
+    pub ml_kem: String,
+    pub expires_at: i64,
+}
+
+/// `POST /agents/pair`, signed with the agent's `X-2Secret-Agent` header.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PairAgentRequest {
+    pub token: String,
+    pub keys: RemotePublicKeys,
+    /// `agent_remote::seal_proof`: the code's secret and the keys, sealed to
+    /// the account.
+    pub proof: HybridSealedBox,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PairAgentResponse {
+    pub agent_id: String,
+    /// Until when the owner can confirm the pairing.
+    pub expires_at: i64,
+}
+
+/// An agent in the owner's list: pending (a `proof`, no `record` yet) or
+/// confirmed (a `record` every device of the account can open).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentDto {
+    pub id: String,
+    pub keys: RemotePublicKeys,
+    /// The pairing code's token hash, while the agent is pending.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<HybridSealedBox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record: Option<EncString>,
+    pub created_at: i64,
+    /// Until when a pending agent can be confirmed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<i64>,
+}
+
+/// `PUT /agents/{id}`: the owner confirms an agent with its encrypted record.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConfirmAgentRequest {
+    pub record: EncString,
+}
+
+/// `POST /agent/requests`: a sealed request from an agent.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PostAgentRequest {
+    /// `agent_remote::new_request_id`, chosen by the agent.
+    pub id: String,
+    pub request: HybridSealedBox,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PostAgentRequestResponse {
+    pub expires_at: i64,
+}
+
+/// An open request as the owner's devices fetch it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentRequestDto {
+    pub id: String,
+    pub agent_id: String,
+    pub request: HybridSealedBox,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+/// `POST /agents/requests/{id}/answer`: the answer, encrypted with the
+/// reply key from the request.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentAnswerRequest {
+    pub answer: EncString,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRequestState {
+    Open,
+    Answered,
+    /// The owner said no without an answer, or the agent was revoked.
+    Denied,
+    Expired,
+}
+
+/// `GET /agent/requests/{id}`: what became of a request. An answer is
+/// handed out once and then deleted.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentRequestStatus {
+    pub status: AgentRequestState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<EncString>,
 }

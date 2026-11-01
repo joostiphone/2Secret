@@ -21,6 +21,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 use twosecret_core::api::*;
+use twosecret_core::crypto::EncString;
 
 pub use flows::*;
 
@@ -366,6 +367,137 @@ impl Client {
 
     pub async fn remove_emergency_contact(&self, id: &str) -> Result<EmergencyRevoked> {
         self.json(Method::DELETE, &format!("/emergency/{id}"), None::<&()>).await
+    }
+
+    // --- Agents elsewhere (`twosecret_core::agent_remote`), the owner's side ---
+
+    /// Register a pairing code (its token hash) for [`PAIRING_SECONDS`].
+    ///
+    /// [`PAIRING_SECONDS`]: twosecret_core::agent_remote::PAIRING_SECONDS
+    pub async fn create_agent_pairing(&self, token_hash: &str) -> Result<CreatePairingResponse> {
+        let req = CreatePairingRequest { token_hash: token_hash.to_string() };
+        self.json(Method::POST, "/agents/pairings", Some(&req)).await
+    }
+
+    /// The agents elsewhere of this account: pending and confirmed.
+    pub async fn agents(&self) -> Result<Vec<AgentDto>> {
+        self.json(Method::GET, "/agents", None::<&()>).await
+    }
+
+    /// Confirm a pending agent with its encrypted record.
+    pub async fn confirm_agent(&self, agent_id: &str, record: EncString) -> Result<()> {
+        self.empty(Method::PUT, &format!("/agents/{agent_id}"), Some(&ConfirmAgentRequest { record })).await
+    }
+
+    pub async fn revoke_agent(&self, agent_id: &str) -> Result<()> {
+        self.empty(Method::DELETE, &format!("/agents/{agent_id}"), None::<&()>).await
+    }
+
+    /// Open requests of this account's agents; with `wait` seconds (at most
+    /// [`MAX_WAIT_SECONDS`]) the server holds the call until one arrives.
+    ///
+    /// [`MAX_WAIT_SECONDS`]: twosecret_core::agent_remote::MAX_WAIT_SECONDS
+    pub async fn agent_requests(&self, wait: u32) -> Result<Vec<AgentRequestDto>> {
+        self.json(Method::GET, &format!("/agents/requests?wait={wait}"), None::<&()>).await
+    }
+
+    /// Answer a request (409 when another device answered first).
+    pub async fn answer_agent_request(&self, request_id: &str, answer: EncString) -> Result<()> {
+        let path = format!("/agents/requests/{request_id}/answer");
+        self.empty(Method::POST, &path, Some(&AgentAnswerRequest { answer })).await
+    }
+
+    pub async fn deny_agent_request(&self, request_id: &str) -> Result<()> {
+        self.empty(Method::POST, &format!("/agents/requests/{request_id}/deny"), None::<&()>).await
+    }
+
+    /// The account keys behind a pairing token (no sign-in; the agent calls
+    /// this before it pairs).
+    pub async fn agent_pairing_info(&self, token: &str) -> Result<PairingInfo> {
+        self.json(Method::GET, &format!("/agent/pairing/{token}"), None::<&()>).await
+    }
+}
+
+/// The agent's side of the relay: every call carries the signed
+/// `X-2Secret-Agent` header over the method, the path, the body and a fresh
+/// time and nonce ([`HttpSignature`]).
+///
+/// [`HttpSignature`]: twosecret_core::agent_remote::HttpSignature
+pub struct AgentClient {
+    base: String,
+    http: reqwest::Client,
+    keys: twosecret_core::agent_remote::RemoteKeys,
+}
+
+impl std::fmt::Debug for AgentClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AgentClient({}, {})", self.base, self.keys.agent_id())
+    }
+}
+
+impl AgentClient {
+    pub fn new(base_url: &str, keys: twosecret_core::agent_remote::RemoteKeys) -> Self {
+        Self { base: normalize_server_url(base_url), http: build_http(), keys }
+    }
+
+    pub fn keys(&self) -> &twosecret_core::agent_remote::RemoteKeys {
+        &self.keys
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base
+    }
+
+    async fn signed<T: DeserializeOwned>(&self, method: Method, path: &str, body: Vec<u8>) -> Result<T> {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !secure_server_url(&self.base) {
+            return Err(Error::InsecureServer);
+        }
+        let full_path = format!("/api/v1{path}");
+        let sig = twosecret_core::agent_remote::HttpSignature::sign(
+            &self.keys,
+            method.as_str(),
+            &full_path,
+            &body,
+            twosecret_core::util::now(),
+        );
+        let mut req = self
+            .http
+            .request(method, format!("{}{full_path}", self.base))
+            .header(twosecret_core::agent_remote::HTTP_HEADER, sig.header());
+        if !body.is_empty() {
+            req = req.header(reqwest::header::CONTENT_TYPE, "application/json").body(body);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.is_success() {
+            return resp.json::<T>().await.map_err(|e| Error::Protocol(e.to_string()));
+        }
+        let text = resp.text().await.unwrap_or_default();
+        let (code, message) = match serde_json::from_str::<ErrorResponse>(&text) {
+            Ok(e) => (e.error, e.message),
+            Err(_) => ("http_error".to_string(), format!("server returned HTTP {}", status.as_u16())),
+        };
+        Err(Error::Api { status: status.as_u16(), code, message })
+    }
+
+    /// Pair with the account behind a code: the proof is
+    /// `agent_remote::seal_proof`.
+    pub async fn pair(&self, req: &PairAgentRequest) -> Result<PairAgentResponse> {
+        self.signed(Method::POST, "/agent/pair", serde_json::to_vec(req).map_err(|e| Error::Protocol(e.to_string()))?)
+            .await
+    }
+
+    /// Post a sealed request (`agent_remote::seal_request`).
+    pub async fn post_request(&self, req: &PostAgentRequest) -> Result<PostAgentRequestResponse> {
+        let body = serde_json::to_vec(req).map_err(|e| Error::Protocol(e.to_string()))?;
+        self.signed(Method::POST, "/agent/requests", body).await
+    }
+
+    /// What became of a request; with `wait` seconds the server holds the
+    /// call until the owner answers. An answer is handed out once.
+    pub async fn request_status(&self, request_id: &str, wait: u32) -> Result<AgentRequestStatus> {
+        self.signed(Method::GET, &format!("/agent/requests/{request_id}?wait={wait}"), Vec::new()).await
     }
 }
 

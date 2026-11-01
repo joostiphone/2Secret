@@ -238,9 +238,50 @@ pub fn fill_rules(item_urls: &[String]) -> Vec<FillRule> {
     out
 }
 
+/// May a page at `page_url` receive an item's credentials under `rules`?
+/// The Rust side of `twosecretAllowed` in the browser extension: the host
+/// has to equal a rule's domain or be a subdomain of it (not for an `exact`
+/// rule), plain `http` is refused where the item is `https`, and a port the
+/// item names has to match.
+pub fn fill_allowed(page_url: &str, rules: &[FillRule]) -> bool {
+    let Ok(page) = url::Url::parse(page_url.trim()) else { return false };
+    if !matches!(page.scheme(), "https" | "http") {
+        return false;
+    }
+    let Some(host) = page.host_str().map(|h| h.trim_end_matches('.').to_lowercase()) else { return false };
+    let Some(port) = page.port_or_known_default() else { return false };
+    rules.iter().any(|r| {
+        (host == r.domain || (!r.exact && host.ends_with(&format!(".{}", r.domain))))
+            && (!r.https || page.scheme() == "https")
+            && r.port.is_none_or(|p| p == port)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fill_allowed_mirrors_the_extension() {
+        let github = fill_rules(&["https://github.com/login".into()]);
+        assert!(fill_allowed("https://github.com/session", &github));
+        assert!(fill_allowed("https://gist.github.com/x", &github));
+        assert!(fill_allowed("https://GitHub.com./", &github));
+        assert!(!fill_allowed("http://github.com/", &github), "no downgrade");
+        assert!(!fill_allowed("https://github.com.evil.example/", &github));
+        assert!(!fill_allowed("https://evil.example/?github.com", &github));
+        assert!(!fill_allowed("file:///github.com", &github));
+        assert!(!fill_allowed("chrome://newtab", &github));
+        assert!(!fill_allowed("", &github));
+        let pages = fill_rules(&["https://github.io".into()]);
+        assert!(fill_allowed("https://github.io/", &pages));
+        assert!(!fill_allowed("https://mallory.github.io/", &pages), "exact rule");
+        let router = fill_rules(&["http://10.0.0.1:8080".into()]);
+        assert!(fill_allowed("http://10.0.0.1:8080/admin", &router));
+        assert!(!fill_allowed("http://10.0.0.1/admin", &router));
+        assert!(fill_allowed("https://10.0.0.1:8080/", &router), "https where the item is http is fine");
+        assert!(!fill_allowed("https://example.com/", &[]));
+    }
 
     #[test]
     fn civil_roundtrip() {

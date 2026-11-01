@@ -79,6 +79,8 @@ impl AgentError {
     pub const NO_BROWSER: i64 = -32007;
     /// The browser could not fill: no matching tab, or no fields on the page.
     pub const FILL_FAILED: i64 = -32008;
+    /// An agent elsewhere that paired but was not confirmed by the owner yet.
+    pub const NOT_CONFIRMED: i64 = -32009;
     pub const METHOD_NOT_FOUND: i64 = -32601;
     pub const INVALID_PARAMS: i64 = -32602;
     pub const INTERNAL: i64 = -32603;
@@ -97,6 +99,17 @@ impl AgentError {
     }
     pub fn not_paired() -> Self {
         Self::new(Self::NOT_PAIRED, "connect first (hello, then auth)")
+    }
+    /// An agent elsewhere whose pairing the owner has not confirmed.
+    pub fn not_confirmed() -> Self {
+        Self::new(
+            Self::NOT_CONFIRMED,
+            "the owner has not confirmed this agent yet: in 2Secret, Settings → Agents elsewhere",
+        )
+    }
+    /// An agent elsewhere the owner revoked; it has to pair again.
+    pub fn revoked() -> Self {
+        Self::new(Self::NOT_PAIRED, "the owner revoked this agent in 2Secret; pair again with a new code")
     }
     pub fn off() -> Self {
         Self::new(Self::OFF, "Agent Access is turned off in 2Secret (Settings → Desktop app)")
@@ -237,9 +250,31 @@ pub struct AgentIdentity {
     /// The parent as the agent itself claims it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_parent: Option<String>,
+    /// An agent on another computer, through the relay on the sync server
+    /// (`crate::agent_remote`); then `exe` and `parent` are unknown.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote: bool,
 }
 
 impl AgentIdentity {
+    /// The identity of an agent elsewhere, from the record the owner
+    /// confirmed (`crate::agent_remote::AgentRecordData`).
+    pub fn remote_agent(id: &str, name: &str, version: &str, ed25519: &str) -> Self {
+        let name = clean_label(name, NAME_MAX);
+        Self {
+            id: id.to_string(),
+            name: if name.is_empty() { "An AI agent".to_string() } else { name },
+            version: clean_label(version, 40),
+            public_key: ed25519.to_string(),
+            role: Role::Agent,
+            browser: None,
+            exe: None,
+            parent: None,
+            claimed_parent: None,
+            remote: true,
+        }
+    }
+
     /// Builds the identity from a verified `hello`; cleans what the agent said.
     pub fn new(id: &str, hello: &HelloParams, exe: Option<String>, parent: Option<String>) -> Self {
         let name = clean_label(&hello.name, NAME_MAX);
@@ -259,6 +294,7 @@ impl AgentIdentity {
             exe,
             parent,
             claimed_parent: hello.parent.as_deref().map(|p| clean_label(p, NAME_MAX)).filter(|p| !p.is_empty()),
+            remote: false,
         }
     }
 
@@ -1129,6 +1165,9 @@ pub struct AgentRecord {
     pub role: Role,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// An agent elsewhere (see [`AgentIdentity::remote`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote: bool,
     pub first_seen: i64,
     pub last_seen: i64,
 }
@@ -1230,6 +1269,7 @@ impl AgentStore {
                 a.parent = identity.parent.clone();
                 a.role = identity.role;
                 a.browser = identity.browser.clone();
+                a.remote = identity.remote;
                 a.last_seen = now;
             }
             None => self.agents.push(AgentRecord {
@@ -1240,6 +1280,7 @@ impl AgentStore {
                 parent: identity.parent.clone(),
                 role: identity.role,
                 browser: identity.browser.clone(),
+                remote: identity.remote,
                 first_seen: now,
                 last_seen: now,
             }),

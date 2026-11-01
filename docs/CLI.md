@@ -149,6 +149,18 @@ claude mcp add 2secret -- 2secret mcp     # Claude Code
 2secret mcp --standalone --allow-run       # … plus run_command, without anyone approving
 ```
 
+On a computer without your 2Secret (a server, a cloud machine), pair it with
+your account through your sync server and let the AI tool there ask your
+2Secret on your computer or phone (see [AGENTS.md](AGENTS.md), *Agents
+elsewhere*):
+
+```sh
+2secret agent pair '<code or link from 2Secret → Settings → Agents elsewhere>' [--name "Build server"] [--server https://…]
+2secret mcp --remote [NAME] [--cdp 127.0.0.1:9222]   # NAME when several pairings; --cdp for fill_login
+2secret agent fill --item GitHub --url https://github.com/login [--cdp 127.0.0.1:9222] [--no-submit]
+2secret agent unpair [NAME]                # forget the pairing here; revoke it in 2Secret as well
+```
+
 ## Tools
 
 ```sh

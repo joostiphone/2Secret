@@ -244,6 +244,14 @@ enum Command {
         /// The name 2Secret shows for this agent (default: the AI tool's own name).
         #[arg(long)]
         name: Option<String>,
+        /// Through the sync server, for an AI tool on another computer than 2Secret: the pairing made with
+        /// `2secret agent pair` (its name; the only one when left out).
+        #[arg(long, value_name = "PAIRING", num_args = 0..=1, default_missing_value = "", conflicts_with = "standalone")]
+        remote: Option<String>,
+        /// With --remote: the browser's debugging port for fill_login (`--remote-debugging-port=9222` →
+        /// 127.0.0.1:9222).
+        #[arg(long, requires = "remote")]
+        cdp: Option<String>,
     },
 
     /// Agent Access: how AI tools on this computer reach 2Secret.
@@ -379,7 +387,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             tools::share(&ctx, &item, &expires, views, password, &fields, !no_notes)
         }
         Command::Shares { revoke } => tools::shares(&ctx, revoke.as_deref()),
-        Command::Mcp { standalone, allow_run, name } => agent::mcp(&ctx, standalone, allow_run, name),
+        Command::Mcp { standalone, allow_run, name, remote, cdp } => {
+            agent::mcp(&ctx, standalone, allow_run, name, remote, cdp)
+        }
         Command::Agent(cmd) => agent::run(&ctx, cmd),
         Command::ClipboardDaemon { .. } => Ok(()),
     }

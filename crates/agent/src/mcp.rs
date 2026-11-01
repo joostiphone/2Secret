@@ -13,16 +13,21 @@
 //! the master password) and therefore cannot ask anyone: it only searches,
 //! shows items without secrets and generates passwords; `run_command` only
 //! with `allow_run`.
+//!
+//! [`Mode::Remote`] is for an agent on another computer than the owner's
+//! 2Secret: the calls go through the sync server to the owner's apps
+//! (`remote`), which ask the user there.
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
 use serde_json::{json, Value};
-use twosecret_core::agent::{self, AgentError, Request};
+use twosecret_core::agent::{self, Request};
 use twosecret_core::Session;
 
 use crate::client::{endpoint, AppClient, ClientError};
 use crate::key::AgentKey;
+use crate::remote::{rpc_text, RemoteBackend};
 use crate::tools::{self, Backend};
 
 /// Protocol versions this server speaks; the newest last.
@@ -46,6 +51,10 @@ pub enum Mode {
     },
     /// Directly on the vault, without approvals.
     Standalone { session: Box<Session>, allow_run: bool },
+    /// Through the sync server to the owner's 2Secret elsewhere, as the
+    /// pairing `name` (the only one when `None`); `cdp` is the browser's
+    /// debugging port for `fill_login`.
+    Remote { home: PathBuf, name: Option<String>, cdp: Option<String> },
 }
 
 struct AppBackend {
@@ -85,15 +94,7 @@ impl AppBackend {
 /// A message for the model about a failed request.
 fn describe(e: &ClientError) -> String {
     match e {
-        ClientError::Rpc(err) => match err.code {
-            AgentError::DENIED => "The user did not allow this in 2Secret.".to_string(),
-            AgentError::TIMEOUT => "The user did not answer 2Secret's question in time.".to_string(),
-            AgentError::LOCKED => "2Secret is locked. Ask the user to unlock it, then try again.".to_string(),
-            AgentError::OFF => {
-                "Agent Access is turned off in 2Secret (Settings → Desktop app → AI agents).".to_string()
-            }
-            _ => err.message.clone(),
-        },
+        ClientError::Rpc(err) => rpc_text(err),
         other => other.to_string(),
     }
 }
@@ -171,6 +172,7 @@ impl Backend for StandaloneBackend {
 enum BackendImpl {
     App(Box<AppBackend>),
     Standalone(Box<StandaloneBackend>),
+    Remote(Box<RemoteBackend>),
 }
 
 impl Backend for BackendImpl {
@@ -178,18 +180,28 @@ impl Backend for BackendImpl {
         match self {
             BackendImpl::App(b) => b.call(method, params),
             BackendImpl::Standalone(b) => b.call(method, params),
+            BackendImpl::Remote(b) => b.call(method, params),
         }
     }
     fn status(&mut self) -> Value {
         match self {
             BackendImpl::App(b) => b.status(),
             BackendImpl::Standalone(b) => b.status(),
+            BackendImpl::Remote(b) => b.status(),
         }
     }
     fn may_run(&self) -> bool {
         match self {
             BackendImpl::App(b) => b.may_run(),
             BackendImpl::Standalone(b) => b.may_run(),
+            BackendImpl::Remote(b) => b.may_run(),
+        }
+    }
+    fn instructions(&self) -> &'static str {
+        match self {
+            BackendImpl::App(b) => b.instructions(),
+            BackendImpl::Standalone(b) => b.instructions(),
+            BackendImpl::Remote(b) => b.instructions(),
         }
     }
 }
@@ -203,6 +215,7 @@ pub fn run(mode: Mode) -> io::Result<()> {
         Mode::Standalone { session, allow_run } => {
             BackendImpl::Standalone(Box::new(StandaloneBackend { session, allow_run }))
         }
+        Mode::Remote { home, name, cdp } => BackendImpl::Remote(Box::new(RemoteBackend::new(home, name, cdp)?)),
     };
     let stdin = io::stdin();
     let mut stdout = io::stdout().lock();
@@ -270,7 +283,7 @@ impl Server {
                     "protocolVersion": version,
                     "capabilities": { "tools": { "listChanged": false } },
                     "serverInfo": { "name": "2secret", "title": "2Secret", "version": crate::VERSION },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": backend.instructions(),
                 })
             }
             "ping" => json!({}),

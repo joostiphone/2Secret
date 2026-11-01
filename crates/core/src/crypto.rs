@@ -286,7 +286,7 @@ impl KdfParams {
 // Secret Key
 // ---------------------------------------------------------------------------
 
-const SK_ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+pub(crate) const SK_ALPHABET: &[u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 /// Random characters in a new Secret Key: 26 × 5 = 130 bits of entropy.
 const SK_RANDOM_CHARS: usize = 26;
 /// Keys created by 2Secret 1.0 have 25 random characters (125 bits) and keep

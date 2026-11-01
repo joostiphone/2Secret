@@ -41,6 +41,7 @@ target including `wasm32-unknown-unknown`.
 | `import`, `export` | 1Password, Bitwarden, KeePass, CSV importers; JSON/CSV/encrypted export |
 | `secret_ref` | `2s://` references, template injection |
 | `agent` | Agent Access: the socket protocol, agent identity (Ed25519), consent (`Ask`, grants, the encrypted store and log) and running requests against a `Session` |
+| `agent_remote` | Agents elsewhere: pairing codes, the agent's keys, the sealed and signed envelopes and the signed HTTP header of the relay through the sync server ([AGENT-PROTOCOL.md](AGENT-PROTOCOL.md)) |
 | `emergency_kit` | Printable Emergency Kit |
 | `storage` | Key/value storage trait, file and memory backends |
 
@@ -72,7 +73,10 @@ program's output. Used by the CLI. It also holds the browser side of agentic
 autofill: the native messaging host loop (`host`, run by the desktop app when
 a browser starts it, 4-byte-length frames on stdin/stdout, connected to the
 app as role `browser`) and where each browser looks for the host manifest
-(`native_host`). See [AGENTS.md](AGENTS.md).
+(`native_host`). For an agent on another computer, `remote` pairs with an
+account and is the MCP backend that works through the sync server, and `cdp`
+fills a login into the browser there through its debugging port. See
+[AGENTS.md](AGENTS.md).
 
 ### `twosecret-app`
 
@@ -80,9 +84,11 @@ Dioxus 0.7 app with features `desktop`, `web`, `mobile` and `extension`.
 `platform.rs` contains the few platform-specific pieces (storage, timers,
 background work, clipboard, downloads); `extension.rs` the browser-extension
 bridge; `agent_access.rs` the socket for AI agents and browsers with the
-consent flow, `fill_queue.rs` the logins waiting for a browser, and
-`native_host.rs` the host registration per browser and the host mode of the
-binary; `components/` the UI; `i18n.rs` English and Dutch strings.
+consent flow (the consent part also on the phone), `remote_agents.rs` the
+pairing, the list and the requests of agents elsewhere, `fill_queue.rs` the
+logins waiting for a browser, and `native_host.rs` the host registration per
+browser and the host mode of the binary; `components/` the UI; `i18n.rs`
+English and Dutch strings.
 
 ## HTTP API (`/api/v1`)
 
@@ -103,6 +109,11 @@ binary; `components/` the UI; `i18n.rs` English and Dutch strings.
 | `GET/POST /vaults/{id}/members` | ✓ | List members, share (manager+) |
 | `PUT/DELETE /vaults/{id}/members/{account}` | ✓ | Change role, revoke |
 | `POST /sync` | ✓ | Upload changes and download everything newer |
+| `GET/POST /shares`, `GET/DELETE /shares/{id}`, `POST /shares/{id}/open` | ✓ / – | Share links (see SECURITY.md) |
+| `GET /emergency`, `POST /emergency`, `…/{id}/keys|request|approve|reject|open`, `DELETE /emergency/{id}` | ✓ | Emergency access |
+| `POST /agents/pairings`, `GET /agents`, `PUT/DELETE /agents/{id}` | ✓ | Agents elsewhere: register a pairing code, list, confirm, revoke |
+| `GET /agents/requests?wait=`, `POST /agents/requests/{id}/answer|deny` | ✓ | Their requests (long-poll) and the owner's answers |
+| `GET /agent/pairing/{token}`, `POST /agent/pair`, `POST /agent/requests`, `GET /agent/requests/{id}?wait=` | agent header | The agent's side ([AGENT-PROTOCOL.md](AGENT-PROTOCOL.md)) |
 
 ### Sync protocol
 
@@ -134,4 +145,6 @@ preferences), `biometric.json`, `agents.json` (agents, permissions and log,
 encrypted with the account key), the SSH agent's `agent.sock` and Agent
 Access's `access.sock`; `2secret mcp` keeps `agent-key-<tool>.json`, the
 browser connection `agent-key-browser-<browser>.json` (and on Windows the
-host manifests under `native-host/`).
+host manifests under `native-host/`). On a computer paired as an agent
+elsewhere, `remote-<name>.json` holds the server, the account's public keys
+and the root of the agent's keys.

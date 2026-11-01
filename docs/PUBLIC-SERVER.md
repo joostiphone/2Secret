@@ -83,6 +83,8 @@ both containers a fixed address (`--ip`, or a DHCP reservation). Without
 | `--listen` | `TWOSECRET_BIND` | `127.0.0.1:8743` | Address to listen on |
 | `--trusted-proxy` | `TWOSECRET_TRUSTED_PROXIES` | none | Proxies on other machines whose `--ip-header` is believed |
 | `--no-web` | `TWOSECRET_WEB_DIR` | web vault on | Serve the web vault on the same address |
+| – | `TWOSECRET_MAX_AGENTS` | `20` | AI agents elsewhere one account may pair |
+| – | `TWOSECRET_MAX_AGENT_REQUESTS` | `20` | Requests one such agent may have waiting |
 
 A sync that would exceed the storage limit stores nothing of the overflow:
 those changes stay on the device and the app says so; nothing is lost.

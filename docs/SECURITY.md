@@ -109,6 +109,11 @@ so the server cannot swap ciphertexts around undetected:
 | Vault metadata (name, description) | `2secret/v1/vault-meta/<vault id>` |
 | Item | `2secret/v1/item/<vault id>/<item id>` |
 | Sync token (on device) | `2secret/v1/server-token/<account id>` |
+| Agents, permissions and log (on device, `agents.json`) | `2secret/v1/agents/<account id>` |
+| Pairing proof of an agent elsewhere | `2secret/v1/agent-pair/<token hash>` |
+| Record of an agent elsewhere (on the server) | `2secret/v1/agent-record/<account id>/<agent id>` |
+| Request of an agent elsewhere | `2secret/v1/agent-request/<request id>` |
+| Answer to an agent elsewhere | `2secret/v1/agent-answer/<request id>` |
 
 An item moved by the server to another vault, or replaced by a different
 item's ciphertext, fails to decrypt. The decrypted item id is also checked.
@@ -132,6 +137,8 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 | Share links' expiry, views left, whether they have a password, their proof | yes (the proof as a SHA-256 hash) |
 | Emergency contacts, their waiting periods and requests | yes |
 | Vault keys for emergency contacts | **no** (sealed to the contact's public keys) |
+| Agents elsewhere: their public keys, which account, when paired and last seen; the hashes of open pairing codes | yes |
+| What an agent elsewhere asks and is answered; its name and the computer it runs on | **no** (sealed to the account, signed by the agent; answers encrypted with a key from the request; the record encrypted with the account key). The server sees sizes and times |
 
 **Unknown accounts:** the pre-login endpoint answers unknown e-mail addresses
 with stable fake salts (derived from a per-installation server secret), and
@@ -420,6 +427,21 @@ conflict never silently loses a password. Deletions are tombstones.
   questions are refused. `run_command` gives a program the values of `2s://`
   references and replaces them by the references in the output the model
   reads; the master password and shell session never reach the program.
+  **Agents elsewhere** (desktop and phone): an agent on another computer
+  pairs with a code from the app (a random seed, from which a token for the
+  server and a secret the server never sees follow, plus a hash of the
+  account's public keys). The agent makes X25519, ML-KEM-768 and Ed25519
+  keys from one random root, checks the account keys the server hands it
+  against the code, and seals the secret and its keys to the account; the
+  app that made the code opens the proof, compares, and only then stores
+  an encrypted record of the agent (name, keys, fingerprint) on the server
+  for every device of the account. Requests are sealed to the account and
+  signed inside with the agent's key, which the app checks against the
+  pinned record, and carry a fresh reply key; answers are encrypted with
+  it. The server verifies a signed header for routing and limits but cannot
+  read, forge or alter a request or an answer. The agent's keys live in
+  `remote-<name>.json` on its computer (`0600`). See
+  [AGENT-PROTOCOL.md](AGENT-PROTOCOL.md).
   An agent may also ask 2Secret to sign the user in on a website in the
   user's own browser (`fill`): after consent the app hands the user name,
   password and current one-time code of that one item, once, to the browser
@@ -571,5 +593,12 @@ the apps warn about this.
   by an agent that drives that browser until the page is submitted. The
   program identity shown is what the operating system reports about the
   socket's peer; code signatures are not checked yet.
+- Agents elsewhere: the server learns which agent asked when and how large
+  the question and answer were (never their content); the permissions and
+  the log of such an agent live on the device that answered, not on all
+  devices; a phone answers only while 2Secret is open there (there are no
+  push notifications); and an agent elsewhere that may fill a login
+  receives that login on its own computer, so that computer has to be
+  trusted with what the user allows.
 - 2Secret has not yet had an independent security audit. Reviews are very
   welcome.

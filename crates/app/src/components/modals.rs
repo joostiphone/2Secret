@@ -36,7 +36,17 @@ pub fn ModalHost() -> Element {
         Some(Modal::Backup) => rsx! { BackupModal {} },
         Some(Modal::SetUpCode(uri)) => rsx! { SetUpCodeModal { uri } },
         Some(Modal::KeysChanged(change)) => rsx! { KeysChangedModal { change } },
+        Some(Modal::PairAgent) => rsx! { PairAgentModal {} },
     }
+}
+
+#[cfg(any(feature = "desktop", feature = "mobile"))]
+use crate::remote_agents::PairAgentModal;
+/// Only the desktop and the phone apps answer agents elsewhere.
+#[cfg(not(any(feature = "desktop", feature = "mobile")))]
+#[component]
+fn PairAgentModal() -> Element {
+    rsx! {}
 }
 
 /// The server reports other public keys for someone than this device knew,

@@ -7,6 +7,8 @@
 //! It can also serve the 2Secret web app, so a single binary provides both the
 //! sync API and the browser vault.
 
+pub mod agent_auth;
+pub mod agents;
 pub mod auth;
 pub mod client_ip;
 pub mod db;
@@ -66,6 +68,10 @@ pub struct Config {
     /// Reverse proxies on other machines (cloudflared in another container)
     /// whose `client_ip_header` is believed.
     pub trusted_proxies: Vec<client_ip::TrustedProxy>,
+    /// AI agents elsewhere one account may pair (`agents`).
+    pub max_agents_per_account: u32,
+    /// Requests one agent elsewhere may have waiting for an answer.
+    pub max_open_agent_requests: u32,
 }
 
 impl Default for Config {
@@ -83,6 +89,8 @@ impl Default for Config {
             signups_per_ip: None,
             client_ip_header: None,
             trusted_proxies: vec![],
+            max_agents_per_account: 20,
+            max_open_agent_requests: 20,
         }
     }
 }
@@ -105,6 +113,14 @@ pub struct AppState {
     /// Password hashes (Argon2id, memory-hard) running at the same time: one
     /// per processor, so a flood of sign-ins cannot exhaust the server.
     pub hash_slots: Arc<tokio::sync::Semaphore>,
+    /// Counts calls per agent elsewhere.
+    pub agent_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts pairing attempts of agents elsewhere per client address.
+    pub pair_limiter: Arc<ratelimit::RateLimiter>,
+    /// Nonces of agent signatures seen within the time window.
+    pub agent_nonces: Arc<agent_auth::Nonces>,
+    /// Wakes the long-polls of owners and agents.
+    pub agent_events: tokio::sync::broadcast::Sender<agents::AgentEvent>,
 }
 
 impl AppState {
@@ -121,6 +137,10 @@ impl AppState {
             hash_slots: Arc::new(tokio::sync::Semaphore::new(
                 std::thread::available_parallelism().map_or(2, |n| n.get()).max(2),
             )),
+            agent_limiter: Arc::new(ratelimit::RateLimiter::new(60, 15 * 60)),
+            pair_limiter: Arc::new(ratelimit::RateLimiter::new(20, 15 * 60)),
+            agent_nonces: Arc::new(agent_auth::Nonces::default()),
+            agent_events: tokio::sync::broadcast::channel(1024).0,
         }
     }
 
@@ -151,7 +171,8 @@ impl AppState {
 /// Build the complete HTTP application.
 pub fn app(state: AppState) -> Router {
     let config = state.config.clone();
-    let api = routes::api_router().merge(share::api()).merge(emergency::api()).with_state(state.clone());
+    let api =
+        routes::api_router().merge(share::api()).merge(emergency::api()).merge(agents::api()).with_state(state.clone());
     let pages = share::pages().with_state(state);
 
     let mut app = Router::new().nest("/api/v1", api).merge(pages).layer(DefaultBodyLimit::max(config.max_body_bytes));
@@ -193,7 +214,11 @@ pub fn app(state: AppState) -> Router {
             CorsLayer::new()
                 .allow_origin(allow)
                 .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-                .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]),
+                .allow_headers([
+                    header::AUTHORIZATION,
+                    header::CONTENT_TYPE,
+                    header::HeaderName::from_static(twosecret_core::agent_remote::HTTP_HEADER),
+                ]),
         );
     }
 
@@ -209,7 +234,10 @@ pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow
         state.signup_limiter.clone(),
         state.share_limiter.clone(),
         state.attempt_limiter.clone(),
+        state.agent_limiter.clone(),
+        state.pair_limiter.clone(),
     ];
+    let nonces = state.agent_nonces.clone();
     let db = state.db.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -217,8 +245,9 @@ pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow
             tick.tick().await;
             let now = twosecret_core::util::now();
             limiters.iter().for_each(|l| l.prune(now));
-            // Expired share links go.
-            let _ = db.run(|c| Ok(share::delete_expired(c)?)).await;
+            nonces.prune(now);
+            // Expired share links, pairing codes and agent requests go.
+            let _ = db.run(move |c| Ok((share::delete_expired(c)?, agents::delete_expired(c, now)?))).await;
         }
     });
     // The peer address is needed for the per-address sign-up limit.

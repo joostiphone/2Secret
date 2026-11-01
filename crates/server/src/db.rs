@@ -102,6 +102,40 @@ CREATE TABLE IF NOT EXISTS emergency_members (
     vault_id   TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
     PRIMARY KEY (contact_id, vault_id)
 );
+CREATE TABLE IF NOT EXISTS agent_pairings (
+    token_hash TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_pairings_account ON agent_pairings(account_id);
+CREATE TABLE IF NOT EXISTS agents (
+    id           TEXT PRIMARY KEY,
+    account_id   TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    x25519       TEXT NOT NULL,
+    ml_kem       TEXT NOT NULL,
+    ed25519      TEXT NOT NULL,
+    token_hash   TEXT,
+    proof        TEXT,
+    record       TEXT,
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL,
+    last_seen_at INTEGER,
+    revoked_at   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS agents_account ON agents(account_id);
+CREATE TABLE IF NOT EXISTS agent_requests (
+    id         TEXT PRIMARY KEY,
+    agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    request    TEXT NOT NULL,
+    answer     TEXT,
+    status     TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_requests_account ON agent_requests(account_id, status);
+CREATE INDEX IF NOT EXISTS agent_requests_expiry ON agent_requests(expires_at);
 "#;
 
 /// Shared database handle.

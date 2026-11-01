@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+**Agent Access, part three**: an AI agent on another computer asks your
+2Secret through your sync server, and you answer on your computer or phone.
+
+- **Agents elsewhere** (*Settings → Agents elsewhere*, desktop and phone).
+  Pair an agent that does not run on your computer (Claude Code in the
+  cloud, an agent on a server, a second machine) with a code 2Secret shows:
+  `2secret agent pair <code>` there, *Confirm agent* here after comparing the
+  fingerprint. From then on `2secret mcp --remote` on that computer gives the
+  AI tool the same tools as a local agent, and every question (a password,
+  a one-time code, saving an item) comes to your unlocked 2Secret, on the
+  desktop or the phone; the first answer counts. The sync server relays
+  sealed, signed envelopes it cannot read or forge: it sees which agent
+  asked when and how large the question was, never what. Revoke an agent on
+  any device. Needs a server with 2Secret 1.12 (`sync.2secret.app` has it);
+  the protocol is in `docs/AGENT-PROTOCOL.md`.
+- **Signing in from elsewhere** (`fill_login`, `2secret agent fill`): with
+  the browser on the agent's computer started with
+  `--remote-debugging-port`, 2Secret there puts the login you allowed into
+  the tab that belongs to the item's website and submits it; the model never
+  sees the password. Chrome, Edge, Brave and Chromium.
+- Server: tables and routes for agents elsewhere, limits `--max-agents` and
+  `--max-agent-requests` (`TWOSECRET_MAX_AGENTS`,
+  `TWOSECRET_MAX_AGENT_REQUESTS`), signed agent header with replay
+  protection, long-polls.
+- Command line: `2secret agent pair`, `unpair`, `fill`; `2secret mcp
+  --remote [NAME] [--cdp …]`; `2secret agent status` lists pairings.
+
 ## 1.11.1
 
 - **AutoFill on the Mac and iPhone in 2Secret's own look**: the panel that

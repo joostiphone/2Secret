@@ -14,3 +14,10 @@ serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+# Agents elsewhere: the relay on the sync server, and the browser's
+# debugging port (plain ws:// on this computer, so no TLS).
+twosecret-client.workspace = true
+reqwest.workspace = true
+tokio = { version = "1", features = ["rt", "time", "net", "macros"] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

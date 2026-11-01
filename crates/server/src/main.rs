@@ -62,6 +62,14 @@ struct Args {
     /// addresses or networks: `10.0.0.5,192.168.1.0/24`).
     #[arg(long, env = "TWOSECRET_TRUSTED_PROXIES", value_delimiter = ',')]
     trusted_proxies: Vec<TrustedProxy>,
+
+    /// AI agents elsewhere one account may pair.
+    #[arg(long, env = "TWOSECRET_MAX_AGENTS", default_value_t = 20)]
+    max_agents: u32,
+
+    /// Requests one agent elsewhere may have waiting for an answer.
+    #[arg(long, env = "TWOSECRET_MAX_AGENT_REQUESTS", default_value_t = 20)]
+    max_agent_requests: u32,
 }
 
 #[tokio::main]
@@ -96,6 +104,8 @@ async fn main() -> anyhow::Result<()> {
         signups_per_ip: args.signups_per_ip,
         client_ip_header: args.client_ip_header.filter(|h| !h.trim().is_empty()),
         trusted_proxies: args.trusted_proxies,
+        max_agents_per_account: args.max_agents,
+        max_open_agent_requests: args.max_agent_requests,
         ..Config::default()
     };
     if let Some(dir) = &args.web_dir {

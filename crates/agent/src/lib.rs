@@ -15,12 +15,18 @@
 //! messaging host that the 2Secret browser extension starts ([`host`]), which
 //! connects to the app as a browser and fills the logins the user allows an
 //! agent to use, and where each browser looks for it ([`native_host`]).
+//!
+//! An agent on another computer than the owner's 2Secret works through the
+//! sync server instead ([`remote`], `2secret mcp --remote`), and fills
+//! logins through the browser's debugging port ([`cdp`]).
 
+pub mod cdp;
 pub mod client;
 pub mod host;
 pub mod key;
 pub mod mcp;
 pub mod native_host;
+pub mod remote;
 pub mod scrub;
 pub mod tools;
 

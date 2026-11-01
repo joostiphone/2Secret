@@ -2,7 +2,7 @@
 //! and the web. `src/main.rs` starts it; the iOS App Store build links this
 //! library into an Xcode project and calls [`twosecret_main`].
 
-#[cfg(feature = "desktop")]
+#[cfg(any(feature = "desktop", feature = "mobile"))]
 mod agent_access;
 #[cfg(target_os = "android")]
 mod android;
@@ -15,7 +15,7 @@ mod biometric;
 mod code_setup;
 mod components;
 mod extension;
-#[cfg(feature = "desktop")]
+#[cfg(any(feature = "desktop", feature = "mobile"))]
 mod fill_queue;
 mod i18n;
 mod icons;
@@ -28,6 +28,8 @@ mod native_host;
 mod platform;
 #[cfg(feature = "desktop")]
 mod quick;
+#[cfg(any(feature = "desktop", feature = "mobile"))]
+mod remote_agents;
 #[cfg(feature = "desktop")]
 mod screen_qr;
 #[cfg(feature = "desktop")]
@@ -39,7 +41,7 @@ mod updater;
 
 use dioxus::prelude::*;
 
-#[cfg(feature = "desktop")]
+#[cfg(any(feature = "desktop", feature = "mobile"))]
 use agent_access::AgentPrompt;
 use components::actions::ContextMenu;
 use components::modals::ModalHost;
@@ -51,8 +53,9 @@ use components::widgets::{BusyOverlay, ToastHost};
 use quick::QuickShortcut;
 #[cfg(feature = "desktop")]
 use ssh_agent::SshPrompt;
-/// Only the desktop has Agent Access.
-#[cfg(not(feature = "desktop"))]
+/// The desktop has Agent Access; the desktop and the phone answer agents
+/// elsewhere. The web vault and the extension do neither.
+#[cfg(not(any(feature = "desktop", feature = "mobile")))]
 #[component]
 fn AgentPrompt() -> Element {
     rsx! {}
@@ -382,8 +385,10 @@ fn App() -> Element {
     quick::use_quick_access();
     #[cfg(feature = "desktop")]
     ssh_agent::use_ssh_agent();
-    #[cfg(feature = "desktop")]
+    #[cfg(any(feature = "desktop", feature = "mobile"))]
     agent_access::use_agent_access();
+    #[cfg(any(feature = "desktop", feature = "mobile"))]
+    remote_agents::use_remote_agents();
     // The shortcut needs the preferences.
     #[cfg(feature = "desktop")]
     let quick_shortcut = PREFS.read().quick_access && *PHASE.read() != Phase::Loading;

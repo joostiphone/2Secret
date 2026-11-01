@@ -76,6 +76,8 @@ Every option can be given as a command line flag or environment variable.
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | – | Accept no new accounts beyond this number |
 | `--client-ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | – | Header with the client's address from a proxy on the same machine or a trusted one: `X-Forwarded-For` (Caddy, nginx), `CF-Connecting-IP` (Cloudflare Tunnel) |
 | `--trusted-proxies` | `TWOSECRET_TRUSTED_PROXIES` | – | Proxies on other machines whose header is believed, e.g. cloudflared in another container: `10.0.0.5` or `192.168.1.0/24`, comma separated |
+| `--max-agents` | `TWOSECRET_MAX_AGENTS` | `20` | AI agents on other computers one account may pair ([AGENT-PROTOCOL.md](AGENT-PROTOCOL.md)) |
+| `--max-agent-requests` | `TWOSECRET_MAX_AGENT_REQUESTS` | `20` | Requests one such agent may have waiting for an answer |
 
 Logging is controlled with `RUST_LOG` (e.g. `RUST_LOG=info`).
 
