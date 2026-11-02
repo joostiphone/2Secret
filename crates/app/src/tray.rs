@@ -22,10 +22,26 @@ pub fn request_show() {
 
 /// Show the window in front, also when it is hidden or minimized.
 pub fn show() {
+    activate();
     let window = window();
     window.set_visible(true);
     window.set_minimized(false);
     window.set_focus();
+}
+
+/// macOS: bring 2Secret to the front before one of its windows is shown.
+/// The app may be hidden (`quick::dismiss` hides it to give the keyboard
+/// back to the app that had it); a hidden app's windows stay off the screen
+/// and `set_focus` does nothing for them, so nothing would appear until
+/// something else activated 2Secret.
+pub fn activate() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let app: *mut objc2::runtime::AnyObject = objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
+        let nil: *mut objc2::runtime::AnyObject = std::ptr::null_mut();
+        let _: () = objc2::msg_send![app, unhide: nil];
+        let _: () = objc2::msg_send![app, activateIgnoringOtherApps: objc2::runtime::Bool::YES];
+    }
 }
 
 /// Remove the icon before 2Secret ends. Windows would otherwise show it until

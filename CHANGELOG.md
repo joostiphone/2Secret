@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Quick Access in 2Secret's own look**: a floating panel with rounded
+  corners and a shadow (on macOS and Windows; on Linux a plain window), the
+  2Secret logo next to the search field, the number of matches, pill
+  buttons for the user name, password and code, and clearer keyboard hints.
+  A click beside the panel closes it.
+- Fixed: on the Mac, *Quick Access* from the menu bar icon (and the
+  shortcut) did nothing after Quick Access had been used once while the
+  2Secret window was closed; it appeared only when something else brought
+  2Secret to the front. *Open 2Secret* from the icon had the same problem
+  then.
+
 ## 1.12.0
 
 **Agent Access, part three**: an AI agent on another computer asks your

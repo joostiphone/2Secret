@@ -4,10 +4,11 @@
 //! --quick-access` does the same while 2Secret runs, for a shortcut set in
 //! the desktop's own settings (under Wayland apps cannot register one).
 //!
-//! The window is a second webview with its own UI ([`QuickWindow`]). It gets
-//! a list of the items without their secrets and asks the main window, which
-//! holds the unlocked vault, to copy one. It is hidden after use and closed
-//! when the vault locks.
+//! The window is a second webview with its own UI ([`QuickWindow`]): a
+//! floating panel with rounded corners and a shadow on a transparent window
+//! where the platform draws those well. It gets a list of the items without
+//! their secrets and asks the main window, which holds the unlocked vault,
+//! to copy one. It is hidden after use and closed when the vault locks.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,7 +21,7 @@ use twosecret_core::item::ItemSummary;
 use twosecret_core::totp::Totp;
 
 use crate::i18n::{t, Lang, LANG};
-use crate::icons::{Icon, ItemAvatar};
+use crate::icons::{Icon, ItemAvatar, Logo};
 use crate::state::*;
 
 /// Opens Quick Access in the 2Secret that runs (`link_handler`).
@@ -174,17 +175,39 @@ fn open() {
             if let Some(position) = position() {
                 window.set_outer_position(position);
             }
+            // 2Secret may be hidden since the last dismissal: then the window
+            // would stay off the screen and getting the keyboard would fail.
+            crate::tray::activate();
             window.set_visible(true);
             window.set_focus();
         }
-        None => create(),
+        None => {
+            crate::tray::activate();
+            create();
+        }
     }
 }
 
+/// The panel.
 const WIDTH: f64 = 620.0;
 const HEIGHT: f64 = 420.0;
+/// Room around the panel for its shadow, on a transparent window (`.quick`
+/// in the stylesheet, which draws the corners and the shadow).
+const MARGIN: f64 = 28.0;
+/// Where the window is transparent. A Linux desktop without a compositor
+/// would show black corners, so there the window is plain and square.
+const TRANSPARENT: bool = cfg!(any(target_os = "macos", target_os = "windows"));
 
-/// Centred on the screen with the mouse pointer, a bit above the middle.
+fn outer_size() -> (f64, f64) {
+    if TRANSPARENT {
+        (WIDTH + 2.0 * MARGIN, HEIGHT + 2.0 * MARGIN)
+    } else {
+        (WIDTH, HEIGHT)
+    }
+}
+
+/// Centred on the screen with the mouse pointer, the panel a bit above the
+/// middle.
 fn position() -> Option<dioxus::desktop::tao::dpi::PhysicalPosition<i32>> {
     let main = MAIN.with_borrow(|m| m.clone())?;
     let monitor = main
@@ -194,21 +217,32 @@ fn position() -> Option<dioxus::desktop::tao::dpi::PhysicalPosition<i32>> {
         .or_else(|| main.current_monitor())
         .or_else(|| main.primary_monitor())?;
     let (origin, size, scale) = (monitor.position(), monitor.size(), monitor.scale_factor());
-    let x = origin.x as f64 + (size.width as f64 - WIDTH * scale) / 2.0;
-    let y = origin.y as f64 + size.height as f64 * 0.2;
+    let (width, _) = outer_size();
+    let margin = if TRANSPARENT { MARGIN * scale } else { 0.0 };
+    let x = origin.x as f64 + (size.width as f64 - width * scale) / 2.0;
+    let y = origin.y as f64 + size.height as f64 * 0.2 - margin;
     Some(dioxus::desktop::tao::dpi::PhysicalPosition::new(x as i32, y as i32))
 }
 
 fn create() {
     let Some(main) = MAIN.with_borrow(|m| m.clone()) else { return };
+    let (width, height) = outer_size();
     let mut window = WindowBuilder::new()
         .with_title("2Secret")
-        .with_inner_size(LogicalSize::new(WIDTH, HEIGHT))
+        .with_inner_size(LogicalSize::new(width, height))
         .with_decorations(false)
         .with_resizable(false)
-        .with_always_on_top(true);
+        .with_always_on_top(true)
+        .with_transparent(TRANSPARENT);
     if let Some(position) = position() {
         window = window.with_position(position);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
+        // The stylesheet draws the shadow; the system's lags behind a
+        // transparent webview.
+        window = window.with_has_shadow(false);
     }
     #[cfg(windows)]
     {
@@ -220,11 +254,13 @@ fn create() {
         use dioxus::desktop::tao::platform::unix::WindowBuilderExtUnix;
         window = window.with_skip_taskbar(true);
     }
-    let config = Config::new()
+    let mut config = Config::new()
         .with_window(window)
-        .with_background_color((244, 245, 248, 255))
         .with_data_directory(crate::platform::data_dir().join("webview"))
         .with_custom_head(format!("<style>{}</style>{}", crate::STYLE, crate::HIDDEN_UPDATES_JS));
+    if !TRANSPARENT {
+        config = config.with_background_color((244, 245, 248, 255));
+    }
     let pending = main.new_window(VirtualDom::new(QuickWindow), config);
     spawn(async move {
         let window = pending.resolve().await;
@@ -238,10 +274,15 @@ fn dismiss() {
     window.set_visible(false);
     #[cfg(target_os = "macos")]
     if !MAIN.with_borrow(|m| m.as_ref().is_some_and(|m| m.is_visible())) {
-        // The app that was active before comes back to the front.
+        use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
+        // The app that was active before comes back to the front. The window
+        // goes off the screen right now (`set_visible` does it later), so
+        // that unhiding 2Secret does not bring it back.
         unsafe {
-            let app: *mut objc2::runtime::AnyObject = objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
             let nil: *mut objc2::runtime::AnyObject = std::ptr::null_mut();
+            let ns_window = window.ns_window() as *mut objc2::runtime::AnyObject;
+            let _: () = objc2::msg_send![ns_window, orderOut: nil];
+            let app: *mut objc2::runtime::AnyObject = objc2::msg_send![objc2::class!(NSApplication), sharedApplication];
             let _: () = objc2::msg_send![app, hide: nil];
         }
     }
@@ -439,72 +480,85 @@ fn QuickWindow() -> Element {
     let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt" };
 
     rsx! {
-        div { class: "root quick", "data-theme": theme(),
-            div { class: "quick-search",
-                Icon { name: "search", size: 20 }
-                input {
-                    value: "{query}",
-                    placeholder: t("quick.placeholder"),
-                    autocomplete: "off",
-                    spellcheck: "false",
-                    autocapitalize: "off",
-                    onmounted: move |e: MountedEvent| async move {
-                        let el = e.data();
-                        field.set(Some(el.clone()));
-                        let _ = el.set_focus(true).await;
-                    },
-                    oninput: move |e| {
-                        query.set(e.value());
-                        selected.set(0);
-                    },
-                    onkeydown,
+        div { class: if TRANSPARENT { "root quick" } else { "root quick opaque" }, "data-theme": theme(),
+            // A click beside the panel, in its shadow, closes it.
+            onmousedown: move |_| dismiss(),
+            div { class: "quick-panel", onmousedown: move |e: MouseEvent| e.stop_propagation(),
+                div { class: "quick-search",
+                    div { class: "quick-logo", Logo { size: 20 } }
+                    input {
+                        value: "{query}",
+                        placeholder: t("quick.placeholder"),
+                        autocomplete: "off",
+                        spellcheck: "false",
+                        autocapitalize: "off",
+                        onmounted: move |e: MountedEvent| async move {
+                            let el = e.data();
+                            field.set(Some(el.clone()));
+                            let _ = el.set_focus(true).await;
+                        },
+                        oninput: move |e| {
+                            query.set(e.value());
+                            selected.set(0);
+                        },
+                        onkeydown,
+                    }
+                    if !query().is_empty() {
+                        span { class: "quick-count", "{count}" }
+                    }
                 }
-            }
-            if let Some(message) = done() {
-                div { class: "quick-done", Icon { name: "check", size: 22 } "{message}" }
-            } else if found.is_empty() {
-                div { class: "quick-empty", {t("quick.nothing")} }
-            } else {
-                div { class: "quick-list",
-                    for (i , entry) in found.into_iter().enumerate() {
-                        div {
-                            key: "{entry.summary.id}",
-                            class: if i == current { "quick-row selected" } else { "quick-row" },
-                            onmousemove: move |e: MouseEvent| {
-                                let at = e.client_coordinates();
-                                let at = (at.x, at.y);
-                                if pointer().is_some_and(|before| before != at) {
-                                    selected.set(i);
+                if let Some(message) = done() {
+                    div { class: "quick-done",
+                        div { class: "quick-check", Icon { name: "check", size: 26 } }
+                        "{message}"
+                    }
+                } else if found.is_empty() {
+                    div { class: "quick-empty",
+                        Icon { name: "search", size: 28 }
+                        {t("quick.nothing")}
+                    }
+                } else {
+                    div { class: "quick-list",
+                        for (i , entry) in found.into_iter().enumerate() {
+                            div {
+                                key: "{entry.summary.id}",
+                                class: if i == current { "quick-row selected" } else { "quick-row" },
+                                onmousemove: move |e: MouseEvent| {
+                                    let at = e.client_coordinates();
+                                    let at = (at.x, at.y);
+                                    if pointer().is_some_and(|before| before != at) {
+                                        selected.set(i);
+                                    }
+                                    pointer.set(Some(at));
+                                },
+                                onclick: {
+                                    let entry = entry.clone();
+                                    move |_| act(&entry, What::Password)
+                                },
+                                ItemAvatar { category: entry.summary.category, title: entry.summary.title.clone(), size: 32, icon: entry.summary.icon.clone() }
+                                div { class: "grow",
+                                    div { class: "t", "{entry.summary.title}" }
+                                    div { class: "s", "{entry.summary.subtitle}" }
                                 }
-                                pointer.set(Some(at));
-                            },
-                            onclick: {
-                                let entry = entry.clone();
-                                move |_| act(&entry, What::Password)
-                            },
-                            ItemAvatar { category: entry.summary.category, title: entry.summary.title.clone(), size: 32, icon: entry.summary.icon.clone() }
-                            div { class: "grow",
-                                div { class: "t", "{entry.summary.title}" }
-                                div { class: "s", "{entry.summary.subtitle}" }
-                            }
-                            if i == current {
-                                div { class: "quick-actions",
-                                    for (what , available , label) in [
-                                        (What::Username, entry.username, t("quick.username")),
-                                        (What::Password, entry.password, t("quick.password")),
-                                        (What::Code, entry.code, t("quick.code")),
-                                    ] {
-                                        if available {
-                                            button {
-                                                class: "quick-chip",
-                                                onclick: {
-                                                    let entry = entry.clone();
-                                                    move |e: MouseEvent| {
-                                                        e.stop_propagation();
-                                                        act(&entry, what);
-                                                    }
-                                                },
-                                                "{label}"
+                                if i == current {
+                                    div { class: "quick-actions",
+                                        for (what , available , label) in [
+                                            (What::Username, entry.username, t("quick.username")),
+                                            (What::Password, entry.password, t("quick.password")),
+                                            (What::Code, entry.code, t("quick.code")),
+                                        ] {
+                                            if available {
+                                                button {
+                                                    class: "quick-chip",
+                                                    onclick: {
+                                                        let entry = entry.clone();
+                                                        move |e: MouseEvent| {
+                                                            e.stop_propagation();
+                                                            act(&entry, what);
+                                                        }
+                                                    },
+                                                    "{label}"
+                                                }
                                             }
                                         }
                                     }
@@ -513,14 +567,14 @@ fn QuickWindow() -> Element {
                         }
                     }
                 }
-            }
-            div { class: "quick-foot",
-                span { kbd { "↵" } " " {t("quick.password")} }
-                span { kbd { "⇧↵" } " " {t("quick.username")} }
-                span { kbd { "{modifier}↵" } " " {t("quick.code")} }
-                span { kbd { "{alt}↵" } " " {t("quick.open")} }
-                span { class: "grow" }
-                span { kbd { "Esc" } }
+                div { class: "quick-foot",
+                    span { kbd { "↵" } {t("quick.password")} }
+                    span { kbd { "⇧↵" } {t("quick.username")} }
+                    span { kbd { "{modifier}↵" } {t("quick.code")} }
+                    span { kbd { "{alt}↵" } {t("quick.open")} }
+                    span { class: "grow" }
+                    span { kbd { "Esc" } }
+                }
             }
         }
     }
