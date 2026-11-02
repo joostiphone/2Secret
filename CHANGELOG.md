@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.12.1
 
 - **Quick Access in 2Secret's own look**: a floating panel with rounded
   corners and a shadow (on macOS and Windows; on Linux a plain window), the
