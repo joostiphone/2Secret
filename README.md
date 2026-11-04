@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="assets/logo.png" width="96" alt="2Secret logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png">
+    <img src="assets/banner-light.png" alt="2Secret: free, open-source password manager. End-to-end encrypted. Host it yourself.">
+  </picture>
 </p>
-
-<h1 align="center">2Secret</h1>
 
 <p align="center">
   <b>A free, open-source password manager – one Rust codebase for macOS, Windows, Linux, the BSDs, iOS, Android, the web and your browser.</b>
