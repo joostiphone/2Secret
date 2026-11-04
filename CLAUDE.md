@@ -3,6 +3,13 @@
 Read README.md and CONTRIBUTING.md first. `docs/AGENTS.md` explains how an
 AI tool uses 2Secret itself (`2secret mcp`).
 
+## Commits
+
+Commit as the owner, so GitHub shows the commits under the owner's account,
+not as Claude: `git config user.name "Joost"` and
+`git config user.email "joostiphone@gmail.com"` (the address of the owner's
+own commits) before the first commit of a session.
+
 ## Releasing
 
 Follow CONTRIBUTING.md, *Releasing*. Every version needs
