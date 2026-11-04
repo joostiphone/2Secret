@@ -339,7 +339,16 @@ jobs:
             echo "::warning::No UPDATE_SIGNING_KEY secret: the release has no signed update.json, so the apps do not offer it as an update"
           fi
           awk '/^## /{if (seen) exit; seen=1; next} seen' CHANGELOG.md > notes.md
-          cat .github/release-notes.md >> notes.md
+          # Without an Android signing key the release has no Android app:
+          # leave its rows out of the downloads and list it under "build from
+          # source".
+          if ls out/*_android-arm64.apk > /dev/null 2>&1; then
+            cat .github/release-notes.md >> notes.md
+          else
+            sed -e '/android-arm64/d' \
+              -e 's/^FreeBSD, OpenBSD, NetBSD and iOS: build from source/FreeBSD, OpenBSD, NetBSD, iOS and Android: build from source/' \
+              .github/release-notes.md >> notes.md
+          fi
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: false
