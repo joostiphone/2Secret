@@ -329,12 +329,27 @@ def status() -> None:
         lines.append(f"Version {a['versionString']}: {a.get('appVersionState') or a.get('appStoreState')}")
     # An approved version ("Ready for Distribution") is only in the store in
     # the countries where the app is available, and only with a price.
-    lines += availability(api, app["id"]) + [price(api, app["id"])]
+    lines += availability(api, app["id"]) + [price(api, app["id"]), store_page(app["id"])]
     print("\n".join(lines))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
             f.write("\n\n".join(lines) + "\n")
+
+
+def store_page(app_id: str, country: str = "nl") -> str:
+    """Whether the public App Store shows the app yet: after the app is for
+    sale it can take up to a day before its page stops saying "not available"."""
+    url = f"https://itunes.apple.com/lookup?id={app_id}&country={country}"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            results = json.loads(response.read()).get("results") or []
+    except (urllib.error.URLError, ValueError) as e:
+        return f"In the App Store ({country.upper()}): unknown ({e})"
+    if not results:
+        return f"In the App Store ({country.upper()}): not yet"
+    r = results[0]
+    return f"In the App Store ({country.upper()}): yes, version {r.get('version')}, {r.get('formattedPrice')}"
 
 
 def availability(api: Api, app_id: str) -> list[str]:
