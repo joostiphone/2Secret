@@ -1,1 +1,1 @@
-End-to-end versleuteld met je hoofdwachtwoord en een geheime sleutel die je apparaten nooit verlaat. Geen abonnement, geen tracking, open source.
+Versleuteld met je hoofdwachtwoord én een geheime sleutel die alleen je apparaten kennen. Opensource, geen tracking. Synchroniseer via 2Secret, je eigen server of niet.
