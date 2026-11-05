@@ -24,5 +24,7 @@ Anyway* (on macOS 14 and older you can also right-click the app and choose
 *Open*).
 On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*).
 
-FreeBSD, OpenBSD, NetBSD and iOS: build from source, see the
+iPhone and iPad: [2Secret in the App Store](https://apps.apple.com/app/id6822261327).
+
+FreeBSD, OpenBSD and NetBSD: build from source, see the
 [README](https://github.com/joostiphone/2Secret#building-from-source).

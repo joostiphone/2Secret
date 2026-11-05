@@ -346,7 +346,7 @@ jobs:
             cat .github/release-notes.md >> notes.md
           else
             sed -e '/android-arm64/d' \
-              -e 's/^FreeBSD, OpenBSD, NetBSD and iOS: build from source/FreeBSD, OpenBSD, NetBSD, iOS and Android: build from source/' \
+              -e 's/^FreeBSD, OpenBSD and NetBSD: build from source/FreeBSD, OpenBSD, NetBSD and Android: build from source/' \
               .github/release-notes.md >> notes.md
           fi
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2

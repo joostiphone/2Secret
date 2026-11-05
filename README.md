@@ -75,7 +75,7 @@ All apps share one Rust codebase ([Dioxus](https://dioxuslabs.com) UI + the `two
 | Windows | desktop app (setup `.exe`) | `dx bundle --platform desktop` |
 | Linux | desktop app (`.deb`, `.rpm`, AppImage) | `dx bundle --platform desktop` |
 | FreeBSD, OpenBSD, NetBSD | desktop app, CLI, server | `cargo build` (WebKitGTK) |
-| iOS / iPadOS | native app | `dx bundle --platform ios` (on macOS with Xcode) |
+| iOS / iPadOS | native app, [in the App Store](https://apps.apple.com/app/id6822261327) | `dx bundle --platform ios` (on macOS with Xcode) |
 | Android | native app (`.apk`, `.aab`) | `scripts/android.sh` (Android SDK + NDK) |
 | Web | web vault in any browser (WebAssembly) | served by `2secret-server` |
 | Browsers | extension for Chrome, Edge, Brave, Firefox ([EXTENSION.md](docs/EXTENSION.md)) | `extension/build.sh` |
@@ -100,7 +100,9 @@ See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) for TLS, invite-only sign-ups, 
 
 ### 2. Install an app
 
-Download a build from the [releases](https://github.com/joostiphone/2Secret/releases), or build one:
+On iPhone and iPad, get [2Secret in the App Store](https://apps.apple.com/app/id6822261327) (a small one-time price,
+no subscription). For the other platforms, download a build from the
+[releases](https://github.com/joostiphone/2Secret/releases), or build one:
 
 ```sh
 # Desktop (macOS, Windows, Linux, BSD) – Linux needs libwebkit2gtk-4.1-dev, libgtk-3-dev, libxdo-dev
@@ -281,7 +283,9 @@ beveiligingsaudit.
    `docker compose -f deploy/docker-compose.yml up -d` (automatische HTTPS).
    Zonder server werkt 2Secret gewoon lokaal op één apparaat. Zie
    [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
-2. **App:** download een versie bij *Releases* of bouw hem zelf met
+2. **App:** op iPhone en iPad haal je [2Secret in de App Store](https://apps.apple.com/app/id6822261327)
+   (eenmalig een klein bedrag, geen abonnement). Voor de andere platforms
+   download je een versie bij *Releases* of bouw je hem zelf met
    `cargo run --release -p twosecret-app`.
 3. **Account aanmaken:** kies een sterk hoofdwachtwoord en **bewaar je noodkit**
    (die bevat je geheime sleutel). Op een ander apparaat kies je *Inloggen op
