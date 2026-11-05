@@ -1,10 +1,10 @@
-2Secret 1.12.1
+2Secret 1.12.2
 
 WHAT'S NEW
-A small release for the desktop apps: Quick Access (the search panel behind ⇧⌘Space on the Mac) has 2Secret's own look and opens reliably from the menu bar icon. Nothing changed on iPhone and iPad; this build matches the desktop release so every platform has the same version.
+Nothing changed on iPhone and iPad. This release adds the Android app to the downloads, and the iOS build has the same version so every platform matches. 2Secret is in the App Store now: thank you for testing!
 
 PLEASE TEST
 1. Update and open the app once; unlock with Face ID and with your master password.
-2. Everything as in 1.12.0: Settings → Agents elsewhere (pair, confirm, answer a request, revoke), AutoFill in Safari, sync, sharing, Watchtower.
+2. Everything as in 1.12.1: AutoFill in Safari, sync, sharing, Watchtower, Settings → Agents elsewhere.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

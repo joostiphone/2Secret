@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.12.2
+
+- **Android app in the releases**: a signed `.apk` for phones and tablets
+  with Android 7 or newer and a 64-bit ARM processor, and an `.aab` for app
+  stores. Download the `.apk` and open it; Android asks to allow your browser
+  to install it. With update checks on, the app says when a newer version is
+  out.
+- **iPhone and iPad**: 2Secret is in the App Store. The README and the
+  release notes link to it.
+- Release notes: without an Android app in a release, its rows are left out
+  of the downloads, and they say that the Mac app is signed with a Developer
+  ID and notarized, instead of how to open an app macOS cannot verify.
+- `scripts/appstore.py status` (the *App Store status* workflow) also shows
+  in how many countries the app is for sale, its price and whether the
+  public App Store shows it yet.
+- README: a banner for GitHub's light and dark theme.
+
 ## 1.12.1
 
 - **Quick Access in 2Secret's own look**: a floating panel with rounded

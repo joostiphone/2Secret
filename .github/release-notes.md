@@ -18,10 +18,9 @@ Server image for x86_64 and ARM64 (e.g. Raspberry Pi 4/5 with a 64-bit OS):
 `docker pull ghcr.io/joostiphone/2secret:latest` – see
 [self-hosting](https://github.com/joostiphone/2Secret/blob/HEAD/docs/SELF-HOSTING.md).
 
-On macOS, drag 2Secret to *Applications* and open it. If macOS says it cannot
-verify the app, open *System Settings → Privacy & Security* and click *Open
-Anyway* (on macOS 14 and older you can also right-click the app and choose
-*Open*).
+On macOS, drag 2Secret to *Applications* and open it: the app is signed with
+2Secret's Developer ID and notarized by Apple, and AutoFill fills passwords,
+passkeys and codes in Safari and other apps (macOS 14 or newer).
 On Windows, SmartScreen may ask you to confirm (*More info → Run anyway*).
 
 iPhone and iPad: [2Secret in the App Store](https://apps.apple.com/app/id6822261327).

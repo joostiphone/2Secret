@@ -1,10 +1,10 @@
-2Secret 1.12.1
+2Secret 1.12.2
 
-WAT IS NIEUW
-Een kleine versie voor de desktop-apps: Quick Access (het zoekpaneel achter ⇧⌘Spatie op de Mac) heeft de eigen stijl van 2Secret en opent betrouwbaar vanuit het menubalkicoon. Op iPhone en iPad is er niets veranderd; deze build hoort bij de desktopversie, zodat elk platform hetzelfde versienummer heeft.
+WAT IS ER NIEUW
+Op iPhone en iPad is niets veranderd. Deze versie voegt de Android-app toe aan de downloads, en het iOS-build heeft hetzelfde versienummer zodat elk platform gelijk loopt. 2Secret staat nu in de App Store: bedankt voor het testen!
 
 TEST ALSJEBLIEFT
 1. Werk bij en open de app één keer; ontgrendel met Face ID en met je hoofdwachtwoord.
-2. Al het andere als in 1.12.0: Instellingen → Agents op afstand (koppelen, bevestigen, een verzoek beantwoorden, intrekken), automatisch invullen in Safari, synchroniseren, delen, Watchtower.
+2. Alles zoals in 1.12.1: automatisch invullen in Safari, synchroniseren, delen, Watchtower, Instellingen → Agents op afstand.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.
