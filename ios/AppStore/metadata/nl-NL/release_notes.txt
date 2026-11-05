@@ -8,6 +8,10 @@ Nieuw uiterlijk: Dashboard, Items en Watchtower staan in een zwevende menubalk v
 
 iPhone Duo: 2Secret vult nu het hele scherm, opengeklapt en dichtgeklapt.
 
+Automatisch invullen in de stijl van 2Secret: het paneel voor wachtwoorden, passkeys en verificatiecodes toont voor welke website het is, je inlogs met hun website-icoontjes, en volgt het thema van de app.
+
+AI-agents op afstand: een AI-agent op een andere computer (Claude Code in de cloud, een server) kan via je synchronisatieserver om een wachtwoord of code vragen, en jij antwoordt op je iPhone terwijl 2Secret open is. De server kan de vraag en het antwoord niet lezen. Koppel agents in Instellingen → Agents op afstand.
+
 Beveiligingsverbeteringen:
 - Je geheime sleutel gaat niet meer mee in iCloud- en computerback-ups, zodat een back-up hem nooit naast je versleutelde kluis bevat.
 - Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt: een inlog wordt alleen op zijn eigen site voorgesteld.
