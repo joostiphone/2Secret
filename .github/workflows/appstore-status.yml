@@ -1,8 +1,10 @@
 name: App Store status
 
 # Shows where the iOS app's App Store versions are (waiting for review, in
-# review, ready for sale, ...) and its App Store address. Start it from the
-# Actions tab; the answer is in the run's summary.
+# review, ready for distribution, ...), in how many countries the app is for
+# sale, its price and its App Store address. An approved version is only in
+# the store where the app is for sale. Start it from the Actions tab; the
+# answer is in the run's summary.
 on:
   workflow_dispatch:
 

@@ -106,7 +106,9 @@ class Api:
         return f"{signing_input}.{b64url(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))}"
 
     def call(self, method: str, path: str, body=None, query=None, fatal=True):
-        url = API + path + ("?" + urllib.parse.urlencode(query) if query else "")
+        # Paths start at /v1 (API) unless they name another version (/v2/...).
+        base = API.removesuffix("/v1") if path.startswith("/v2/") else API
+        url = base + path + ("?" + urllib.parse.urlencode(query) if query else "")
         request = urllib.request.Request(
             url,
             method=method,
@@ -325,11 +327,74 @@ def status() -> None:
     for v in versions:
         a = v["attributes"]
         lines.append(f"Version {a['versionString']}: {a.get('appVersionState') or a.get('appStoreState')}")
+    # An approved version ("Ready for Distribution") is only in the store in
+    # the countries where the app is available, and only with a price.
+    lines += availability(api, app["id"]) + [price(api, app["id"])]
     print("\n".join(lines))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
             f.write("\n\n".join(lines) + "\n")
+
+
+def availability(api: Api, app_id: str) -> list[str]:
+    """Where the app is for sale: 'For sale: yes/no' plus the details."""
+    found = api.call("GET", f"/apps/{app_id}/appAvailabilityV2", fatal=False)
+    if not found or not found.get("data"):
+        return ["For sale: no (no countries or regions chosen under Pricing and Availability)"]
+    places = api.call(
+        "GET",
+        f"/v2/appAvailabilities/{found['data']['id']}/territoryAvailabilities",
+        query={"limit": "200", "include": "territory"},
+        fatal=False,
+    )
+    rows = (places or {}).get("data") or []
+    available = [r for r in rows if r["attributes"].get("available")]
+    reasons: dict[str, int] = {}
+    netherlands = None
+    for r in rows:
+        territory = ((r.get("relationships") or {}).get("territory") or {}).get("data") or {}
+        statuses = r["attributes"].get("contentStatuses") or []
+        if territory.get("id") == "NLD":
+            netherlands = f"{'available' if r['attributes'].get('available') else 'not available'} ({', '.join(statuses) or 'no status'})"
+        if not r["attributes"].get("available"):
+            for status in statuses or ["NOT_CHOSEN"]:
+                reasons[status] = reasons.get(status, 0) + 1
+    lines = [f"For sale: {'yes' if available else 'no'} ({len(available)} of {len(rows)} countries or regions)"]
+    if netherlands:
+        lines.append(f"Netherlands: {netherlands}")
+    if reasons:
+        lines.append("Not available because: " + ", ".join(f"{k} ({v})" for k, v in sorted(reasons.items())))
+    return lines
+
+
+def price(api: Api, app_id: str) -> str:
+    """The app's current price in its base country, e.g. 'Price: 2.99 EUR (NLD)'."""
+    schedule = api.call("GET", f"/apps/{app_id}/appPriceSchedule", fatal=False)
+    if not schedule or not schedule.get("data"):
+        return "Price: none set"
+    schedule_id = schedule["data"]["id"]
+    base = api.call("GET", f"/appPriceSchedules/{schedule_id}/baseTerritory", fatal=False)
+    base_id = ((base or {}).get("data") or {}).get("id")
+    currency = (((base or {}).get("data") or {}).get("attributes") or {}).get("currency", "")
+    prices = api.call(
+        "GET",
+        f"/appPriceSchedules/{schedule_id}/manualPrices",
+        query={"include": "appPricePoint,territory", "limit": "50"},
+        fatal=False,
+    )
+    points = {
+        i["id"]: i["attributes"].get("customerPrice")
+        for i in (prices or {}).get("included") or []
+        if i.get("type") == "appPricePoints"
+    }
+    for p in (prices or {}).get("data") or []:
+        rel = p.get("relationships") or {}
+        territory = ((rel.get("territory") or {}).get("data") or {}).get("id")
+        point = ((rel.get("appPricePoint") or {}).get("data") or {}).get("id")
+        if p["attributes"].get("endDate") is None and territory in (base_id, None) and point in points:
+            return f"Price: {points[point]} {currency} ({base_id or 'base country'})"
+    return f"Price: unknown (base country {base_id or 'unknown'})"
 
 
 def signing(out: str) -> None:
