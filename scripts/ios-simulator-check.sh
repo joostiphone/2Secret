@@ -121,8 +121,12 @@ for device in "$@"; do
     screenshot "$udid" "$name" "$device"
     echo "Opening a link"
     link="otpauth://totp/Check:simulator?secret=JBSWY3DPEHPK3PXP&issuer=Check"
-    limit 60 xcrun simctl openurl "$udid" "$link" || ok=0
-    [ "$ok" = 0 ] || check "$udid" "link while running" || ok=0
+    # simctl only hands the link to iOS (which opens it in the app chosen for
+    # codes) and can hang for minutes on a busy runner (once on iPhone Duo):
+    # that is not 2Secret stopping, which the check below still looks at.
+    limit 180 xcrun simctl openurl "$udid" "$link" ||
+      echo "::warning::simctl did not finish opening the link on $device"
+    check "$udid" "link while running" || ok=0
     [ "$ok" = 0 ] || screenshot "$udid" "$name-link" "$device after a link"
   fi
   [ "$ok" = 1 ] || status=1
