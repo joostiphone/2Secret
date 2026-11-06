@@ -250,13 +250,20 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
 
     let creates = access.with_session(|s| s.vaults_pending(SyncState::PendingCreate))?;
     for v in creates {
-        client
+        let dto = client
             .create_vault(&CreateVaultRequest {
                 id: v.id.clone(),
                 meta: v.meta.clone(),
                 wrapped_key: v.wrapped_key.clone(),
             })
             .await?;
+        // Already there: a vault coming back from elsewhere, to its own
+        // placeholder (whose name says where it went).
+        if dto.meta != v.meta {
+            client
+                .update_vault(&v.id, &UpdateVaultRequest { meta: v.meta.clone(), key_rev: Some(dto.key_rev) })
+                .await?;
+        }
         access.with_session(|s| s.mark_vault_synced(&v.id))?;
     }
     let updates = access.with_session(|s| s.vaults_pending(SyncState::PendingUpdate))?;
@@ -295,11 +302,9 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
         let resp = client.sync(&req).await?;
         let (report, dirty) = access.with_session(|s| -> Result<(SyncReport, bool)> {
             let report = s.apply_sync_response_for(Some(&req), resp)?;
-            let dirty = s
-                .profile()
-                .items
-                .iter()
-                .any(|i| i.dirty && s.profile().vault(&i.vault_id).is_some_and(|v| v.role.can_write()));
+            let dirty = s.profile().items.iter().any(|i| {
+                i.dirty && s.profile().vault(&i.vault_id).is_some_and(|v| v.role.can_write() && v.location.is_account())
+            });
             Ok((report, dirty))
         })??;
         total.merge(&report);
@@ -310,6 +315,24 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
         }
     }
     total.needs_another_round = false;
+    // Vaults moved to this device only whose server copy could not be
+    // removed then.
+    let stray = access.with_session(|s| {
+        s.profile()
+            .vaults
+            .iter()
+            .filter(|v| v.location.is_device() && v.on_server && v.role == Role::Owner)
+            .map(|v| v.id.clone())
+            .collect::<Vec<_>>()
+    })?;
+    for id in stray {
+        match client.delete_vault(&id).await {
+            Ok(()) => {}
+            Err(e) if e.is_not_found() || e.status() == Some(403) => {}
+            Err(e) => return Err(e),
+        }
+        access.with_session(|s| s.mark_off_server(&id))?;
+    }
     post_quantum_upkeep(&client, access).await?;
     total.avatar_changed = avatar_upkeep(&client, access).await?;
     let emergency = emergency_upkeep(&client, access, &mut total).await?;

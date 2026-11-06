@@ -19,6 +19,7 @@ pub mod emergency_kit;
 pub mod error;
 pub mod export;
 pub mod favicon;
+pub mod folder;
 pub mod generator;
 pub mod import;
 pub mod item;

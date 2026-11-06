@@ -10,10 +10,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::VaultSyncResult;
 use crate::api::{ItemChange, ItemDto, SyncRequest, SyncResponse, VaultDto, VaultSyncRequest};
 use crate::crypto::SymmetricKey;
 use crate::item::{Item, PasswordHistoryEntry, MAX_PASSWORD_HISTORY};
-use crate::profile::{aad, retired_key_id, ItemRecord, KeyChange, Role, SyncState, VaultRecord, RETIRED_KEYS};
+use crate::profile::{
+    aad, retired_key_id, ItemRecord, KeyChange, Leftover, Role, SyncState, VaultLocation, VaultRecord, RETIRED_KEYS,
+};
 use crate::session::Session;
 use crate::util::now;
 use crate::Result;
@@ -88,9 +91,10 @@ impl SyncReport {
 }
 
 impl Session {
-    /// Vaults created locally that must be created on the server first.
+    /// The account's vaults (those on its server) in the given state: created,
+    /// changed or deleted here and not yet on the server.
     pub fn vaults_pending(&self, state: SyncState) -> Vec<VaultRecord> {
-        self.profile().vaults.iter().filter(|v| v.sync_state == state).cloned().collect()
+        self.profile().vaults.iter().filter(|v| v.location.is_account() && v.sync_state == state).cloned().collect()
     }
 
     /// Mark a vault as known to the server (after create/update succeeded).
@@ -109,12 +113,26 @@ impl Session {
     }
 
     /// Build the next sync request: all local changes plus "what's new since
-    /// revision N" for every synced vault.
+    /// revision N" for every synced vault. Vaults in a storage folder that
+    /// left a placeholder on the server are asked for too, with the removal
+    /// of what is still on it (see [`VaultRecord::leftovers`]).
     pub fn sync_request(&self) -> SyncRequest {
+        let placeholders =
+            self.profile().vaults.iter().filter(|v| v.location.is_folder() && v.on_server).map(|v| VaultSyncRequest {
+                vault_id: v.id.clone(),
+                since: v.revision,
+                changes: v
+                    .leftovers
+                    .iter()
+                    .map(|l| ItemChange { id: l.id.clone(), base_revision: l.revision, data: None })
+                    .collect(),
+                key_rev: Some(v.key_rev),
+            });
         let vaults = self
             .profile()
             .vaults
             .iter()
+            .filter(|v| v.location.is_account())
             .filter(|v| v.sync_state == SyncState::Synced || v.sync_state == SyncState::PendingUpdate)
             .map(|v| VaultSyncRequest {
                 vault_id: v.id.clone(),
@@ -128,6 +146,7 @@ impl Session {
                     .collect(),
                 key_rev: Some(v.key_rev),
             })
+            .chain(placeholders)
             .collect();
         SyncRequest { vaults }
     }
@@ -153,8 +172,15 @@ impl Session {
 
         for result in response.results {
             let vault_id = result.vault_id.clone();
-            if self.profile().vault(&vault_id).is_none() {
-                continue;
+            match self.profile().vault(&vault_id).map(|v| &v.location) {
+                Some(VaultLocation::Account) => {}
+                Some(VaultLocation::Folder { .. }) => {
+                    self.drain_placeholder(&result, &mut report);
+                    continue;
+                }
+                // Not ours, or kept on this device only: the server's copy
+                // (if any) is not this vault.
+                Some(VaultLocation::Device) | None => continue,
             }
 
             for acc in &result.accepted {
@@ -236,7 +262,7 @@ impl Session {
         let mut replaced: Vec<(String, SymmetricKey)> = Vec::new();
         for dto in vaults {
             let Some(local) = self.profile().vault(&dto.id) else { continue };
-            if local.wrapped_key == dto.wrapped_key {
+            if !local.location.is_account() || local.wrapped_key == dto.wrapped_key {
                 continue;
             }
             // Only this account's own devices can give a vault without other
@@ -278,20 +304,31 @@ impl Session {
         let account_id = self.account().id.clone();
         let p = self.profile_mut();
         // Vaults we lost access to (deleted by the owner or access revoked).
+        // Vaults kept elsewhere (this device, a storage folder) are not the
+        // server's to remove or change, even when it lists a vault with the
+        // same id (the placeholder a move leaves there).
         let before = p.vaults.len();
         p.vaults.retain(|v| {
-            v.sync_state == SyncState::PendingCreate
+            !v.location.is_account()
+                || v.sync_state == SyncState::PendingCreate
                 || v.sync_state == SyncState::PendingDelete
                 || vaults.iter().any(|d| d.id == v.id)
         });
         report.vaults_removed += before - p.vaults.len();
         let kept: Vec<String> = p.vaults.iter().map(|v| v.id.clone()).collect();
         p.items.retain(|i| kept.contains(&i.vault_id));
+        for v in p.vaults.iter_mut().filter(|v| !v.location.is_account()) {
+            v.on_server = vaults.iter().any(|d| d.id == v.id);
+            if !v.on_server {
+                v.leftovers.clear();
+                v.revision = 0;
+            }
+        }
 
         for dto in vaults {
             match p.vault_mut(&dto.id) {
                 Some(local) => {
-                    if refused.contains(&dto.id) {
+                    if refused.contains(&dto.id) || !local.location.is_account() {
                         continue;
                     }
                     if local.sync_state != SyncState::PendingUpdate {
@@ -323,6 +360,9 @@ impl Session {
                         created_at: dto.created_at,
                         key_rev: dto.key_rev,
                         retired_keys: Vec::new(),
+                        location: VaultLocation::Account,
+                        leftovers: Vec::new(),
+                        on_server: false,
                     });
                 }
             }
@@ -368,6 +408,7 @@ impl Session {
                         data: Some(data.clone()),
                         revision: remote.revision,
                         dirty: false,
+                        deleted_at: None,
                     });
                     report.downloaded += 1;
                 }
@@ -397,19 +438,7 @@ impl Session {
             (None, Some(theirs)) => Some((theirs, false)),
             // They deleted, we edited: resurrect our version.
             (Some(ours), None) => Some((ours, true)),
-            (Some(ours), Some(theirs)) => {
-                if ours.updated_at >= theirs.updated_at {
-                    let mut merged = ours.clone();
-                    merge_password_history(&mut merged, &theirs);
-                    Some((merged, true))
-                } else {
-                    let mut merged = theirs.clone();
-                    merge_password_history(&mut merged, &ours);
-                    // Keep our version if the merge added history, so it is uploaded.
-                    let changed = merged.password_history != theirs.password_history;
-                    Some((merged, changed))
-                }
-            }
+            (Some(ours), Some(theirs)) => Some(merge_items(&ours, &theirs)),
         };
 
         match winner {
@@ -428,8 +457,96 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Take in what the server reported for the placeholder of a vault that
+    /// moved to a storage folder: items someone still added or changed there
+    /// join the folder vault (and go into the folder with the next folder
+    /// sync), and are then removed from the placeholder.
+    fn drain_placeholder(&mut self, result: &VaultSyncResult, report: &mut SyncReport) {
+        let vault_id = result.vault_id.as_str();
+        let mut gone: Vec<&str> = result.accepted.iter().map(|a| a.id.as_str()).collect();
+        gone.extend(result.rejected.iter().map(|id| id.as_str()));
+        let mut found: Vec<Leftover> = Vec::new();
+        for remote in result.conflicts.iter().chain(&result.changes) {
+            if remote.vault_id != vault_id {
+                continue;
+            }
+            match &remote.data {
+                Some(_) => {
+                    if self.absorb_item(vault_id, remote) {
+                        report.downloaded += 1;
+                    }
+                    found.push(Leftover { id: remote.id.clone(), revision: remote.revision });
+                }
+                None => gone.push(remote.id.as_str()),
+            }
+        }
+        if let Some(v) = self.profile_mut().vault_mut(vault_id) {
+            v.leftovers.retain(|l| !gone.contains(&l.id.as_str()) && !found.iter().any(|f| f.id == l.id));
+            v.leftovers.extend(found);
+            v.revision = v.revision.max(result.revision);
+            if !v.leftovers.is_empty() {
+                report.needs_another_round = true;
+            }
+        }
+    }
+
+    /// Merge an item from elsewhere (a server placeholder) into a vault kept
+    /// in a storage folder. It is marked changed, so it goes into the folder.
+    /// Returns whether the local copy changed.
+    pub(crate) fn absorb_item(&mut self, vault_id: &str, remote: &ItemDto) -> bool {
+        let Some(data) = &remote.data else { return false };
+        let Ok(theirs) = self.decrypt_item(vault_id, &remote.id, data) else { return false };
+        if self.profile().item(&remote.id).is_some_and(|r| r.vault_id != vault_id) {
+            return false;
+        }
+        let ours = self.item(&remote.id).cloned();
+        let item = match &ours {
+            Some(ours) => merge_items(&theirs, ours).0,
+            None => theirs,
+        };
+        if ours.as_ref() == Some(&item) {
+            return false;
+        }
+        let Ok(data) = self.encrypt_item(vault_id, &item) else { return false };
+        let p = self.profile_mut();
+        match p.item_mut(&remote.id) {
+            Some(rec) => {
+                rec.data = Some(data);
+                rec.dirty = true;
+            }
+            None => p.items.push(ItemRecord {
+                id: remote.id.clone(),
+                vault_id: vault_id.to_string(),
+                data: Some(data),
+                revision: 0,
+                dirty: true,
+                deleted_at: None,
+            }),
+        }
+        true
+    }
+}
+
+/// Merge two versions of an item: the newest edit wins (`ours` on a tie) and
+/// the other one's passwords are kept in its password history, so no
+/// password is ever lost. Returns the result and whether it differs from
+/// `theirs` (so it still has to go to wherever `theirs` came from).
+///
+/// Used for conflicts with the server and for storage folders alike.
+pub fn merge_items(ours: &Item, theirs: &Item) -> (Item, bool) {
+    if ours == theirs {
+        return (theirs.clone(), false);
+    }
+    let mut merged = if ours.updated_at >= theirs.updated_at { ours.clone() } else { theirs.clone() };
+    let other = if ours.updated_at >= theirs.updated_at { theirs } else { ours };
+    merge_password_history(&mut merged, other);
+    let changed = merged != *theirs;
+    (merged, changed)
+}
+
 /// Add the other version's current and previous passwords to `item`'s history.
-fn merge_password_history(item: &mut Item, other: &Item) {
+pub(crate) fn merge_password_history(item: &mut Item, other: &Item) {
     let current = item.password().unwrap_or("").to_string();
     let mut candidates: Vec<PasswordHistoryEntry> = Vec::new();
     if let Some(pw) = other.password() {
@@ -441,7 +558,8 @@ fn merge_password_history(item: &mut Item, other: &Item) {
             item.password_history.push(entry);
         }
     }
-    item.password_history.sort_by_key(|h| std::cmp::Reverse(h.changed_at));
+    // Newest first; equal times by value, so every device gets the same order.
+    item.password_history.sort_by(|a, b| b.changed_at.cmp(&a.changed_at).then_with(|| a.value.cmp(&b.value)));
     item.password_history.truncate(MAX_PASSWORD_HISTORY);
 }
 
@@ -463,6 +581,12 @@ mod tests {
     impl FakeServer {
         fn create_vaults(&mut self, s: &mut Session) {
             for v in s.vaults_pending(SyncState::PendingCreate) {
+                // Back from elsewhere: the client then updates the name.
+                if let Some(existing) = self.vaults.iter_mut().find(|d| d.id == v.id) {
+                    existing.meta = v.meta.clone();
+                    s.mark_vault_synced(&v.id);
+                    continue;
+                }
                 self.vaults.push(VaultDto {
                     id: v.id.clone(),
                     owner_id: v.owner_id.clone(),
@@ -841,5 +965,101 @@ mod tests {
         assert_eq!(r.vaults_removed, 1);
         assert_eq!(a.vaults().len(), 1);
         assert_eq!(a.item_count(), 0);
+    }
+
+    fn folder() -> VaultLocation {
+        VaultLocation::Folder { path: "/tmp/work".into(), service: crate::profile::FolderService::Dropbox }
+    }
+
+    #[test]
+    fn vaults_kept_elsewhere_are_not_the_servers() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let here = a.create_vault_at("Here", "", VaultLocation::Device).unwrap();
+        let there = a.create_vault_at("There", "", folder()).unwrap();
+        let id = a.add_item(&here, Item::login("Local", "me", "pw", None)).unwrap();
+        a.add_item(&there, Item::login("Folder", "me", "pw", None)).unwrap();
+        server.full_sync(&mut a);
+        assert_eq!(server.vaults.len(), 1, "only the personal vault goes to the server");
+        assert!(server.items.is_empty());
+        assert!(!a.profile().has_pending_changes());
+        assert!(a.profile().has_pending_folder_changes());
+        // A server listing vaults with the same ids changes nothing here.
+        for vid in [&here, &there] {
+            let mut fake = server.vaults[0].clone();
+            fake.id = vid.clone();
+            server.vaults.push(fake);
+        }
+        server.items.push(ItemDto { id: id.clone(), vault_id: here.clone(), revision: 9, data: None });
+        server.full_sync(&mut a);
+        assert_eq!(a.vault(&here).unwrap().name, "Here");
+        assert_eq!(a.vault(&there).unwrap().name, "There");
+        assert!(a.item(&id).is_some());
+        assert!(a.profile().vault(&there).unwrap().on_server);
+        // Vaults kept elsewhere stay when the account leaves its server.
+        a.unlink_server();
+        assert!(a.vault(&here).is_some() && a.vault(&there).is_some() && a.item(&id).is_some());
+        assert!(a.profile().vault(&here).unwrap().location.is_device());
+    }
+
+    #[test]
+    fn a_vault_moved_to_a_folder_leaves_an_emptied_placeholder() {
+        use crate::profile::{FolderService, MoveTarget, MovedTo};
+        let (mut a, _) = new_session();
+        a.set_server("https://sync.example.com", "token");
+        let mut server = FakeServer::default();
+        let w = a.create_vault("Work", "").unwrap();
+        let one = a.add_item(&w, Item::login("One", "me", "pw", None)).unwrap();
+        server.full_sync(&mut a);
+        let mut b = second_device(&a);
+        server.full_sync(&mut b);
+        assert!(b.item(&one).is_some());
+
+        // a moves Work to a folder: the server copy becomes a placeholder.
+        let moved = MovedTo {
+            to: MoveTarget::Folder { service: FolderService::Dropbox, folder: "2Secret/Work".into() },
+            at: now(),
+        };
+        let meta = a.placeholder_meta(&w, Some(moved)).unwrap();
+        server.vaults.iter_mut().find(|d| d.id == w).unwrap().meta = meta;
+        a.relocate_vault(&w, folder()).unwrap();
+        assert_eq!(a.profile().vault(&w).unwrap().leftovers.len(), 1);
+
+        // Meanwhile b adds an item to the server copy.
+        let two = b.add_item(&w, Item::login("Two", "me", "pw", None)).unwrap();
+        server.full_sync(&mut b);
+        assert!(b.vault(&w).unwrap().is_placeholder());
+        assert!(b.add_item(&w, Item::login("Three", "me", "pw", None)).is_err(), "nothing goes into a placeholder");
+        assert_ne!(b.default_vault_id().as_deref(), Some(w.as_str()));
+
+        // a takes what is left on the placeholder and empties it.
+        server.full_sync(&mut a);
+        assert!(server.items.iter().filter(|i| i.vault_id == w).all(|i| i.data.is_none()));
+        assert!(a.item(&one).is_some() && a.item(&two).is_some());
+        let rec = a.profile().vault(&w).unwrap();
+        assert!(rec.leftovers.is_empty() && rec.on_server);
+        assert!(a.profile().has_pending_folder_changes(), "Two still has to go into the folder");
+        server.full_sync(&mut b);
+        assert!(b.item(&one).is_none() && b.item(&two).is_none());
+        assert_eq!(b.vault(&w).unwrap().item_count, 0);
+
+        // And back to the server: everything is there again for b.
+        a.relocate_vault(&w, VaultLocation::Account).unwrap();
+        server.full_sync(&mut a);
+        assert!(!a.profile().has_pending_changes());
+        server.full_sync(&mut b);
+        assert!(!b.vault(&w).unwrap().is_placeholder());
+        assert!(b.item(&one).is_some() && b.item(&two).is_some());
+    }
+
+    #[test]
+    fn shared_vaults_stay_on_the_server() {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let w = a.create_vault("Team", "").unwrap();
+        server.full_sync(&mut a);
+        server.vaults.iter_mut().find(|d| d.id == w).unwrap().member_count = 2;
+        server.full_sync(&mut a);
+        assert!(matches!(a.relocate_vault(&w, folder()), Err(crate::Error::VaultShared)));
     }
 }

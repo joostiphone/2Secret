@@ -13,6 +13,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod favicon;
 pub mod flows;
+// Vaults in storage folders: the apps and the command line, not the web.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod folder;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod update;
 

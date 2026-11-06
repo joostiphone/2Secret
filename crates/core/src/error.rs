@@ -32,6 +32,14 @@ pub enum Error {
     Import(String),
     #[error("storage error: {0}")]
     Storage(String),
+    /// A vault's storage folder is not there (moved, not synced yet, or the
+    /// drive is not connected).
+    #[error("the vault's folder was not found: {0}")]
+    FolderNotFound(String),
+    #[error("this vault folder belongs to another 2Secret account")]
+    FolderOtherAccount,
+    #[error("a shared vault stays on the server: stop sharing it first")]
+    VaultShared,
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("I/O error: {0}")]

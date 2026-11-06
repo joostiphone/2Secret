@@ -16,8 +16,8 @@ use crate::crypto::{
 use crate::item::{Category, Item, ItemSummary};
 use crate::passkey::Passkey;
 use crate::profile::{
-    aad, AccountRecord, ItemRecord, KeyChange, KnownAccount, Profile, Role, ServerLink, SyncState, VaultMeta,
-    VaultRecord, PROFILE_FORMAT, PROFILE_VERSION,
+    aad, AccountRecord, ItemRecord, KeyChange, KnownAccount, MovedTo, Profile, Role, ServerLink, SyncState,
+    VaultLocation, VaultMeta, VaultRecord, PROFILE_FORMAT, PROFILE_VERSION,
 };
 use crate::util::{b64, new_id, normalize_email, now, random_bytes, unb64, url_matches};
 use crate::{Error, Result};
@@ -92,11 +92,21 @@ pub struct VaultInfo {
     pub item_count: usize,
     pub sync_state: SyncState,
     pub created_at: i64,
+    /// Where the vault is kept.
+    pub location: VaultLocation,
+    /// For a placeholder the server keeps of a vault that moved away: where
+    /// it went. Nothing can be added to it.
+    pub moved: Option<MovedTo>,
 }
 
 impl VaultInfo {
     pub fn is_shared(&self) -> bool {
         self.member_count > 1 || !self.is_owner
+    }
+
+    /// A server placeholder of a vault that is now kept elsewhere.
+    pub fn is_placeholder(&self) -> bool {
+        self.location.is_account() && self.moved.is_some()
     }
 }
 
@@ -199,6 +209,7 @@ impl Session {
             items: Vec::new(),
             default_vault: None,
             known_accounts: Vec::new(),
+            device_tag: None,
         };
         let mut session = Session::from_parts(profile, keyset)?;
         let name = if default_vault_name.trim().is_empty() { "Personal" } else { default_vault_name };
@@ -219,6 +230,7 @@ impl Session {
             items: Vec::new(),
             default_vault: None,
             known_accounts: Vec::new(),
+            device_tag: None,
         };
         Session::open(profile, keys)
     }
@@ -361,7 +373,7 @@ impl Session {
         self.profile
             .vaults
             .iter()
-            .filter(|v| v.wrapped_key.is_sealed() && v.sync_state == SyncState::Synced)
+            .filter(|v| v.wrapped_key.is_sealed() && v.sync_state == SyncState::Synced && v.location.is_account())
             .filter_map(|v| {
                 let key = self.vaults.get(&v.id)?.key.clone();
                 Some(KeyRewrap {
@@ -386,6 +398,9 @@ impl Session {
         let record = self.profile.vault(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
         if !record.role.can_manage() {
             return Err(Error::PermissionDenied("only the owner and managers can replace a vault's key".into()));
+        }
+        if !record.location.is_account() {
+            return Err(Error::invalid("only a vault on the server has its key replaced"));
         }
         let pending = self.profile.items.iter().any(|i| i.vault_id == vault_id && i.dirty);
         if record.sync_state != SyncState::Synced || pending {
@@ -555,6 +570,8 @@ impl Session {
             item_count: self.items.values().filter(|(v, i)| v == &rec.id && !i.is_trashed()).count(),
             sync_state: rec.sync_state,
             created_at: rec.created_at,
+            location: rec.location.clone(),
+            moved: open.meta.moved.clone(),
         })
     }
 
@@ -602,7 +619,7 @@ impl Session {
     pub fn default_vault_id(&self) -> Option<String> {
         let vaults = self.vaults();
         if let Some(id) = &self.profile.default_vault {
-            if vaults.iter().any(|v| &v.id == id && v.role.can_write()) {
+            if vaults.iter().any(|v| &v.id == id && v.role.can_write() && !v.is_placeholder()) {
                 return Some(id.clone());
             }
         }
@@ -610,11 +627,12 @@ impl Session {
         // is our own: a server can list any vault as ours.
         let own_key =
             |id: &str| self.profile.vault(id).is_some_and(|r| matches!(r.wrapped_key, WrappedKey::Symmetric { .. }));
+        let own = |v: &&VaultInfo| v.is_owner && !v.is_shared() && !v.is_placeholder();
         vaults
             .iter()
-            .find(|v| v.is_owner && !v.is_shared() && own_key(&v.id))
-            .or_else(|| vaults.iter().find(|v| v.is_owner && !v.is_shared()))
-            .or_else(|| vaults.iter().find(|v| v.role.can_write()))
+            .find(|v| own(v) && own_key(&v.id))
+            .or_else(|| vaults.iter().find(own))
+            .or_else(|| vaults.iter().find(|v| v.role.can_write() && !v.is_placeholder()))
             .map(|v| v.id.clone())
     }
 
@@ -622,15 +640,49 @@ impl Session {
         self.vaults.get(vault_id).map(|v| &v.key)
     }
 
+    /// The decrypted metadata of a vault.
+    pub fn vault_meta(&self, vault_id: &str) -> Option<&VaultMeta> {
+        self.vaults.get(vault_id).map(|v| &v.meta)
+    }
+
+    /// Replace a vault's metadata on this device only (it came from
+    /// elsewhere: a storage folder, or a move).
+    pub(crate) fn set_vault_meta(&mut self, vault_id: &str, meta: VaultMeta) -> Result<()> {
+        let open = self.vaults.get_mut(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        let enc = encrypt_json(&open.key, &meta, &aad::vault_meta(vault_id))?;
+        open.meta = meta;
+        if let Some(rec) = self.profile.vault_mut(vault_id) {
+            rec.meta = enc;
+        }
+        Ok(())
+    }
+
+    /// Create a vault with the account (on its server, if it has one).
     pub fn create_vault(&mut self, name: &str, description: &str) -> Result<String> {
+        self.create_vault_at(name, description, VaultLocation::Account)
+    }
+
+    /// Create a vault kept at `location`. For a storage folder, the folder's
+    /// files are written by the caller (see [`crate::folder`]).
+    pub fn create_vault_at(&mut self, name: &str, description: &str, location: VaultLocation) -> Result<String> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::invalid("a vault needs a name"));
         }
         let id = new_id();
         let key = SymmetricKey::generate();
-        let meta =
-            VaultMeta { name: name.to_string(), description: description.trim().to_string(), icon: String::new() };
+        let meta = VaultMeta {
+            name: name.to_string(),
+            description: description.trim().to_string(),
+            icon: String::new(),
+            moved: None,
+        };
+        let sync_state = match location {
+            VaultLocation::Account => SyncState::PendingCreate,
+            VaultLocation::Device => SyncState::Synced,
+            // Its name still has to go into the folder.
+            VaultLocation::Folder { .. } => SyncState::PendingUpdate,
+        };
         let record = VaultRecord {
             id: id.clone(),
             owner_id: self.profile.account.id.clone(),
@@ -638,11 +690,14 @@ impl Session {
             wrapped_key: WrappedKey::wrap_symmetric(&self.keyset.account_key, &key, &aad::vault_key(&id)),
             meta: encrypt_json(&key, &meta, &aad::vault_meta(&id))?,
             revision: 0,
-            sync_state: SyncState::PendingCreate,
+            sync_state,
             member_count: 1,
             created_at: now(),
             key_rev: 0,
             retired_keys: Vec::new(),
+            location,
+            leftovers: Vec::new(),
+            on_server: false,
         };
         self.profile.vaults.push(record);
         self.vaults.insert(id.clone(), OpenVault { key, meta });
@@ -672,15 +727,25 @@ impl Session {
     }
 
     /// Delete a vault we own, or leave a vault shared with us. All of its
-    /// items disappear from this device.
+    /// items disappear from this device. (The files of a vault in a storage
+    /// folder are removed by the caller, see [`crate::folder`].)
     pub fn delete_vault(&mut self, id: &str) -> Result<()> {
         let rec = self.profile.vault(id).ok_or_else(|| Error::not_found(format!("vault {id}")))?;
-        let never_synced = rec.sync_state == SyncState::PendingCreate || self.profile.server.is_none();
-        if never_synced {
+        let linked = self.profile.server.is_some();
+        let on_server = match rec.location {
+            VaultLocation::Account => rec.sync_state != SyncState::PendingCreate && linked,
+            // A placeholder from a move goes too.
+            VaultLocation::Folder { .. } => rec.on_server && linked,
+            VaultLocation::Device => false,
+        };
+        if on_server {
+            let rec = self.profile.vault_mut(id).expect("exists");
+            rec.location = VaultLocation::Account;
+            rec.leftovers.clear();
+            rec.sync_state = SyncState::PendingDelete;
+        } else {
             self.profile.vaults.retain(|v| v.id != id);
             self.vaults.remove(id);
-        } else {
-            self.profile.vault_mut(id).expect("exists").sync_state = SyncState::PendingDelete;
         }
         self.profile.items.retain(|i| i.vault_id != id);
         self.items.retain(|_, (v, _)| v != id);
@@ -705,7 +770,8 @@ impl Session {
         self.profile
             .vaults
             .iter()
-            .filter(|v| v.role == Role::Owner && v.sync_state == SyncState::Synced)
+            .filter(|v| v.role == Role::Owner && v.sync_state == SyncState::Synced && v.location.is_account())
+            .filter(|v| self.vaults.get(&v.id).is_some_and(|o| o.meta.moved.is_none()))
             .filter(|v| !have.iter().any(|h| h.vault_id == v.id && h.key_rev == v.key_rev))
             .map(|v| {
                 Ok(crate::api::EmergencyKey {
@@ -868,6 +934,11 @@ impl Session {
         if !rec.role.can_write() {
             return Err(Error::PermissionDenied("this vault is read-only for you".into()));
         }
+        if let Some(moved) = self.vaults.get(vault_id).and_then(|o| o.meta.moved.as_ref()) {
+            if rec.location.is_account() {
+                return Err(Error::PermissionDenied(format!("this vault moved to {}", moved.to)));
+            }
+        }
         Ok(())
     }
 
@@ -885,6 +956,7 @@ impl Session {
                 data: Some(data),
                 revision: 0,
                 dirty: true,
+                deleted_at: None,
             }),
         }
         self.items.insert(item.id.clone(), (vault_id.to_string(), item));
@@ -965,13 +1037,18 @@ impl Session {
         let vault_id =
             self.item_vault(id).map(|s| s.to_string()).ok_or_else(|| Error::not_found(format!("item {id}")))?;
         self.writable_vault(&vault_id)?;
-        self.items.remove(id);
+        let deleted = self.items.remove(id).map(|(_, item)| item.updated_at);
+        // Other devices may have an item in a storage folder already: the
+        // deletion has to go there too.
+        let in_folder = self.profile.vault(&vault_id).is_some_and(|v| v.location.is_folder());
         let rec = self.profile.item_mut(id).expect("record exists for every item");
-        if rec.revision == 0 {
+        if rec.revision == 0 && !in_folder {
             self.profile.items.retain(|i| i.id != id);
         } else {
             rec.data = None;
             rec.dirty = true;
+            // After the version it deletes, even if that one's clock was ahead.
+            rec.deleted_at = Some(now().max(deleted.unwrap_or(0) + 1));
         }
         Ok(())
     }
@@ -1165,28 +1242,35 @@ impl Session {
     }
 
     /// Disconnect from the server. The data stays on this device and the
-    /// account becomes a local-only account.
+    /// account becomes a local-only account. Vaults kept elsewhere (this
+    /// device, a storage folder) stay as they are.
     pub fn unlink_server(&mut self) {
         self.profile.server = None;
-        let deleted: Vec<String> = self
-            .profile
-            .vaults
-            .iter()
-            .filter(|v| v.sync_state == SyncState::PendingDelete)
-            .map(|v| v.id.clone())
-            .collect();
-        self.profile.vaults.retain(|v| !deleted.contains(&v.id));
-        self.profile.vaults.retain(|v| v.owner_id == self.profile.account.id);
+        let me = self.profile.account.id.clone();
+        let placeholders: Vec<String> =
+            self.vaults.iter().filter(|(_, o)| o.meta.moved.is_some()).map(|(id, _)| id.clone()).collect();
+        self.profile.vaults.retain(|v| {
+            !v.location.is_account()
+                || (v.sync_state != SyncState::PendingDelete && v.owner_id == me && !placeholders.contains(&v.id))
+        });
         let kept: Vec<String> = self.profile.vaults.iter().map(|v| v.id.clone()).collect();
+        let on_account: Vec<String> =
+            self.profile.vaults.iter().filter(|v| v.location.is_account()).map(|v| v.id.clone()).collect();
         self.vaults.retain(|id, _| kept.contains(id));
         self.items.retain(|_, (v, _)| kept.contains(v));
-        self.profile.items.retain(|i| i.data.is_some() && kept.contains(&i.vault_id));
+        self.profile
+            .items
+            .retain(|i| kept.contains(&i.vault_id) && (i.data.is_some() || !on_account.contains(&i.vault_id)));
         for v in &mut self.profile.vaults {
-            v.sync_state = SyncState::PendingCreate;
+            v.on_server = false;
+            v.leftovers.clear();
             v.revision = 0;
-            v.member_count = 1;
+            if v.location.is_account() {
+                v.sync_state = SyncState::PendingCreate;
+                v.member_count = 1;
+            }
         }
-        for i in &mut self.profile.items {
+        for i in self.profile.items.iter_mut().filter(|i| on_account.contains(&i.vault_id)) {
             i.revision = 0;
             i.dirty = true;
         }

@@ -37,6 +37,18 @@ pub mod aad {
     pub fn avatar(account_id: &str) -> Vec<u8> {
         format!("2secret/v1/avatar/{account_id}").into_bytes()
     }
+    /// A version of a vault's metadata in a storage folder (see [`crate::folder`]).
+    pub fn vault_meta_version(vault_id: &str) -> Vec<u8> {
+        format!("2secret/v1/vault-meta-version/{vault_id}").into_bytes()
+    }
+    /// A deleted item in a storage folder.
+    pub fn item_tombstone(vault_id: &str, item_id: &str) -> Vec<u8> {
+        format!("2secret/v1/item-tombstone/{vault_id}/{item_id}").into_bytes()
+    }
+    /// Where a vault in a storage folder went.
+    pub fn vault_moved(vault_id: &str) -> Vec<u8> {
+        format!("2secret/v1/vault-moved/{vault_id}").into_bytes()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,6 +70,10 @@ pub struct Profile {
     /// [`KnownAccount`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub known_accounts: Vec<KnownAccount>,
+    /// This device's name in storage folders: the files it writes there end
+    /// in `~<tag>` (see [`crate::folder`]). Made when first needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_tag: Option<String>,
 }
 
 impl Profile {
@@ -95,9 +111,19 @@ impl Profile {
         self.items.iter_mut().find(|i| i.id == id)
     }
 
-    /// Does the profile have changes that still need to be uploaded?
+    /// Does the profile have changes that still need to be uploaded to the
+    /// account's server? (Vaults stored elsewhere do not count.)
     pub fn has_pending_changes(&self) -> bool {
-        self.items.iter().any(|i| i.dirty) || self.vaults.iter().any(|v| v.sync_state != SyncState::Synced)
+        let on_account = |id: &str| self.vault(id).is_none_or(|v| v.location.is_account());
+        self.items.iter().any(|i| i.dirty && on_account(&i.vault_id))
+            || self.vaults.iter().any(|v| v.location.is_account() && v.sync_state != SyncState::Synced)
+    }
+
+    /// Changes in vaults in storage folders that are not in the folder yet.
+    pub fn has_pending_folder_changes(&self) -> bool {
+        let in_folder = |id: &str| self.vault(id).is_some_and(|v| v.location.is_folder());
+        self.items.iter().any(|i| i.dirty && in_folder(&i.vault_id))
+            || self.vaults.iter().any(|v| v.location.is_folder() && v.sync_state != SyncState::Synced)
     }
 }
 
@@ -218,6 +244,128 @@ pub struct VaultRecord {
     /// refused, so a removed member's old key cannot come back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retired_keys: Vec<String>,
+    /// Where the vault is kept: with the account (its server), only on this
+    /// device, or in a storage folder.
+    #[serde(default, skip_serializing_if = "VaultLocation::is_account")]
+    pub location: VaultLocation,
+    /// For a vault that moved from the server to a storage folder: items that
+    /// still have to be removed from the placeholder the server keeps (see
+    /// [`VaultMeta::moved`]). Its `revision` then counts the placeholder's
+    /// changes this device has seen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leftovers: Vec<Leftover>,
+    /// For a vault kept elsewhere: the account's server still lists it (a
+    /// placeholder from a move), as of the last sync.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_server: bool,
+}
+
+/// An item to remove from a server placeholder, at the revision the server
+/// last reported for it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Leftover {
+    pub id: String,
+    pub revision: u64,
+}
+
+/// Where a vault is stored and synchronised.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VaultLocation {
+    /// With the account: on its sync server, or only on this device for an
+    /// account without one (it goes to a server the account connects to).
+    #[default]
+    Account,
+    /// Only on this device, also in an account with a sync server.
+    Device,
+    /// In a folder that a storage app keeps in sync between devices (iCloud
+    /// Drive, Dropbox, Google Drive, OneDrive, Syncthing, a network share).
+    /// `path` is the vault's own folder on this device (the one holding
+    /// `vault.json`); it is never sent anywhere.
+    Folder { path: String, service: FolderService },
+}
+
+impl VaultLocation {
+    pub fn is_account(&self) -> bool {
+        matches!(self, VaultLocation::Account)
+    }
+    pub fn is_device(&self) -> bool {
+        matches!(self, VaultLocation::Device)
+    }
+    pub fn is_folder(&self) -> bool {
+        matches!(self, VaultLocation::Folder { .. })
+    }
+    /// The vault folder, for a vault in a storage folder.
+    pub fn folder(&self) -> Option<&str> {
+        match self {
+            VaultLocation::Folder { path, .. } => Some(path),
+            _ => None,
+        }
+    }
+    pub fn service(&self) -> Option<FolderService> {
+        match self {
+            VaultLocation::Folder { service, .. } => Some(*service),
+            _ => None,
+        }
+    }
+}
+
+/// The app that keeps a storage folder in sync.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum FolderService {
+    #[serde(rename = "icloud")]
+    ICloudDrive,
+    #[serde(rename = "dropbox")]
+    Dropbox,
+    #[serde(rename = "gdrive")]
+    GoogleDrive,
+    #[serde(rename = "onedrive")]
+    OneDrive,
+    /// Any other folder: Syncthing, a network share, a USB stick.
+    #[default]
+    #[serde(rename = "other")]
+    Other,
+}
+
+impl FolderService {
+    pub const ALL: [FolderService; 5] = [
+        FolderService::ICloudDrive,
+        FolderService::Dropbox,
+        FolderService::GoogleDrive,
+        FolderService::OneDrive,
+        FolderService::Other,
+    ];
+
+    pub fn id(&self) -> &'static str {
+        match self {
+            FolderService::ICloudDrive => "icloud",
+            FolderService::Dropbox => "dropbox",
+            FolderService::GoogleDrive => "gdrive",
+            FolderService::OneDrive => "onedrive",
+            FolderService::Other => "other",
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            FolderService::ICloudDrive => "iCloud Drive",
+            FolderService::Dropbox => "Dropbox",
+            FolderService::GoogleDrive => "Google Drive",
+            FolderService::OneDrive => "OneDrive",
+            FolderService::Other => "Other folder",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<FolderService> {
+        Some(match s.trim().to_lowercase().replace([' ', '-', '_'], "").as_str() {
+            "icloud" | "iclouddrive" => FolderService::ICloudDrive,
+            "dropbox" => FolderService::Dropbox,
+            "gdrive" | "googledrive" | "google" => FolderService::GoogleDrive,
+            "onedrive" => FolderService::OneDrive,
+            "other" | "folder" | "syncthing" | "nas" => FolderService::Other,
+            _ => return None,
+        })
+    }
 }
 
 /// How many replaced keys a vault remembers.
@@ -241,6 +389,34 @@ pub struct VaultMeta {
     /// Optional accent colour (`#rrggbb`) or emoji used by the apps.
     #[serde(default)]
     pub icon: String,
+    /// Set on the server's placeholder of a vault that moved to a storage
+    /// folder: the vault is no longer kept here. Devices that have the
+    /// folder take the vault from there; others show where it went.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved: Option<MovedTo>,
+}
+
+/// Where a vault went (in a server placeholder or a folder's `moved.json`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MovedTo {
+    pub to: MoveTarget,
+    pub at: i64,
+}
+
+/// The new place of a moved vault, as other devices can understand it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MoveTarget {
+    /// Back to the account's server.
+    Account,
+    /// To one device only.
+    Device,
+    /// To a storage folder: `folder` is its path inside the service's own
+    /// folder (`2Secret/Work-1a2b3c4d`), or only its name when it is not in a
+    /// service folder this device recognised.
+    Folder { service: FolderService, folder: String },
+    /// Deleted: the vault is gone everywhere.
+    Deleted,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -255,6 +431,9 @@ pub struct ItemRecord {
     /// Changed locally since the last successful upload.
     #[serde(default)]
     pub dirty: bool,
+    /// When a deletion not yet in a storage folder was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<i64>,
 }
 
 /// The public keys of another account as this device first saw them, when
@@ -304,6 +483,17 @@ impl fmt::Display for KeyChange {
              Compare the new fingerprint with them, then trust the new keys",
             self.email, self.new, self.old
         )
+    }
+}
+
+impl fmt::Display for MoveTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MoveTarget::Account => f.write_str("the server"),
+            MoveTarget::Device => f.write_str("one device"),
+            MoveTarget::Folder { service, folder } => write!(f, "{} ({folder})", service.name()),
+            MoveTarget::Deleted => f.write_str("nowhere (it was deleted)"),
+        }
     }
 }
 
