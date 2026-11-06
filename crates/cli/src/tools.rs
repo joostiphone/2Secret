@@ -360,18 +360,47 @@ pub fn sync(ctx: &Ctx) -> Result<()> {
         bail!("--offline was given");
     }
     let mut session = ctx.unlock()?;
-    if session.server().is_none() {
+    let in_folders = session.profile().vaults.iter().any(|v| v.location.is_folder());
+    if session.server().is_none() && !in_folders {
         bail!("this is a local-only account; connect it with `2secret account connect`");
     }
-    let report = ctx.block_on(twosecret_client::sync(&mut session))?;
+    let report = match session.server() {
+        Some(_) => Some(ctx.block_on(twosecret_client::sync(&mut session))?),
+        None => None,
+    };
+    ctx.save(&session)?;
+    let folders = ctx.block_on(twosecret_client::folder::sync_folders(&mut session))?;
     ctx.save(&session)?;
     if ctx.json {
-        print_json(&report);
-    } else {
+        let folders: Vec<serde_json::Value> = folders
+            .iter()
+            .map(|o| match &o.result {
+                Ok(r) => serde_json::json!({"vault_id": o.vault_id, "report": r, "waiting": o.waiting}),
+                Err(e) => serde_json::json!({"vault_id": o.vault_id, "error": e.to_string()}),
+            })
+            .collect();
+        print_json(&serde_json::json!({"server": report, "folders": folders}));
+        return Ok(());
+    }
+    if let Some(report) = report {
         eprintln!(
             "Synced: {} uploaded, {} downloaded, {} deleted, {} conflicts resolved.",
             report.uploaded, report.downloaded, report.deleted, report.conflicts
         );
+    }
+    for o in &folders {
+        let name = session.vault(&o.vault_id).map(|v| v.name).unwrap_or(o.vault_id.clone());
+        match &o.result {
+            Ok(r) => {
+                let waiting =
+                    if o.waiting > 0 { format!(", {} files still downloading", o.waiting) } else { String::new() };
+                eprintln!(
+                    "Folder vault '{name}': {} in, {} deleted, {} written{waiting}.",
+                    r.downloaded, r.deleted, r.written
+                )
+            }
+            Err(e) => eprintln!("Folder vault '{name}': {e}"),
+        }
     }
     Ok(())
 }

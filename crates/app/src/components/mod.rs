@@ -4,6 +4,7 @@ pub mod emergency;
 pub mod generator;
 pub mod item_edit;
 pub mod item_view;
+pub mod location;
 pub mod modals;
 pub mod onboarding;
 pub mod passkey;

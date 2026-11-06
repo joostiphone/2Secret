@@ -5,6 +5,7 @@ use twosecret_core::api::MemberDto;
 use twosecret_core::item::{Category, Item};
 use twosecret_core::profile::Role;
 
+use crate::components::location::{LocationPicker, Place};
 use crate::components::widgets::*;
 use crate::i18n::{category_name, field_label, role_name, t};
 use crate::icons::{category_icon, either, vault_icon, Icon, ItemAvatar, VAULT_ICONS};
@@ -25,6 +26,7 @@ pub fn ModalHost() -> Element {
         Some(Modal::EditVault(id)) => rsx! { VaultFormModal { id: Some(id) } },
         Some(Modal::ShareVault(id)) => rsx! { ShareModal { id } },
         Some(Modal::DeleteVault(id)) => rsx! { DeleteVaultModal { id } },
+        Some(Modal::MoveVault(id)) => rsx! { crate::components::location::MoveVaultModal { id } },
         Some(Modal::MoveItem(id)) => rsx! { MoveItemModal { ids: vec![id] } },
         Some(Modal::MoveItems(ids)) => rsx! { MoveItemModal { ids } },
         Some(Modal::RenameItem(id)) => rsx! { RenameItemModal { id } },
@@ -267,6 +269,8 @@ fn VaultFormModal(id: Option<String>) -> Element {
     let mut description = use_signal(|| existing.as_ref().map(|v| v.description.clone()).unwrap_or_default());
     let shared = existing.as_ref().is_some_and(|v| v.is_shared());
     let mut icon = use_signal(|| existing.as_ref().map(|v| vault_icon(&v.icon, v.is_shared())).unwrap_or("vault"));
+    let place = use_signal(|| Place::Account);
+    let folder = use_signal(String::new);
     let title = if id.is_some() { t("vault.edit") } else { t("vault.new") };
     let id2 = id.clone();
     let save = move |_| {
@@ -282,14 +286,15 @@ fn VaultFormModal(id: Option<String>) -> Element {
                 }
             }
             None => {
-                let created =
-                    mutate(|s| s.create_vault(&n, &d).and_then(|id| s.update_vault(&id, &n, &d, Some(i)).map(|_| id)));
-                if let Some(new_id) = created {
-                    *NAV.write() = Nav::Vault(new_id);
-                    *SELECTED.write() = None;
-                    *PANE.write() = Pane::List;
-                    close();
-                }
+                let (p, f) = (place(), folder());
+                spawn(async move {
+                    if let Some(new_id) = crate::components::location::create_at(n, d, i, p, f).await {
+                        *NAV.write() = Nav::Vault(new_id);
+                        *SELECTED.write() = None;
+                        *PANE.write() = Pane::List;
+                        close();
+                    }
+                });
             }
         }
     };
@@ -323,6 +328,9 @@ fn VaultFormModal(id: Option<String>) -> Element {
                     div { class: "muted small", style: "margin-top:6px", {t("vault.icon_shared")} }
                 }
             }
+            if id.is_none() && !crate::extension::ENABLED {
+                LocationPicker { place, folder }
+            }
         }
     }
 }
@@ -331,6 +339,7 @@ fn VaultFormModal(id: Option<String>) -> Element {
 fn DeleteVaultModal(id: String) -> Element {
     let Some(v) = SESSION.peek().as_ref().and_then(|s| s.vault(&id)) else { return rsx! {} };
     let owner = v.is_owner;
+    let in_folder = v.location.is_folder();
     let id2 = id.clone();
     rsx! {
         ModalFrame { title: if owner { t("vault.delete") } else { t("vault.leave") },
@@ -338,6 +347,10 @@ fn DeleteVaultModal(id: String) -> Element {
                 button { class: "btn", onclick: move |_| close(), {t("common.cancel")} }
                 button { class: "btn danger",
                     onclick: move |_| {
+                        if in_folder {
+                            crate::components::location::delete_folder_vault(id2.clone());
+                            return;
+                        }
                         if mutate(|s| s.delete_vault(&id2)).is_some() {
                             *NAV.write() = Nav::All;
                             *SELECTED.write() = None;
@@ -348,7 +361,9 @@ fn DeleteVaultModal(id: String) -> Element {
                 }
             },
             p { strong { "{v.name}" } " · {v.item_count} {t(\"vault.items\")}" }
-            p { class: "muted", if owner { {t("vault.delete_warning")} } else { {t("vault.leave_warning")} } }
+            p { class: "muted",
+                if in_folder { {t("vault.delete_folder_warning")} } else if owner { {t("vault.delete_warning")} } else { {t("vault.leave_warning")} }
+            }
         }
     }
 }

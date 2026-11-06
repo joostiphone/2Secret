@@ -881,9 +881,9 @@ impl Platform {
             Platform::Windows => "Windows",
             Platform::Linux => "Linux",
             Platform::Bsd => "BSD",
-            Platform::Ios => "iPhone and iPad",
+            Platform::Ios => "iPhone/iPad",
             Platform::Android => "Android",
-            Platform::Web => "the web vault and the browser extension",
+            Platform::Web => "the web vault/browser extension",
         }
     }
 

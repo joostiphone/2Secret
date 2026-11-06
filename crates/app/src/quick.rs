@@ -92,6 +92,11 @@ pub fn close() {
     }
 }
 
+/// Whether the main window has the focus.
+pub fn main_focused() -> bool {
+    MAIN.with_borrow(|m| m.as_ref().is_some_and(|m| m.is_focused()))
+}
+
 /// In the app component: the shortcut, and the main window's side.
 pub fn use_quick_access() {
     use_hook(|| {

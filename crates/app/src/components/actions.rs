@@ -41,6 +41,8 @@ enum Action {
     NewItem,
     EditVault,
     ShareVault,
+    MoveVault,
+    ChooseFolder,
     DeleteVault,
 }
 
@@ -108,14 +110,24 @@ fn vault_menu(id: &str) -> Option<(String, Vec<Entry>)> {
     let vault = s.vault(id)?;
     let linked = s.server().is_some();
     let mut entries = Vec::new();
+    if vault.is_placeholder() {
+        if FOLDER_VAULTS {
+            entries.push(entry(Action::ChooseFolder, "folder", t("location.choose_folder"), 0));
+        }
+        // Deleted from a device that has its folder.
+        return Some((vault.name.clone(), entries));
+    }
     if vault.role.can_write() {
         entries.push(entry(Action::NewItem, "plus", t("vault.new_item"), 0));
     }
     if vault.role.can_manage() {
         entries.push(entry(Action::EditVault, "edit", t("vault.edit"), 1));
-        if linked {
+        if linked && vault.location.is_account() {
             entries.push(entry(Action::ShareVault, "share", t("vault.share"), 1));
         }
+    }
+    if vault.is_owner && !vault.is_shared() && (linked || FOLDER_VAULTS || !vault.location.is_account()) {
+        entries.push(entry(Action::MoveVault, "upload", t("move.menu"), 1));
     }
     let delete = if vault.is_owner { t("vault.delete") } else { t("vault.leave") };
     entries.push(entry(Action::DeleteVault, "trash", delete, 2));
@@ -133,6 +145,11 @@ fn run(target: &MenuFor, action: Action) {
             }
             Action::EditVault => *MODAL.write() = Some(Modal::EditVault(id.clone())),
             Action::ShareVault => *MODAL.write() = Some(Modal::ShareVault(id.clone())),
+            Action::MoveVault => *MODAL.write() = Some(Modal::MoveVault(id.clone())),
+            Action::ChooseFolder => {
+                let vault = SESSION.peek().as_ref().and_then(|s| s.vault(id));
+                crate::components::location::choose_folder_for(vault);
+            }
             Action::DeleteVault => *MODAL.write() = Some(Modal::DeleteVault(id.clone())),
             _ => {}
         },

@@ -191,7 +191,8 @@ impl Ctx {
         matches!(self.storage.read(CLI_SESSION_KEY), Ok(Some(_)))
     }
 
-    /// Save, then push the change to the server when linked.
+    /// Save, then push the change to the server when linked, and to the
+    /// storage folders of vaults kept in one.
     pub fn after_write(&self, session: &mut Session) -> Result<()> {
         self.save(session)?;
         if session.server().is_some() && !self.offline {
@@ -200,22 +201,44 @@ impl Ctx {
                 Err(e) => eprintln!("warning: saved locally but sync failed: {e}"),
             }
         }
-        Ok(())
+        self.sync_folders(session)
     }
 
-    /// Refresh from the server when the last sync is older than five minutes.
+    /// Refresh from the server when the last sync is older than five minutes,
+    /// and from the storage folders of vaults kept in one.
     pub fn refresh(&self, session: &mut Session) -> Result<()> {
-        let Some(link) = session.server() else {
-            return Ok(());
-        };
-        if self.offline || link.last_sync_at.is_some_and(|t| now() - t < 300) || link.token.is_none() {
+        if let Some(link) = session.server() {
+            let due = !link.last_sync_at.is_some_and(|t| now() - t < 300) && link.token.is_some();
+            if due && !self.offline {
+                match self.block_on(twosecret_client::sync(session)) {
+                    Ok(_) => self.save(session)?,
+                    Err(e) => eprintln!("warning: could not sync, showing local data: {e}"),
+                }
+            }
+        }
+        self.sync_folders(session)
+    }
+
+    /// Sync the vaults kept in storage folders (these are files on this
+    /// device, so also with `--offline`). Problems are warnings.
+    pub fn sync_folders(&self, session: &mut Session) -> Result<()> {
+        if !session.profile().vaults.iter().any(|v| v.location.is_folder())
+            && !session.vaults().iter().any(|v| v.is_placeholder())
+        {
             return Ok(());
         }
-        match self.block_on(twosecret_client::sync(session)) {
-            Ok(_) => self.save(session)?,
-            Err(e) => eprintln!("warning: could not sync, showing local data: {e}"),
+        match self.block_on(twosecret_client::folder::sync_folders(session)) {
+            Ok(outcomes) => {
+                for o in outcomes {
+                    if let Err(e) = &o.result {
+                        let name = session.vault(&o.vault_id).map(|v| v.name).unwrap_or(o.vault_id.clone());
+                        eprintln!("warning: vault '{name}': {e}");
+                    }
+                }
+            }
+            Err(e) => eprintln!("warning: could not sync the vaults in folders: {e}"),
         }
-        Ok(())
+        self.save(session)
     }
 }
 

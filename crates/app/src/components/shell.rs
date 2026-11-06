@@ -21,6 +21,8 @@ use crate::state::*;
 fn use_background_tasks() {
     use_future(|| async move {
         let mut last_sync = 0i64;
+        #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+        let (mut last_folders, mut was_focused) = (0i64, true);
         loop {
             platform::sleep_ms(1000).await;
             if SESSION.peek().is_none() {
@@ -35,7 +37,24 @@ fn use_background_tasks() {
             let due = status.requested || now() - last_sync > 90;
             if due && !status.running && !status.needs_reauth && BUSY.peek().is_none() && MODAL.peek().is_none() {
                 last_sync = now();
+                #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+                {
+                    last_folders = now();
+                }
                 run_sync(false).await;
+                continue;
+            }
+            // Vaults in storage folders: every 30 seconds, and when the
+            // window comes back (the other device may just have saved).
+            #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+            {
+                let focused = crate::quick::main_focused();
+                let back = focused && !was_focused;
+                was_focused = focused;
+                if (back || now() - last_folders >= 30) && BUSY.peek().is_none() && MODAL.peek().is_none() {
+                    last_folders = now();
+                    run_folder_sync(false).await;
+                }
             }
         }
     });
@@ -213,6 +232,9 @@ fn NavButton(
     label: String,
     #[props(default)] count: Option<usize>,
     #[props(default)] badge: Option<usize>,
+    /// Where a vault kept elsewhere is (a small icon after its name).
+    #[props(default)]
+    place: Option<&'static str>,
 ) -> Element {
     let active = *NAV.read() == target || matches!((&*NAV.read(), &target), (Nav::Watchtower(_), Nav::Watchtower(_)));
     // A vault has a menu (long press or right click).
@@ -231,6 +253,9 @@ fn NavButton(
             onclick: move |_| go(target.clone()),
             Icon { name: icon, size: 17 }
             span { class: "label", "{label}" }
+            if let Some(place) = place {
+                span { class: "place", Icon { name: place, size: 12 } }
+            }
             if let Some(b) = badge.filter(|b| *b > 0) {
                 span { class: "badge", "{b}" }
             } else if let Some(c) = count {
@@ -370,7 +395,8 @@ fn Sidebar() -> Element {
             }
             for v in vaults {
                 if open("vaults") || nav == Nav::Vault(v.id.clone()) {
-                    NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: vault_icon(&v.icon, v.is_shared()), label: v.name.clone(), count: v.item_count }
+                    NavButton { key: "{v.id}", target: Nav::Vault(v.id.clone()), icon: vault_icon(&v.icon, v.is_shared()), label: v.name.clone(), count: v.item_count,
+                        place: crate::components::location::location_icon(&v) }
                 }
             }
             if !tags.is_empty() {
@@ -520,7 +546,7 @@ fn ItemList() -> Element {
     drop(session);
     let title = nav_title(&nav);
     let is_trash = nav == Nav::Trash;
-    let can_add = vault.as_ref().is_none_or(|v| v.role.can_write()) && !is_trash;
+    let can_add = vault.as_ref().is_none_or(|v| v.role.can_write() && !v.is_placeholder()) && !is_trash;
     let picking = PICKED.read().clone();
     let shown: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
     let all_picked = picking.as_ref().is_some_and(|p| !shown.is_empty() && shown.iter().all(|id| p.contains(id)));
@@ -543,14 +569,14 @@ fn ItemList() -> Element {
                 button { class: "icon-btn mobile-only", onclick: move |_| *PANE.write() = Pane::Nav, Icon { name: "menu" } }
                 h2 { "{title}" }
                 if let Some(v) = vault.clone() {
-                    if v.role.can_manage() {
+                    if v.role.can_manage() && v.location.is_account() && !v.is_placeholder() {
                         button { class: "icon-btn", title: t("vault.share"),
                             onclick: move |_| *MODAL.write() = Some(Modal::ShareVault(v.id.clone())),
                             Icon { name: "share", size: 17 }
                         }
                     }
                 }
-                if let Some(v) = vault.clone() {
+                if let Some(v) = vault.clone().filter(|v| !v.is_placeholder()) {
                     if v.role.can_manage() || v.is_owner {
                         button { class: "icon-btn", title: t("vault.edit"),
                             onclick: move |_| *MODAL.write() = Some(Modal::EditVault(v.id.clone())),
@@ -582,6 +608,9 @@ fn ItemList() -> Element {
                     }
                 }
             }
+            }
+            if let Some(v) = vault.clone() {
+                crate::components::location::VaultPlaceBanner { vault: v }
             }
             crate::components::emergency::KeyChangeBanner {}
             crate::components::emergency::EmergencyBanner {}

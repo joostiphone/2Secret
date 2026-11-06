@@ -114,6 +114,9 @@ so the server cannot swap ciphertexts around undetected:
 | Record of an agent elsewhere (on the server) | `2secret/v1/agent-record/<account id>/<agent id>` |
 | Request of an agent elsewhere | `2secret/v1/agent-request/<request id>` |
 | Answer to an agent elsewhere | `2secret/v1/agent-answer/<request id>` |
+| A device's version of a vault's metadata, in a storage folder | `2secret/v1/vault-meta-version/<vault id>` |
+| Deletion of an item, in a storage folder | `2secret/v1/item-tombstone/<vault id>/<item id>` |
+| Where a vault in a storage folder went | `2secret/v1/vault-moved/<vault id>` |
 
 An item moved by the server to another vault, or replaced by a different
 item's ciphertext, fails to decrypt. The decrypted item id is also checked.
@@ -343,6 +346,35 @@ resolved on the client: the most recently edited version wins and the other
 version's password is preserved in the item's password history, so a
 conflict never silently loses a password. Deletions are tombstones.
 
+## Vaults in storage folders
+
+A vault can be kept in a folder that iCloud Drive, Dropbox, Google Drive,
+OneDrive or Syncthing keeps in sync, instead of on the server
+([VAULT-FOLDER.md](VAULT-FOLDER.md)). Its files hold the same ciphertexts
+as the server would: items encrypted with the vault key, the vault key
+wrapped with the account key. A device accepts a folder only if its
+`vault.json` names its own account and holds a key wrapped with its own
+account key (a key sealed to the account's public key is refused, since
+anyone can make one). Deletions are encrypted tombstones, so the storage
+service cannot fake one; a missing or unreadable file is never taken as a
+deletion.
+
+### What a storage folder sees
+
+| Data | Visible to the storage service? |
+|---|---|
+| Vault names, descriptions, icons; item titles, usernames, passwords, URLs, notes | **no** (encrypted) |
+| The account id and the vault id | yes (in `vault.json`) |
+| Item ids and device tags (random names, in the file names) | yes |
+| Number of items, size of each item, when files change, which device changed them | yes (metadata) |
+| The vault's folder name (the vault name the person typed, as it was then, and the start of its id) | yes |
+
+The storage service (or anyone with access to the folder) cannot read or
+change a vault, but it can withhold files, bring back older versions of a
+file or delete files. A device's own copy takes part in every merge, so
+an older version brought back loses against the newer one the device has;
+a deleted file is written again by a device that still has it.
+
 ## On the device
 
 - **Profile** (`profile.json`): account record, encrypted keyset, encrypted
@@ -565,6 +597,13 @@ Encrypted backups use a password-only envelope: Argon2id (default parameters)
 the apps warn about this.
 
 ## Known limitations
+
+- Vaults in storage folders cannot be shared and are not part of emergency
+  access; they work in the desktop apps and the command line, not yet on
+  phones or in the web vault. The vault's folder name contains its name as
+  it was when the folder was made. A device that was away for more than 90
+  days can bring back items deleted meanwhile (tombstones are cleared after
+  90 days).
 
 - The first time a device seals a vault key to an account (sharing, an
   emergency contact, a member it had not seen before when replacing a key),

@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["desktop"]
-desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:gdk", "dep:libloading", "dep:rqrr", "twosecret-core/ssh-agent", "dep:libc", "dep:twosecret-agent"]
+desktop = ["dioxus/desktop", "dep:arboard", "dep:tokio", "dep:gio", "dep:gdk", "dep:libloading", "dep:rqrr", "twosecret-core/ssh-agent", "dep:libc", "dep:twosecret-agent", "dep:rfd"]
 web = ["dioxus/web", "dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:gloo-timers", "dep:js-sys"]
 # Browser extension popup (Chrome, Edge, Firefox): the web app plus autofill.
 extension = ["web"]
@@ -50,6 +50,11 @@ gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
 rqrr = { version = "0.11", optional = true, default-features = false, features = ["img"] }
 # The pairing code of an agent elsewhere, as a QR code.
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+
+# Desktop: choosing the folder of a vault kept in iCloud Drive, Dropbox and
+# the like (the same version and backend as dioxus-desktop's).
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }
 
 # Desktop: which program asks the SSH agent (Linux, macOS, BSD).
 [target.'cfg(unix)'.dependencies]

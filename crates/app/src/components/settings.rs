@@ -565,26 +565,39 @@ fn VaultsSection() -> Element {
                         div { class: "d",
                             "{v.item_count} {t(\"vault.items\")} · {crate::i18n::role_name(v.role)}"
                             if v.is_shared() { " · {v.member_count} {t(\"vault.members\")}" }
+                            " · {crate::components::location::location_label(&v, linked)}"
                         }
                     }
-                    if linked && v.role.can_manage() {
+                    if v.is_owner && !v.is_shared() && !v.is_placeholder() && (linked || FOLDER_VAULTS || !v.location.is_account()) {
+                        button { class: "icon-btn", title: t("move.menu"), onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::MoveVault(id.clone())) },
+                            Icon { name: "upload", size: 16 }
+                        }
+                    }
+                    if linked && v.role.can_manage() && v.location.is_account() && !v.is_placeholder() {
                         button { class: "icon-btn", title: t("vault.share"), onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::ShareVault(id.clone())) },
                             Icon { name: "share", size: 16 }
                         }
                     }
-                    if v.role.can_manage() {
+                    if v.role.can_manage() && !v.is_placeholder() {
                         button { class: "icon-btn", title: t("vault.edit"), onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::EditVault(id.clone())) },
                             Icon { name: "edit", size: 16 }
                         }
                     }
-                    button { class: "icon-btn", title: if v.is_owner { t("vault.delete") } else { t("vault.leave") },
-                        onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::DeleteVault(id.clone())) },
-                        Icon { name: "trash", size: 16 }
+                    if !v.is_placeholder() {
+                        button { class: "icon-btn", title: if v.is_owner { t("vault.delete") } else { t("vault.leave") },
+                            onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::DeleteVault(id.clone())) },
+                            Icon { name: "trash", size: 16 }
+                        }
                     }
                 }
             }
             div { class: "settings-row",
                 button { class: "btn small", onclick: move |_| *MODAL.write() = Some(Modal::NewVault), Icon { name: "plus", size: 14 } {t("vault.new")} }
+                if FOLDER_VAULTS {
+                    button { class: "btn small", onclick: move |_| crate::components::location::choose_folder_for(None),
+                        Icon { name: "folder", size: 14 } {t("location.add_folder")}
+                    }
+                }
             }
         }
     }

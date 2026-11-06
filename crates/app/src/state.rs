@@ -129,6 +129,20 @@ pub struct SyncStatus {
     pub needs_reauth: bool,
 }
 
+/// How a vault kept in a storage folder is doing (desktop apps).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FolderStatus {
+    pub synced_at: Option<i64>,
+    pub error: Option<String>,
+    /// The folder is not there (moved, not connected, not downloaded).
+    pub not_found: bool,
+    /// Files the storage app is still downloading.
+    pub waiting: usize,
+}
+
+/// Whether this build can keep vaults in storage folders: the desktop apps.
+pub const FOLDER_VAULTS: bool = cfg!(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))));
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Modal {
     NewItem,
@@ -136,6 +150,8 @@ pub enum Modal {
     EditVault(String),
     ShareVault(String),
     DeleteVault(String),
+    /// Move a vault to the server, this device or a storage folder.
+    MoveVault(String),
     MoveItem(String),
     /// Move several items (picked in the list) to another vault.
     MoveItems(Vec<String>),
@@ -280,6 +296,9 @@ pub static SEARCH_EL: GlobalSignal<Option<std::rc::Rc<MountedData>>> = Signal::g
 pub static SEARCH_RESET: GlobalSignal<u32> = Signal::global(|| 0);
 pub static TOAST: GlobalSignal<Option<Toast>> = Signal::global(|| None);
 pub static SYNC: GlobalSignal<SyncStatus> = Signal::global(SyncStatus::default);
+/// Vaults in storage folders, by id.
+pub static FOLDERS: GlobalSignal<std::collections::HashMap<String, FolderStatus>> =
+    Signal::global(std::collections::HashMap::new);
 pub static ACTIVITY: GlobalSignal<i64> = Signal::global(now);
 pub static MODAL: GlobalSignal<Option<Modal>> = Signal::global(|| None);
 pub static BUSY: GlobalSignal<Option<String>> = Signal::global(|| None);
@@ -833,6 +852,9 @@ pub fn core_error(e: &twosecret_core::Error) -> String {
         E::WrongPassword => t("err.wrong_password").into(),
         E::InvalidSecretKey(_) => t("err.secret_key").into(),
         E::PermissionDenied(_) => t("err.permission").into(),
+        E::FolderNotFound(path) => format!("{} ({path})", t("err.folder_not_found")),
+        E::FolderOtherAccount => t("err.folder_other_account").into(),
+        E::VaultShared => t("err.vault_shared").into(),
         other => other.to_string(),
     }
 }
@@ -1066,8 +1088,79 @@ impl SessionAccess for GlobalSession {
     }
 }
 
-/// Synchronise with the server (no-op for local accounts).
+/// Synchronise with the server (if any) and the storage folders of vaults
+/// kept in one.
 pub async fn run_sync(show_result: bool) {
+    run_server_sync(show_result).await;
+    #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+    run_folder_sync(show_result).await;
+}
+
+/// Synchronise the vaults kept in storage folders (desktop apps). Each
+/// folder on its own: one that is missing does not stop the others.
+#[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+pub async fn run_folder_sync(show_result: bool) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    let wanted = SESSION.peek().as_ref().map(|s| {
+        let any =
+            s.profile().vaults.iter().any(|v| v.location.is_folder()) || s.vaults().iter().any(|v| v.is_placeholder());
+        (s.account().id.clone(), any)
+    });
+    let Some((account_id, true)) = wanted else { return };
+    if BUSY.peek().is_some() || RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let result =
+        twosecret_client::folder::sync_folders_with(&mut GlobalSession { account_id: account_id.clone() }).await;
+    RUNNING.store(false, Ordering::SeqCst);
+    if SESSION.peek().as_ref().is_none_or(|s| s.account().id != account_id) {
+        return;
+    }
+    match result {
+        Ok(outcomes) => {
+            let before = FOLDERS.peek().clone();
+            let mut folders = std::collections::HashMap::new();
+            let mut first_error = None;
+            for o in &outcomes {
+                let mut status = FolderStatus { waiting: o.waiting, ..Default::default() };
+                match &o.result {
+                    Ok(_) => status.synced_at = Some(now()),
+                    Err(e) => {
+                        status.synced_at = before.get(&o.vault_id).and_then(|b| b.synced_at);
+                        status.not_found = o.not_found();
+                        status.error = Some(client_error(e));
+                        first_error.get_or_insert_with(|| client_error(e));
+                    }
+                }
+                folders.insert(o.vault_id.clone(), status);
+            }
+            if before != folders {
+                *FOLDERS.write() = folders;
+            }
+            persist();
+            let gone = SELECTED
+                .peek()
+                .as_ref()
+                .is_some_and(|id| SESSION.peek().as_ref().is_some_and(|s| s.item(id).is_none()));
+            if gone && EDITING.peek().is_none() {
+                *SELECTED.write() = None;
+            }
+            if let (true, Some(e)) = (show_result, first_error) {
+                toast_err(&e);
+            }
+        }
+        Err(twosecret_client::Error::Protocol(m)) if m == "locked" => {}
+        Err(e) => {
+            if show_result {
+                toast_err(&client_error(&e));
+            }
+        }
+    }
+}
+
+/// Synchronise with the server (no-op for local accounts).
+async fn run_server_sync(show_result: bool) {
     let linked = SESSION.peek().as_ref().map(|s| s.server().is_some() && s.server_token().is_some());
     match linked {
         Some(true) => {}

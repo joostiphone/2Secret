@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- **Where each vault is kept, per vault**: with the account on its sync
+  server (as before), only on this device, or in a folder that iCloud Drive,
+  Dropbox, Google Drive, OneDrive, Syncthing or a network share keeps in
+  sync, for example the work vault in iCloud Drive and the private vault on
+  the sync server. Choose it when creating a vault; choosing a service shows
+  where it works and where it does not (iCloud Drive has no app for Linux or
+  Android, and in this version folder vaults work in the desktop apps and the
+  command line only).
+- **Moving a vault** between the server, this device and folders (the vault
+  menu, *Settings → Vaults*, `2secret vault move`). Everything is copied and
+  checked before the old place is cleared, and the vault keeps its id and
+  key, so the account's other devices follow it: other desktops find it in
+  their own iCloud Drive or Dropbox folder, phones and the web vault show
+  where it went.
+- A vault in a folder is encrypted as on the server; every device writes only
+  its own files, so storage apps make no conflicted copies, and versions are
+  merged like conflicts on the server (newest edit wins, no password lost).
+  Deletions are encrypted, and a missing or half-downloaded file is never
+  taken as one. The format: [docs/VAULT-FOLDER.md](docs/VAULT-FOLDER.md).
+- Command line: `vault create --device` and `--folder <folder>
+  [--service …]`, `vault move <vault> --to server|device|folder`, `vault
+  attach <folder>`, a *location* column in `vault list`, and `sync` for
+  folder vaults (also in an account without a server).
+- Shared vaults stay on the server, and emergency access covers vaults on
+  the server only.
+
 ## 1.12.2
 
 - **Android app in the releases**: a signed `.apk` for phones and tablets

@@ -611,3 +611,22 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px s
   .root:not(.ext) .pick-bar .btn:disabled { opacity: .4; }
 }
 @keyframes sheetin { from { transform: translateY(40px); opacity: 0; } }
+
+/* Where vaults are kept */
+.nav-item .place { display: inline-flex; color: var(--muted); margin-left: -4px; }
+.chips.services { padding: 4px 0 10px; }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.folder-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.folder-row .input { flex: 1; min-width: 0; }
+.availability { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.avail { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.avail.yes { color: var(--ok, #2f9e44); border-color: currentColor; }
+.avail.later { color: var(--muted); border-style: dashed; }
+.avail.no { color: var(--danger, #e03131); border-color: currentColor; opacity: .85; }
+.note { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45; color: var(--muted); margin: 6px 0; }
+.note svg { flex: none; margin-top: 2px; }
+.note.warn { color: var(--text); }
+.note.warn svg { color: var(--warn, #f08c00); }
+.place-line { display: flex; gap: 6px; align-items: center; margin: -4px 0 8px; }
+.banner.warn { border-color: var(--warn); background: var(--warn-soft); }
+.settings-row.plain { border: 0; padding-left: 0; }

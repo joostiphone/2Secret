@@ -256,3 +256,79 @@ fn server_workflow() {
     let _ = std::fs::remove_dir_all(&b);
     drop(rt);
 }
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[test]
+fn vaults_in_folders() {
+    let home = temp_home("folders-a");
+    let other = temp_home("folders-b");
+    let cloud = temp_home("folders-cloud");
+    std::fs::create_dir_all(&cloud).unwrap();
+    create_local(&home);
+    // The same account on a second device (before either has a device tag).
+    copy_dir(&home, &other);
+
+    cli(&home)
+        .args(["vault", "create", "Work", "--folder"])
+        .arg(&cloud)
+        .args(["--service", "icloud"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Created vault 'Work'"))
+        .stderr(predicate::str::contains("iCloud Drive has no app for Linux"));
+    cli(&home)
+        .args(["add", "login", "--vault", "Work", "--title", "Mail", "--username", "me", "--password", "pw-in-folder"])
+        .assert()
+        .success();
+    cli(&home).args(["vault", "list"]).assert().success().stdout(predicate::str::contains("iCloud Drive"));
+    let vault_dir = std::fs::read_dir(cloud.join("2Secret")).unwrap().flatten().next().unwrap().path();
+    assert!(vault_dir.join("vault.json").is_file());
+
+    // The second device adds the folder and sees the item.
+    cli(&other)
+        .args(["vault", "attach"])
+        .arg(&cloud)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Added vault 'Work' (1 items)"));
+    cli(&other)
+        .args(["get", "Mail", "--field", "password"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pw-in-folder"));
+
+    // Moved to this device only: the folder keeps a note, the other device lets go.
+    cli(&home).args(["vault", "move", "Work", "--to", "device", "--yes"]).assert().success();
+    assert!(vault_dir.join("moved.json").is_file());
+    assert!(!vault_dir.join("items").exists());
+    cli(&home)
+        .args(["get", "Mail", "--field", "password"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pw-in-folder"));
+    cli(&other).args(["sync"]).assert().success();
+    cli(&other).args(["vault", "list"]).assert().success().stdout(predicate::str::contains("Work").not());
+
+    // And into another folder; then deleted.
+    let cloud2 = cloud.join("other");
+    std::fs::create_dir_all(&cloud2).unwrap();
+    cli(&home).args(["vault", "move", "Work", "--to", "folder"]).arg(&cloud2).args(["--yes"]).assert().success();
+    cli(&home).args(["sync"]).assert().success().stderr(predicate::str::contains("Folder vault 'Work'"));
+    cli(&home).args(["vault", "delete", "Work", "--yes"]).assert().success();
+    cli(&home).args(["vault", "list"]).assert().success().stdout(predicate::str::contains("Work").not());
+
+    for dir in [home, other, cloud] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

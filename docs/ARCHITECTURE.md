@@ -32,7 +32,8 @@ target including `wasm32-unknown-unknown`.
 | `item` | Item model: 19 categories with templates, fields, URLs, tags, attachments, password history |
 | `profile` | On-disk representation (fully encrypted) and device secrets |
 | `session` | An unlocked account: decrypted vaults/items, CRUD, vault management, password change |
-| `sync` | Building sync requests and merging responses, conflict resolution |
+| `sync` | Building sync requests and merging responses, conflict resolution (`merge_items`, shared with `folder`) |
+| `folder` | Vaults in storage folders: the file format, merging the devices' versions, where each service works ([VAULT-FOLDER.md](VAULT-FOLDER.md)) |
 | `api` | Shared DTOs of the HTTP API |
 | `generator`, `wordlist`, `strength` | Password/passphrase/PIN generator, EFF wordlist, zxcvbn strength |
 | `totp` | RFC 6238 TOTP, `otpauth://` parsing, Steam Guard |
@@ -52,6 +53,11 @@ target including `wasm32-unknown-unknown`.
 `sync_with` borrows the session only for short synchronous steps, so the UI
 remains responsive while syncing; edits made during a sync are detected and
 uploaded in the next round.
+`folder` (not in the web build) reads and writes vaults in storage folders on
+a thread of its own, finds the folders of iCloud Drive, Dropbox, Google
+Drive and OneDrive, and moves vaults between the server, the device and
+folders (`move_vault`); `sync_folders_with` syncs each folder vault on its
+own, so a missing folder does not stop the others.
 
 ### `twosecret-server`
 
@@ -129,6 +135,13 @@ The response lists all accessible vaults (so new shares appear and revoked
 ones disappear) and every item changed after `since`. Clients resolve
 conflicts (newest edit wins; the other version's password is kept in the
 password history) and repeat until nothing is pending.
+
+Only vaults kept with the account take part (`VaultRecord.location`): vaults
+kept on one device or in a storage folder are never sent, and a vault the
+server lists with the same id does not change them. The exception is the
+placeholder a vault leaves on the server when it moves to a folder: the
+device asks for its changes and removes what is still on it
+(`VaultRecord.leftovers`), taking it into the folder.
 
 ## Storage on devices
 

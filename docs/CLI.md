@@ -78,6 +78,27 @@ of an id. Categories: `login`, `password`, `secure_note`, `credit_card`,
 2secret vault delete Familie        # owners delete, members leave
 ```
 
+### Where vaults are kept
+
+A vault is kept with the account (on its server), only on this device, or in
+a folder that iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing
+keeps in sync ([VAULT-FOLDER.md](VAULT-FOLDER.md)). `vault list` shows where.
+
+```sh
+2secret vault create Werk --folder ~/Library/Mobile\ Documents/com~apple~CloudDocs   # in <folder>/2Secret/Werk-…
+2secret vault create Werk --folder ~/Dropbox --service dropbox   # icloud | dropbox | gdrive | onedrive | other
+2secret vault create Lokaal --device                  # never leaves this device
+2secret vault attach ~/Dropbox/2Secret/Werk-1a2b3c4d  # a folder vault made on another device
+2secret vault move Werk --to server                   # server | device | folder <folder>
+2secret vault move Prive --to folder ~/Dropbox
+2secret sync                                          # the server and every folder vault
+```
+
+Choosing a service prints where it does not exist (iCloud Drive has no app
+for Linux or Android, for example). Commands that read or change items sync
+folder vaults too, also with `--offline` (they are files on this device).
+Shared vaults stay on the server.
+
 ## Emergency access
 
 Trust someone on the same server with read access to the vaults you own, for
