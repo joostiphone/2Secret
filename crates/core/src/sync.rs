@@ -174,7 +174,7 @@ impl Session {
             let vault_id = result.vault_id.clone();
             match self.profile().vault(&vault_id).map(|v| &v.location) {
                 Some(VaultLocation::Account) => {}
-                Some(VaultLocation::Folder { .. }) => {
+                Some(VaultLocation::Folder { .. } | VaultLocation::WebDav { .. }) => {
                     self.drain_placeholder(&result, &mut report);
                     continue;
                 }

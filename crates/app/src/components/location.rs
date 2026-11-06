@@ -3,8 +3,8 @@
 //! folders are doing.
 
 use dioxus::prelude::*;
-use twosecret_core::folder::{Availability, Platform};
-use twosecret_core::profile::{FolderService, MoveTarget, VaultLocation};
+use twosecret_core::folder::{webdav_availability, Availability, Platform};
+use twosecret_core::profile::{webdav_host, FolderService, MoveTarget, VaultLocation};
 use twosecret_core::session::VaultInfo;
 
 use crate::components::widgets::ModalFrame;
@@ -18,6 +18,21 @@ pub enum Place {
     Account,
     Device,
     Folder(FolderService),
+    WebDav,
+}
+
+/// The WebDAV server typed in a form.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DavForm {
+    pub url: String,
+    pub user: String,
+    pub password: String,
+}
+
+impl DavForm {
+    fn complete(&self) -> bool {
+        !self.url.trim().is_empty() && !self.user.trim().is_empty() && !self.password.is_empty()
+    }
 }
 
 impl Place {
@@ -26,6 +41,7 @@ impl Place {
             VaultLocation::Account => Place::Account,
             VaultLocation::Device => Place::Device,
             VaultLocation::Folder { service, .. } => Place::Folder(*service),
+            VaultLocation::WebDav { .. } => Place::WebDav,
         }
     }
 
@@ -34,6 +50,7 @@ impl Place {
             Place::Account => 0,
             Place::Device => 1,
             Place::Folder(_) => 2,
+            Place::WebDav => 3,
         }
     }
 }
@@ -85,6 +102,7 @@ pub fn location_label(v: &VaultInfo, linked: bool) -> String {
     if let Some(moved) = &v.moved {
         return match &moved.to {
             MoveTarget::Folder { service, .. } => service_name(*service).to_string(),
+            MoveTarget::WebDav { url, .. } => format!("WebDAV ({})", webdav_host(url)),
             _ => t("location.elsewhere").to_string(),
         };
     }
@@ -93,6 +111,7 @@ pub fn location_label(v: &VaultInfo, linked: bool) -> String {
         VaultLocation::Account => t("location.on_device").to_string(),
         VaultLocation::Device => t("location.device").to_string(),
         VaultLocation::Folder { service, .. } => service_name(*service).to_string(),
+        VaultLocation::WebDav { url, .. } => format!("WebDAV ({})", webdav_host(url)),
     }
 }
 
@@ -105,6 +124,7 @@ pub fn location_icon(v: &VaultInfo) -> Option<&'static str> {
         VaultLocation::Account => None,
         VaultLocation::Device => Some("smartphone"),
         VaultLocation::Folder { .. } => Some("folder"),
+        VaultLocation::WebDav { .. } => Some("server"),
     }
 }
 
@@ -150,15 +170,20 @@ async fn pick_folder(start: String) -> Option<String> {
     }
 }
 
-/// Where a vault in this service's folder can be used, and what that means.
+/// Where a vault in this service's folder (`None`: on a WebDAV server) can
+/// be used, and what that means.
 #[component]
-pub fn AvailabilityNote(service: FolderService) -> Element {
-    let rows = service.availability();
-    let missing: Vec<&str> = service.missing_on().into_iter().map(platform_name).collect();
+pub fn AvailabilityNote(service: Option<FolderService>) -> Element {
+    let rows = service.map_or_else(webdav_availability, |s| s.availability());
+    let missing: Vec<&str> =
+        rows.iter().filter(|(_, a)| *a == Availability::No).map(|(p, _)| platform_name(*p)).collect();
     let later: Vec<&str> =
         rows.iter().filter(|(_, a)| *a == Availability::Later).map(|(p, _)| platform_name(*p)).collect();
-    let missing_text = (!missing.is_empty()).then(|| {
-        t("location.missing").replace("{service}", service_name(service)).replace("{platforms}", &join_list(&missing))
+    let missing_text = (!missing.is_empty()).then(|| match service {
+        Some(s) => {
+            t("location.missing").replace("{service}", service_name(s)).replace("{platforms}", &join_list(&missing))
+        }
+        None => t("location.webdav_web").to_string(),
     });
     let later_text = (!later.is_empty()).then(|| t("location.later").replace("{platforms}", &join_list(&later)));
     rsx! {
@@ -166,7 +191,7 @@ pub fn AvailabilityNote(service: FolderService) -> Element {
             for (p, a) in rows {
                 span { key: "{p:?}", role: "listitem",
                     class: match a { Availability::Yes => "avail yes", Availability::Later => "avail later", Availability::No => "avail no" },
-                    title: match a { Availability::Yes => t("location.works"), Availability::Later => t("location.works_later"), Availability::No => t("location.no_app") },
+                    title: match a { Availability::Yes => t("location.works"), Availability::Later => t("location.works_later"), Availability::No => either(service.is_some(), t("location.no_app"), t("location.webdav_web")) },
                     match a { Availability::Yes => "✓ ", Availability::Later => "… ", Availability::No => "✗ " }
                     {platform_short(p)}
                 }
@@ -184,7 +209,13 @@ pub fn AvailabilityNote(service: FolderService) -> Element {
 /// The choice of where a vault is kept, with the folder for a storage
 /// service.
 #[component]
-pub fn LocationPicker(place: Signal<Place>, folder: Signal<String>, #[props(default)] keep_device: bool) -> Element {
+pub fn LocationPicker(
+    place: Signal<Place>,
+    folder: Signal<String>,
+    dav: Signal<DavForm>,
+    #[props(default)] keep_device: bool,
+) -> Element {
+    let tested = use_signal(|| None::<Result<String, String>>);
     let session = SESSION.read();
     let linked = session.as_ref().is_some_and(|s| s.server().is_some());
     let host = session
@@ -217,6 +248,9 @@ pub fn LocationPicker(place: Signal<Place>, folder: Signal<String>, #[props(defa
             t("location.folder").to_string(),
             t("location.folder_desc"),
         ));
+    }
+    if DAV_VAULTS {
+        options.push((Place::WebDav, "server", t("location.webdav").to_string(), t("location.webdav_desc")));
     }
     let current = place();
     rsx! {
@@ -275,9 +309,70 @@ pub fn LocationPicker(place: Signal<Place>, folder: Signal<String>, #[props(defa
                         span { {t("location.not_here").replace("{service}", service_name(service))} }
                     }
                 }
-                AvailabilityNote { service }
+                AvailabilityNote { service: Some(service) }
+            }
+            if current == Place::WebDav {
+                DavFields { dav, tested }
+                AvailabilityNote { service: None }
             }
         }
+    }
+}
+
+/// The address, user name and password of a WebDAV server, with a test.
+#[component]
+fn DavFields(dav: Signal<DavForm>, tested: Signal<Option<Result<String, String>>>) -> Element {
+    let form = dav();
+    let test = move |_| {
+        let form = dav();
+        if !form.complete() {
+            tested.set(Some(Err(t("location.webdav_missing").to_string())));
+            return;
+        }
+        tested.set(None);
+        spawn(async move {
+            let result = test_webdav(&form).await;
+            tested.set(Some(result));
+        });
+    };
+    rsx! {
+        div { class: "dav-fields",
+            input { class: "input", value: "{form.url}", placeholder: t("location.webdav_url"),
+                autocapitalize: "off", spellcheck: "false", r#type: "url",
+                oninput: move |e| { dav.write().url = e.value(); tested.set(None); } }
+            input { class: "input", value: "{form.user}", placeholder: t("location.webdav_user"),
+                autocapitalize: "off", spellcheck: "false", autocomplete: "username",
+                oninput: move |e| { dav.write().user = e.value(); tested.set(None); } }
+            input { class: "input", value: "{form.password}", placeholder: t("location.webdav_password"),
+                r#type: "password", autocomplete: "off",
+                oninput: move |e| { dav.write().password = e.value(); tested.set(None); } }
+            div { class: "row",
+                button { r#type: "button", class: "btn small", onclick: test, Icon { name: "zap", size: 14 } {t("location.webdav_test")} }
+                span { class: "muted small", {t("location.webdav_hint")} }
+            }
+            match tested() {
+                Some(Ok(url)) => rsx! { div { class: "note ok", Icon { name: "check", size: 14 } span { {t("location.webdav_ok").replace("{url}", &url)} } } },
+                Some(Err(e)) => rsx! { div { class: "note warn", Icon { name: "alert", size: 14 } span { "{e}" } } },
+                None => rsx! {},
+            }
+        }
+    }
+}
+
+/// Whether the WebDAV server answers with these credentials: the folder
+/// found, or what is wrong.
+async fn test_webdav(form: &DavForm) -> Result<String, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        twosecret_client::folder::connect_webdav(form.url.trim(), form.user.trim(), &form.password)
+            .await
+            .map(|d| d.url().to_string())
+            .map_err(|e| client_error(&e))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = form;
+        Err(t("location.webdav_web").to_string())
     }
 }
 
@@ -288,12 +383,14 @@ pub async fn create_at(
     icon: &'static str,
     place: Place,
     folder: String,
+    dav: DavForm,
 ) -> Option<String> {
     let location = match place {
         Place::Account => VaultLocation::Account,
         Place::Device => VaultLocation::Device,
-        Place::Folder(service) => {
-            return create_in_folder(name, description, icon, service, folder).await;
+        Place::Folder(_) | Place::WebDav => {
+            let to = choice(place, folder, dav)?;
+            return create_in(name, description, icon, to).await;
         }
     };
     mutate(|s| {
@@ -303,22 +400,45 @@ pub async fn create_at(
     })
 }
 
-#[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
-async fn create_in_folder(
-    name: String,
-    description: String,
-    icon: &'static str,
-    service: FolderService,
-    folder: String,
-) -> Option<String> {
-    if folder.trim().is_empty() {
-        toast_err(t("location.no_folder"));
-        return None;
+/// The chosen place as a move target; `None` (with a word why) when the form
+/// is incomplete.
+fn choice(place: Place, folder: String, dav: DavForm) -> Option<MoveChoice> {
+    match place {
+        Place::Account => Some(MoveChoice::Account),
+        Place::Device => Some(MoveChoice::Device),
+        Place::Folder(service) => {
+            if folder.trim().is_empty() {
+                toast_err(t("location.no_folder"));
+                return None;
+            }
+            Some(MoveChoice::Folder(folder.trim().to_string(), service))
+        }
+        Place::WebDav => {
+            if !dav.complete() {
+                toast_err(t("location.webdav_missing"));
+                return None;
+            }
+            Some(MoveChoice::WebDav(dav.url.trim().to_string(), dav.user.trim().to_string(), dav.password))
+        }
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn move_to_of(choice: MoveChoice) -> twosecret_client::folder::MoveTo {
+    use twosecret_client::folder::MoveTo;
+    match choice {
+        MoveChoice::Account => MoveTo::Account,
+        MoveChoice::Device => MoveTo::Device,
+        MoveChoice::Folder(path, service) => MoveTo::Folder { parent: path.into(), service },
+        MoveChoice::WebDav(url, user, password) => MoveTo::WebDav { url, user, password },
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn create_in(name: String, description: String, icon: &'static str, to: MoveChoice) -> Option<String> {
     let mut session = session_copy()?;
     busy(t("busy.working"));
-    let path = std::path::PathBuf::from(folder.trim());
-    let result = twosecret_client::folder::create_folder_vault(&mut session, &name, &description, &path, service).await;
+    let result = twosecret_client::folder::create_vault_in(&mut session, &name, &description, &move_to_of(to)).await;
     unbusy();
     match result {
         Ok(id) => {
@@ -334,9 +454,59 @@ async fn create_in_folder(
     }
 }
 
-#[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
-async fn create_in_folder(_: String, _: String, _: &'static str, _: FolderService, _: String) -> Option<String> {
+#[cfg(target_arch = "wasm32")]
+async fn create_in(_: String, _: String, _: &'static str, _: MoveChoice) -> Option<String> {
     None
+}
+
+/// Add a vault that is on a WebDAV server (made on another device).
+#[component]
+pub fn AttachWebDavModal() -> Element {
+    let dav = use_signal(DavForm::default);
+    let tested = use_signal(|| None::<Result<String, String>>);
+    let add = move |_| {
+        let form = dav();
+        if !form.complete() {
+            toast_err(t("location.webdav_missing"));
+            return;
+        }
+        attach_webdav(form);
+    };
+    rsx! {
+        ModalFrame { title: t("location.add_webdav"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| *MODAL.write() = None, {t("common.cancel")} }
+                button { class: "btn primary", onclick: add, {t("location.add")} }
+            },
+            p { class: "muted small", {t("location.add_webdav_desc")} }
+            DavFields { dav, tested }
+        }
+    }
+}
+
+fn attach_webdav(form: DavForm) {
+    #[cfg(not(target_arch = "wasm32"))]
+    spawn(async move {
+        let Some(mut session) = session_copy() else { return };
+        busy(t("busy.working"));
+        let result =
+            twosecret_client::folder::attach_webdav(&mut session, form.url.trim(), form.user.trim(), &form.password)
+                .await;
+        unbusy();
+        match result {
+            Ok(id) => {
+                install_session(session);
+                *MODAL.write() = None;
+                *NAV.write() = Nav::Vault(id);
+                *SELECTED.write() = None;
+                toast(t("location.added"));
+                request_sync();
+            }
+            Err(e) => toast_err(&client_error(&e)),
+        }
+    });
+    #[cfg(target_arch = "wasm32")]
+    let _ = form;
 }
 
 /// Take a vault from a folder: one made on another device, a placeholder's
@@ -380,30 +550,42 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
     let status = folders.get(&vault.id).cloned();
     drop(folders);
     if let Some(moved) = vault.moved.clone().filter(|_| vault.is_placeholder()) {
+        let local = matches!(moved.to, MoveTarget::Folder { .. });
         let (service, folder) = match &moved.to {
-            MoveTarget::Folder { service, folder } => (service_name(*service), folder.clone()),
-            other => (t("location.elsewhere"), other.to_string()),
+            MoveTarget::Folder { service, folder } => (service_name(*service).to_string(), folder.clone()),
+            MoveTarget::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(url)), url.clone()),
+            other => (t("location.elsewhere").to_string(), other.to_string()),
         };
-        let text = if FOLDER_VAULTS { t("placeholder.desktop") } else { t("placeholder.not_here") };
+        let text = match (local, FOLDER_VAULTS, DAV_VAULTS) {
+            (true, true, _) => t("placeholder.desktop"),
+            (false, _, true) => t("placeholder.webdav"),
+            _ => t("placeholder.not_here"),
+        };
+        let choose = local && FOLDER_VAULTS;
         let v = vault.clone();
         return rsx! {
             div { class: "banner",
                 Icon { name: "cloud-off", size: 18 }
                 div { class: "grow",
-                    div { class: "t", {t("placeholder.title").replace("{service}", service)} }
+                    div { class: "t", {t("placeholder.title").replace("{service}", &service)} }
                     div { class: "d", "{folder} · {text}" }
                 }
-                if FOLDER_VAULTS {
+                if choose {
                     button { class: "btn small primary", onclick: move |_| choose_folder_for(Some(v.clone())), {t("location.choose_folder")} }
                 }
             }
         };
     }
-    let VaultLocation::Folder { service, path } = vault.location.clone() else { return rsx! {} };
+    let (name, path, local) = match vault.location.clone() {
+        VaultLocation::Folder { service, path } => (service_name(service).to_string(), path, true),
+        VaultLocation::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(&url)), url, false),
+        _ => return rsx! {},
+    };
     let Some(status) = status else { return rsx! {} };
     if status.not_found || status.error.is_some() {
         let v = vault.clone();
         let detail = if status.not_found { path.clone() } else { status.error.clone().unwrap_or_default() };
+        let choose = status.not_found && local && FOLDER_VAULTS;
         return rsx! {
             div { class: "banner warn",
                 Icon { name: "alert", size: 18 }
@@ -411,7 +593,7 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
                     div { class: "t", {either(status.not_found, t("folder.not_found"), t("folder.error"))} }
                     div { class: "d", "{detail}" }
                 }
-                if status.not_found {
+                if choose {
                     button { class: "btn small", onclick: move |_| choose_folder_for(Some(v.clone())), {t("location.choose_folder")} }
                 }
             }
@@ -420,14 +602,14 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
     if status.waiting > 0 {
         return rsx! {
             div { class: "place-line muted small", Icon { name: "clock", size: 13 }
-                {t("folder.waiting").replace("{service}", service_name(service)).replace("{n}", &status.waiting.to_string())}
+                {t("folder.waiting").replace("{service}", &name).replace("{n}", &status.waiting.to_string())}
             }
         };
     }
     let ago = status.synced_at.map(crate::components::shell::relative_time).unwrap_or_default();
     rsx! {
-        div { class: "place-line muted small", title: "{path}", Icon { name: "folder", size: 13 }
-            {t("folder.synced").replace("{service}", service_name(service)).replace("{ago}", &ago)}
+        div { class: "place-line muted small", title: "{path}", Icon { name: either(local, "folder", "server"), size: 13 }
+            {t("folder.synced").replace("{service}", &name).replace("{ago}", &ago)}
         }
     }
 }
@@ -440,23 +622,13 @@ pub fn MoveVaultModal(id: String) -> Element {
     let from = Place::of(&vault.location);
     let place = use_signal(|| from);
     let folder = use_signal(String::new);
+    let dav = use_signal(DavForm::default);
     let emergency = EMERGENCY.peek().as_ref().is_some_and(|e| !e.contacts.is_empty());
     let shared = vault.is_shared();
-    let same = place().kind() == from.kind() && !matches!(place(), Place::Folder(_));
+    let same = place().kind() == from.kind() && !matches!(place(), Place::Folder(_) | Place::WebDav);
     let id2 = id.clone();
     let start = move |_| {
-        let to = place();
-        let target = match to {
-            Place::Account => MoveChoice::Account,
-            Place::Device => MoveChoice::Device,
-            Place::Folder(service) => {
-                if folder().trim().is_empty() {
-                    toast_err(t("location.no_folder"));
-                    return;
-                }
-                MoveChoice::Folder(folder().trim().to_string(), service)
-            }
-        };
+        let Some(target) = choice(place(), folder(), dav()) else { return };
         let id = id2.clone();
         spawn(async move {
             if move_to(&id, target).await {
@@ -483,7 +655,7 @@ pub fn MoveVaultModal(id: String) -> Element {
             if shared {
                 div { class: "note warn", Icon { name: "users", size: 14 } span { {t("move.shared")} } }
             } else {
-                LocationPicker { place, folder, keep_device: from == Place::Device }
+                LocationPicker { place, folder, dav, keep_device: from == Place::Device }
                 if place() == Place::Device && linked && from != Place::Device {
                     div { class: "note warn", Icon { name: "alert", size: 14 } span { {t("move.device_warning")} } }
                 }
@@ -499,18 +671,15 @@ pub fn MoveVaultModal(id: String) -> Element {
 enum MoveChoice {
     Account,
     Device,
-    #[cfg_attr(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))), allow(dead_code))]
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Folder(String, FolderService),
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    WebDav(String, String, String),
 }
 
-#[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+#[cfg(not(target_arch = "wasm32"))]
 async fn move_to(id: &str, target: MoveChoice) -> bool {
-    use twosecret_client::folder::MoveTo;
-    let to = match target {
-        MoveChoice::Account => MoveTo::Account,
-        MoveChoice::Device => MoveTo::Device,
-        MoveChoice::Folder(path, service) => MoveTo::Folder { parent: path.into(), service },
-    };
+    let to = move_to_of(target);
     let Some(mut session) = session_copy() else { return false };
     busy(t("busy.moving"));
     let result = twosecret_client::folder::move_vault(&mut session, id, to).await;
@@ -529,14 +698,13 @@ async fn move_to(id: &str, target: MoveChoice) -> bool {
     }
 }
 
-/// Without storage folders (web, phones): between the server and this
-/// device, with the same steps.
-#[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
+/// The web vault: between the server and this device, with the same steps.
+#[cfg(target_arch = "wasm32")]
 async fn move_to(id: &str, target: MoveChoice) -> bool {
     let to = match target {
         MoveChoice::Account => VaultLocation::Account,
         MoveChoice::Device => VaultLocation::Device,
-        MoveChoice::Folder(..) => return false,
+        MoveChoice::Folder(..) | MoveChoice::WebDav(..) => return false,
     };
     let Some(mut session) = session_copy() else { return false };
     busy(t("busy.moving"));
@@ -575,9 +743,9 @@ async fn move_to(id: &str, target: MoveChoice) -> bool {
     }
 }
 
-/// Delete a vault kept in a storage folder: its files go too.
+/// Delete a vault kept in a folder: its files go too.
 pub fn delete_folder_vault(id: String) {
-    #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+    #[cfg(not(target_arch = "wasm32"))]
     spawn(async move {
         let Some(mut session) = session_copy() else { return };
         busy(t("busy.working"));
@@ -593,7 +761,7 @@ pub fn delete_folder_vault(id: String) {
             Err(e) => toast_err(&client_error(&e)),
         }
     });
-    #[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
+    #[cfg(target_arch = "wasm32")]
     {
         if mutate(|s| s.delete_vault(&id)).is_some() {
             *NAV.write() = Nav::All;

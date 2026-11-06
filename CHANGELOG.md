@@ -25,6 +25,16 @@
   [--service …]`, `vault move <vault> --to server|device|folder`, `vault
   attach <folder>`, a *location* column in `vault list`, and `sync` for
   folder vaults (also in an account without a server).
+- **Vaults on a WebDAV server**: Nextcloud, ownCloud, a Synology or QNAP
+  NAS, Koofr, Fastmail and others, in the same encrypted format, in the
+  desktop apps, on iPhone, iPad and Android and on the command line (not in
+  the web vault). The server's address is enough for Nextcloud and
+  ownCloud; *Test the connection* says whether it works. Moving a vault to a
+  WebDAV server takes the account's other devices along by themselves,
+  phones included: the (encrypted) password travels with the vault.
+  *Settings → Vaults → Add a vault from a WebDAV server*, and `vault create
+  --webdav <url> --user <name>`, `vault move <vault> --to webdav <url>`,
+  `vault attach --webdav <url>`.
 - Shared vaults stay on the server, and emergency access covers vaults on
   the server only.
 - **iPhone, iPad and Android**: slide a finger along the tab bar to move

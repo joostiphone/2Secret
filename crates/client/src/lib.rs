@@ -14,6 +14,10 @@
 pub mod favicon;
 pub mod flows;
 // Vaults in storage folders: the apps and the command line, not the web.
+// Vaults on WebDAV servers (with the folders: not in the web vault, which
+// browsers keep from most WebDAV servers).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dav;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod folder;
 #[cfg(not(target_arch = "wasm32"))]

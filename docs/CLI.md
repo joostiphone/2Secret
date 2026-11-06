@@ -91,8 +91,13 @@ keeps in sync ([VAULT-FOLDER.md](VAULT-FOLDER.md)). `vault list` shows where.
 2secret vault attach ~/Dropbox/2Secret/Werk-1a2b3c4d  # a folder vault made on another device
 2secret vault move Werk --to server                   # server | device | folder <folder>
 2secret vault move Prive --to folder ~/Dropbox
+2secret vault create Gezin --webdav https://cloud.example.com --user joost   # Nextcloud, ownCloud, a NAS
+2secret vault move Werk --to webdav https://nas.example.com:5006/home --user joost
+2secret vault attach --webdav https://cloud.example.com --user joost
 2secret sync                                          # the server and every folder vault
 ```
+
+The WebDAV password is asked for, or read from `TWOSECRET_WEBDAV_PASSWORD`.
 
 Choosing a service prints where it does not exist (iCloud Drive has no app
 for Linux or Android, for example). Commands that read or change items sync

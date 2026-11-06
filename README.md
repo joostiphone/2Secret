@@ -62,7 +62,7 @@ is free, open source, and you can host the sync server yourself.
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
 | ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
-| 🏠 **Sync your way** | Per vault: the 2Secret server (`sync.2secret.app`), your own server – one small binary or Docker image that also serves the web vault –, only this device, or a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing (encrypted; desktop apps and CLI for now). Move a vault from one to the other at any time. |
+| 🏠 **Sync your way** | Per vault: the 2Secret server (`sync.2secret.app`), your own server – one small binary or Docker image that also serves the web vault –, only this device, a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing (desktop apps and CLI for now), or a WebDAV server such as Nextcloud or a NAS (also on phones) – always end-to-end encrypted. Move a vault from one to the other at any time. |
 | 💾 **Backups** | Encrypted backups of all vaults in one file, with a reminder now and then. |
 
 ## Platforms
@@ -264,9 +264,10 @@ Windows, Linux, BSD, iOS, het web en je browser.
 - **Back-ups:** een versleutelde kopie van al je kluizen in één bestand, met af
   en toe een herinnering.
 - **Synchroniseren zoals jij wilt, per kluis:** via de 2Secret-server
-  (`sync.2secret.app`), je eigen server, alleen op dit apparaat, of in een map
-  in iCloud Drive, Dropbox, Google Drive, OneDrive of Syncthing (versleuteld;
-  voorlopig in de desktop-apps en de opdrachtregel). Een kluis verhuis je
+  (`sync.2secret.app`), je eigen server, alleen op dit apparaat, in een map in
+  iCloud Drive, Dropbox, Google Drive, OneDrive of Syncthing (voorlopig in de
+  desktop-apps en de opdrachtregel) of op een WebDAV-server zoals Nextcloud of
+  een NAS (ook op je telefoon), altijd versleuteld. Een kluis verhuis je
   wanneer je wilt.
 - **Updates** (als je het aanzet): de desktop-apps installeren nieuwe versies
   zelf, Android meldt ze. Alleen updates met de handtekening van 2Secret worden

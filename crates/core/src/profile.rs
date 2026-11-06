@@ -49,6 +49,10 @@ pub mod aad {
     pub fn vault_moved(vault_id: &str) -> Vec<u8> {
         format!("2secret/v1/vault-moved/{vault_id}").into_bytes()
     }
+    /// The password of the WebDAV server a vault is kept on.
+    pub fn webdav_password(vault_id: &str) -> Vec<u8> {
+        format!("2secret/v1/webdav-password/{vault_id}").into_bytes()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -283,6 +287,11 @@ pub enum VaultLocation {
     /// `path` is the vault's own folder on this device (the one holding
     /// `vault.json`); it is never sent anywhere.
     Folder { path: String, service: FolderService },
+    /// In a folder on a WebDAV server (Nextcloud, ownCloud, a Synology NAS,
+    /// Koofr…), in the same format. `url` is the vault's own folder; the
+    /// password is encrypted with the vault key (associated data
+    /// [`aad::webdav_password`]), so every device of the account can use it.
+    WebDav { url: String, user: String, password: EncString },
 }
 
 impl VaultLocation {
@@ -292,10 +301,15 @@ impl VaultLocation {
     pub fn is_device(&self) -> bool {
         matches!(self, VaultLocation::Device)
     }
+    /// Kept as files in a folder: on this device (a storage app's folder) or
+    /// on a WebDAV server.
     pub fn is_folder(&self) -> bool {
-        matches!(self, VaultLocation::Folder { .. })
+        matches!(self, VaultLocation::Folder { .. } | VaultLocation::WebDav { .. })
     }
-    /// The vault folder, for a vault in a storage folder.
+    pub fn is_webdav(&self) -> bool {
+        matches!(self, VaultLocation::WebDav { .. })
+    }
+    /// The vault folder on this device, for a vault in a storage folder.
     pub fn folder(&self) -> Option<&str> {
         match self {
             VaultLocation::Folder { path, .. } => Some(path),
@@ -415,6 +429,9 @@ pub enum MoveTarget {
     /// folder (`2Secret/Work-1a2b3c4d`), or only its name when it is not in a
     /// service folder this device recognised.
     Folder { service: FolderService, folder: String },
+    /// To a folder on a WebDAV server, with what is needed to open it (the
+    /// password encrypted with the vault key, like the rest).
+    WebDav { url: String, user: String, password: EncString },
     /// Deleted: the vault is gone everywhere.
     Deleted,
 }
@@ -492,9 +509,16 @@ impl fmt::Display for MoveTarget {
             MoveTarget::Account => f.write_str("the server"),
             MoveTarget::Device => f.write_str("one device"),
             MoveTarget::Folder { service, folder } => write!(f, "{} ({folder})", service.name()),
+            MoveTarget::WebDav { url, .. } => write!(f, "WebDAV ({})", webdav_host(url)),
             MoveTarget::Deleted => f.write_str("nowhere (it was deleted)"),
         }
     }
+}
+
+/// The host (and port) of a WebDAV address, for display.
+pub fn webdav_host(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    rest.split(['/', '?', '#']).next().unwrap_or(rest).rsplit('@').next().unwrap_or(rest)
 }
 
 /// Device-local secrets. Kept apart from the profile on purpose.

@@ -7024,8 +7024,11 @@ dependencies = [
 name = "twosecret-client"
 version = "1.12.2"
 dependencies = [
+ "axum",
  "ed25519-dalek",
+ "futures-util",
  "image",
+ "quick-xml",
  "reqwest",
  "serde",
  "serde_json",
@@ -7034,6 +7037,7 @@ dependencies = [
  "tokio",
  "twosecret-core",
  "twosecret-server",
+ "url",
 ]
 
 [[package]]

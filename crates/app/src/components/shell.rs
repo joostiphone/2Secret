@@ -21,8 +21,10 @@ use crate::state::*;
 fn use_background_tasks() {
     use_future(|| async move {
         let mut last_sync = 0i64;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut last_folders = 0i64;
         #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
-        let (mut last_folders, mut was_focused) = (0i64, true);
+        let mut was_focused = true;
         loop {
             platform::sleep_ms(1000).await;
             if SESSION.peek().is_none() {
@@ -37,7 +39,7 @@ fn use_background_tasks() {
             let due = status.requested || now() - last_sync > 90;
             if due && !status.running && !status.needs_reauth && BUSY.peek().is_none() && MODAL.peek().is_none() {
                 last_sync = now();
-                #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+                #[cfg(not(target_arch = "wasm32"))]
                 {
                     last_folders = now();
                 }
@@ -46,11 +48,17 @@ fn use_background_tasks() {
             }
             // Vaults in storage folders: every 30 seconds, and when the
             // window comes back (the other device may just have saved).
-            #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+            #[cfg(not(target_arch = "wasm32"))]
             {
-                let focused = crate::quick::main_focused();
-                let back = focused && !was_focused;
-                was_focused = focused;
+                #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+                let back = {
+                    let focused = crate::quick::main_focused();
+                    let back = focused && !was_focused;
+                    was_focused = focused;
+                    back
+                };
+                #[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
+                let back = false;
                 if (back || now() - last_folders >= 30) && BUSY.peek().is_none() && MODAL.peek().is_none() {
                     last_folders = now();
                     run_folder_sync(false).await;

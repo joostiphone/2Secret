@@ -14,15 +14,17 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+use futures_util::stream::{self, StreamExt};
 use twosecret_core::api::UpdateVaultRequest;
 use twosecret_core::folder::{
     self as format, FolderPlan, FolderReport, ItemFile, MetaFile, Snapshot, VaultFile, ITEMS_DIR, MOVED_FILE,
     PARENT_DIR, TEMP_PREFIX, VAULT_FILE,
 };
-use twosecret_core::profile::{FolderService, MoveTarget, MovedTo, VaultLocation};
+use twosecret_core::profile::{FolderService, MoveTarget, MovedTo, SyncState, VaultLocation};
 use twosecret_core::session::Session;
 use twosecret_core::util::now;
 
+use crate::dav::Dav;
 use crate::flows::{client_for, sync, SessionAccess};
 use crate::{Error, Result};
 
@@ -411,6 +413,229 @@ pub fn find_vault_dirs(dir: &Path) -> Vec<PathBuf> {
 }
 
 // ---------------------------------------------------------------------------
+// Where a vault's files are
+// ---------------------------------------------------------------------------
+
+/// Where a vault's files are: a folder on this device or on a WebDAV server.
+#[derive(Clone, Debug)]
+pub enum Store {
+    Local(PathBuf),
+    Dav(Dav),
+}
+
+fn dav_not_found(d: &Dav) -> Error {
+    Error::Core(twosecret_core::Error::FolderNotFound(d.url().to_string()))
+}
+
+impl Store {
+    /// The files of a vault kept in a folder.
+    pub fn of(session: &Session, vault_id: &str) -> Result<Store> {
+        let rec = session
+            .profile()
+            .vault(vault_id)
+            .ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
+        match &rec.location {
+            VaultLocation::Folder { path, .. } => Ok(Store::Local(PathBuf::from(path))),
+            VaultLocation::WebDav { url, user, password } => {
+                let password = session.open_webdav_password(vault_id, password)?;
+                Ok(Store::Dav(Dav::new(url, user, &password)?))
+            }
+            _ => Err(twosecret_core::Error::invalid("this vault is not kept in a folder").into()),
+        }
+    }
+
+    /// Read everything in the folder.
+    pub async fn read(&self) -> Result<FolderRead> {
+        match self {
+            Store::Local(dir) => {
+                let dir = dir.clone();
+                blocking(move || read_folder(&dir)).await?
+            }
+            Store::Dav(d) => read_dav(d).await,
+        }
+    }
+
+    /// Write and remove files (paths relative to the folder).
+    pub async fn write(&self, write: Vec<(String, String)>, remove: Vec<String>) -> Result<()> {
+        match self {
+            Store::Local(dir) => {
+                let dir = dir.clone();
+                blocking(move || write_plan(&dir, &write, &remove)).await?
+            }
+            Store::Dav(d) => {
+                if write.iter().any(|(p, _)| p.starts_with(ITEMS_DIR)) {
+                    d.mkcol(&format!("{ITEMS_DIR}/")).await?;
+                }
+                let puts: Vec<Result<()>> = stream::iter(write.iter())
+                    .map(|(path, contents)| d.put(path, contents))
+                    .buffer_unordered(6)
+                    .collect()
+                    .await;
+                puts.into_iter().collect::<Result<Vec<()>>>()?;
+                for path in &remove {
+                    d.delete(path).await?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Make the folder (its parent must exist, or be made on this device).
+    async fn create(&self) -> Result<()> {
+        match self {
+            Store::Local(dir) => {
+                let dir = dir.clone();
+                blocking(move || fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))).await?
+            }
+            Store::Dav(d) => d.mkcol("").await,
+        }
+    }
+
+    /// Remove the folder and everything in it (a copy that failed).
+    async fn remove_all(&self) {
+        match self {
+            Store::Local(dir) => {
+                let dir = dir.clone();
+                let _ = blocking(move || fs::remove_dir_all(dir)).await;
+            }
+            Store::Dav(d) => {
+                let _ = d.delete("").await;
+            }
+        }
+    }
+
+    /// Clear the folder of a vault that moved away, leaving `moved.json`.
+    async fn clear(&self, moved_json: String, deleted: bool) -> Result<()> {
+        match self {
+            Store::Local(dir) => {
+                let dir = dir.clone();
+                blocking(move || if dir.is_dir() { clear_folder(&dir, &moved_json, deleted) } else { Ok(()) }).await?
+            }
+            Store::Dav(d) => {
+                let Some(entries) = d.list("").await? else { return Ok(()) };
+                d.put(MOVED_FILE, &moved_json).await?;
+                if let Some(items) = d.list(&format!("{ITEMS_DIR}/")).await? {
+                    for e in items.iter().filter(|e| !e.dir) {
+                        d.delete(&format!("{ITEMS_DIR}/{}", e.name)).await?;
+                    }
+                    d.delete(&format!("{ITEMS_DIR}/")).await?;
+                }
+                for e in entries.iter().filter(|e| !e.dir) {
+                    if e.name.starts_with("meta~") || (deleted && e.name == VAULT_FILE) {
+                        d.delete(&e.name).await?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Read a vault folder on a WebDAV server: what changed since the last time
+/// is fetched, a few files at a time.
+async fn read_dav(d: &Dav) -> Result<FolderRead> {
+    let Some(entries) = d.list("").await? else { return Err(dav_not_found(d)) };
+    let mut out = FolderRead::default();
+    let tag = |name: &str| entries.iter().find(|e| !e.dir && e.name == name).map(|e| e.tag.clone());
+    if let Some(t) = tag(MOVED_FILE) {
+        out.snapshot.moved = d.get(MOVED_FILE, Some(&t)).await?.and_then(|j| serde_json::from_str(&j).ok());
+        if out.snapshot.moved.is_none() {
+            out.snapshot.unreadable += 1;
+        }
+    }
+    match tag(VAULT_FILE) {
+        Some(t) => {
+            let json = d.get(VAULT_FILE, Some(&t)).await?.ok_or_else(|| dav_not_found(d))?;
+            out.vault = Some(VaultFile::parse(&json)?);
+        }
+        None if out.snapshot.moved.is_some() => {}
+        None => return Err(dav_not_found(d)),
+    }
+    let metas: Vec<(String, String)> = entries
+        .iter()
+        .filter(|e| !e.dir && e.name.starts_with("meta~") && format::parse_file_name(&e.name).is_some())
+        .map(|e| (e.name.clone(), e.tag.clone()))
+        .collect();
+    for (name, json) in fetch_all(d, "", metas).await? {
+        match json.and_then(|j| serde_json::from_str::<MetaFile>(&j).ok()) {
+            Some(m) => out.snapshot.metas.push((name, m)),
+            None => out.snapshot.unreadable += 1,
+        }
+    }
+    if entries.iter().any(|e| e.dir && e.name == ITEMS_DIR) {
+        let items: Vec<(String, String)> = d
+            .list(&format!("{ITEMS_DIR}/"))
+            .await?
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|e| !e.dir && format::parse_file_name(&e.name).is_some())
+            .map(|e| (e.name, e.tag))
+            .collect();
+        for (name, json) in fetch_all(d, &format!("{ITEMS_DIR}/"), items).await? {
+            match json.and_then(|j| serde_json::from_str::<ItemFile>(&j).ok()) {
+                Some(f) => out.snapshot.items.push((name, f)),
+                None => out.snapshot.unreadable += 1,
+            }
+        }
+    }
+    out.snapshot.items.sort_by(|a, b| a.0.cmp(&b.0));
+    out.snapshot.metas.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Fetch files of a WebDAV folder side by side. A file gone meanwhile is
+/// `None`.
+async fn fetch_all(d: &Dav, dir: &str, files: Vec<(String, String)>) -> Result<Vec<(String, Option<String>)>> {
+    let results: Vec<Result<(String, Option<String>)>> = stream::iter(files)
+        .map(|(name, tag)| async move {
+            let json = d.get(&format!("{dir}{name}"), Some(&tag)).await?;
+            Ok((name, json))
+        })
+        .buffer_unordered(8)
+        .collect()
+        .await;
+    results.into_iter().collect()
+}
+
+/// Reach a WebDAV folder, also from the address of a Nextcloud or ownCloud
+/// server alone (whose files are at `remote.php/dav/files/<user>/`).
+pub async fn connect_webdav(url: &str, user: &str, password: &str) -> Result<Dav> {
+    let d = Dav::new(url, user, password)?;
+    if d.check().await? {
+        return Ok(d);
+    }
+    let nextcloud = d.join(&format!("remote.php/dav/files/{user}/"));
+    if nextcloud.check().await? {
+        return Ok(nextcloud);
+    }
+    Err(Error::Api {
+        status: 404,
+        code: "webdav_not_found".into(),
+        message: "there is no WebDAV folder at this address".into(),
+    })
+}
+
+/// The vault folders in a WebDAV folder: the folder itself, or the ones in it
+/// (also in a `2Secret` folder in it).
+async fn find_vault_dirs_dav(d: &Dav) -> Result<Vec<Dav>> {
+    let Some(entries) = d.list("").await? else { return Ok(Vec::new()) };
+    if entries.iter().any(|e| !e.dir && (e.name == VAULT_FILE || e.name == MOVED_FILE)) {
+        return Ok(vec![d.clone()]);
+    }
+    let mut out = Vec::new();
+    for base in [d.clone(), d.join(&format!("{PARENT_DIR}/"))] {
+        let Some(entries) = base.list("").await? else { continue };
+        for e in entries.iter().filter(|e| e.dir) {
+            let sub = base.join(&format!("{}/", e.name));
+            if sub.list("").await?.is_some_and(|l| l.iter().any(|f| !f.dir && f.name == VAULT_FILE)) {
+                out.push(sub);
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
 // Syncing
 // ---------------------------------------------------------------------------
 
@@ -437,26 +662,22 @@ pub async fn sync_folder(session: &mut Session, vault_id: &str) -> Result<Folder
 }
 
 async fn sync_folder_with<A: SessionAccess>(access: &mut A, vault_id: &str) -> (Result<FolderReport>, usize) {
-    let dir = match access
-        .with_session(|s| s.profile().vault(vault_id).and_then(|v| v.location.folder().map(PathBuf::from)))
-    {
-        Ok(Some(dir)) => dir,
-        Ok(None) => return (Err(twosecret_core::Error::not_found(format!("vault {vault_id}")).into()), 0),
-        Err(e) => return (Err(e), 0),
-    };
-    let read_dir = dir.clone();
-    let read = match blocking(move || read_folder(&read_dir)).await {
-        Ok(Ok(read)) => read,
+    let store = match access.with_session(|s| Store::of(s, vault_id)) {
+        Ok(Ok(store)) => store,
         Ok(Err(e)) | Err(e) => return (Err(e), 0),
     };
+    let read = match store.read().await {
+        Ok(read) => read,
+        Err(e) => return (Err(e), 0),
+    };
     let waiting = read.waiting.len();
-    (sync_read(access, vault_id, dir, read).await, waiting)
+    (sync_read(access, vault_id, &store, read).await, waiting)
 }
 
 async fn sync_read<A: SessionAccess>(
     access: &mut A,
     vault_id: &str,
-    dir: PathBuf,
+    store: &Store,
     read: FolderRead,
 ) -> Result<FolderReport> {
     let id = vault_id.to_string();
@@ -470,11 +691,9 @@ async fn sync_read<A: SessionAccess>(
     // goes into it.
     if let Some(moved) = &plan.report.moved {
         follow_move(access, vault_id, moved).await?;
-        return Ok(plan.report);
+        return Ok(FolderReport { written: 0, ..plan.report });
     }
-    let (write, remove) = (plan.write.clone(), plan.remove.clone());
-    let write_dir = dir.clone();
-    blocking(move || write_plan(&write_dir, &write, &remove)).await??;
+    store.write(plan.write.clone(), plan.remove.clone()).await?;
     access.with_session(|s| s.folder_written(&plan))?;
     Ok(plan.report)
 }
@@ -494,13 +713,18 @@ async fn follow_move<A: SessionAccess>(access: &mut A, vault_id: &str, moved: &M
                 access.with_session(|s| s.set_vault_folder(&id, location))??;
             }
         }
+        MoveTarget::WebDav { url, user, password } => {
+            let location = VaultLocation::WebDav { url: url.clone(), user: user.clone(), password: password.clone() };
+            access.with_session(|s| s.set_vault_folder(&id, location))??;
+        }
     }
     Ok(())
 }
 
-/// Sync every vault kept in a storage folder, each on its own: a folder that
-/// is missing does not stop the others. Server placeholders of vaults that
-/// moved to a folder this device has are taken from there first.
+/// Sync every vault kept in a folder (on this device or a WebDAV server),
+/// each on its own: a folder that is missing does not stop the others.
+/// Server placeholders of vaults that moved to a folder this device can
+/// reach are taken from there first.
 pub async fn sync_folders_with<A: SessionAccess>(access: &mut A) -> Result<Vec<FolderOutcome>> {
     attach_moved_with(access).await?;
     let ids: Vec<String> = access.with_session(|s| {
@@ -514,38 +738,42 @@ pub async fn sync_folders_with<A: SessionAccess>(access: &mut A) -> Result<Vec<F
     Ok(out)
 }
 
-/// Sync every vault in a storage folder (see [`sync_folders_with`]).
+/// Sync every vault in a folder (see [`sync_folders_with`]).
 pub async fn sync_folders(session: &mut Session) -> Result<Vec<FolderOutcome>> {
     let mut access = session;
     sync_folders_with(&mut access).await
 }
 
-/// Take vaults that another device moved from the server to a storage
-/// folder from that folder, when this device has it. Returns their ids.
+/// Take vaults that another device moved from the server to a folder from
+/// that folder, when this device can reach it (a storage app's folder it
+/// has, or the WebDAV server). Returns their ids.
 pub async fn attach_moved_with<A: SessionAccess>(access: &mut A) -> Result<Vec<String>> {
-    let moved: Vec<(String, FolderService, String)> = access.with_session(|s| {
-        s.vaults()
-            .into_iter()
-            .filter(|v| v.is_placeholder())
-            .filter_map(|v| match v.moved?.to {
-                MoveTarget::Folder { service, folder } => Some((v.id, service, folder)),
-                _ => None,
-            })
-            .collect()
+    let moved: Vec<(String, MoveTarget)> = access.with_session(|s| {
+        s.vaults().into_iter().filter(|v| v.is_placeholder()).filter_map(|v| Some((v.id, v.moved?.to))).collect()
     })?;
     let mut attached = Vec::new();
-    for (id, service, folder) in moved {
-        let Some(dir) = blocking(move || locate(service, &folder)).await? else { continue };
-        let read_dir = dir.clone();
-        let Ok(Ok(read)) = blocking(move || read_folder(&read_dir)).await else { continue };
+    for (id, target) in moved {
+        let (store, location) = match target {
+            MoveTarget::Folder { service, folder } => {
+                let Some(dir) = blocking(move || locate(service, &folder)).await? else { continue };
+                let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
+                (Store::Local(dir), location)
+            }
+            MoveTarget::WebDav { url, user, password } => {
+                let Ok(Ok(pw)) = access.with_session(|s| s.open_webdav_password(&id, &password)) else { continue };
+                let Ok(d) = Dav::new(&url, &user, &pw) else { continue };
+                (Store::Dav(d), VaultLocation::WebDav { url, user, password })
+            }
+            _ => continue,
+        };
+        let Ok(read) = store.read().await else { continue };
         let (Some(file), None) = (&read.vault, &read.snapshot.moved) else { continue };
         if file.vault_id != id {
             continue;
         }
-        let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
         let ok = access.with_session(|s| s.attach_folder(file, &read.snapshot, location).is_ok())?;
         if ok {
-            let _ = sync_read(access, &id, dir, read).await;
+            let _ = sync_read(access, &id, &store, read).await;
             attached.push(id);
         }
     }
@@ -556,7 +784,81 @@ pub async fn attach_moved_with<A: SessionAccess>(access: &mut A) -> Result<Vec<S
 // Creating, adding, moving and deleting folder vaults
 // ---------------------------------------------------------------------------
 
-/// Create a vault in a storage folder: in `<parent>/2Secret/<name>-<id>`.
+/// Where to keep or move a vault.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MoveTo {
+    /// With the account: on its server (or, for an account without one, on
+    /// this device, going along to a server later).
+    Account,
+    /// Only this device.
+    Device,
+    /// A storage app's folder: the vault gets a folder in `<parent>/2Secret`.
+    Folder { parent: PathBuf, service: FolderService },
+    /// A WebDAV server: the vault gets a folder in `<url>/2Secret`. `url` may
+    /// also be just the address of a Nextcloud or ownCloud server.
+    WebDav { url: String, user: String, password: String },
+}
+
+/// Make the folder for vault `vault_id` at `to` (a folder or WebDAV target):
+/// its files' place, its location and how other devices find it.
+async fn prepare_target(session: &Session, vault_id: &str, to: &MoveTo) -> Result<(Store, VaultLocation, MoveTarget)> {
+    let name = session.vault(vault_id).map(|v| v.name).unwrap_or_default();
+    match to {
+        MoveTo::Folder { parent, service } => {
+            if !parent.is_dir() {
+                return Err(not_found(parent));
+            }
+            let dir = vault_dir(parent, &name, vault_id);
+            let folder = relative_to_service(*service, &dir);
+            let store = Store::Local(dir.clone());
+            store.create().await?;
+            let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service: *service };
+            Ok((store, location, MoveTarget::Folder { service: *service, folder }))
+        }
+        MoveTo::WebDav { url, user, password } => {
+            let base = connect_webdav(url, user, password).await?;
+            let parent = if base.url().trim_end_matches('/').ends_with(&format!("/{PARENT_DIR}")) {
+                base
+            } else {
+                let parent = base.join(&format!("{PARENT_DIR}/"));
+                base.mkcol(&format!("{PARENT_DIR}/")).await?;
+                parent
+            };
+            let dir = parent.join(&format!("{}/", format::vault_dir_name(&name, vault_id)));
+            let store = Store::Dav(dir.clone());
+            store.create().await?;
+            let sealed = session.seal_webdav_password(vault_id, password)?;
+            let location =
+                VaultLocation::WebDav { url: dir.url().to_string(), user: user.clone(), password: sealed.clone() };
+            let target = MoveTarget::WebDav { url: dir.url().to_string(), user: user.clone(), password: sealed };
+            Ok((store, location, target))
+        }
+        _ => Err(twosecret_core::Error::invalid("not a folder").into()),
+    }
+}
+
+/// Write all of a vault's files to `store` and check that they arrived and
+/// open. Refuses a folder that holds another vault.
+async fn copy_to(session: &mut Session, vault_id: &str, store: &Store) -> Result<()> {
+    if let Ok(existing) = store.read().await {
+        if existing.vault.as_ref().is_some_and(|v| v.vault_id != vault_id) {
+            return Err(twosecret_core::Error::invalid("that folder holds another vault").into());
+        }
+    }
+    let files = session.folder_export(vault_id)?;
+    let expected = files.iter().filter(|(p, _)| p.starts_with(ITEMS_DIR)).count();
+    store.write(files, vec![MOVED_FILE.to_string()]).await?;
+    let read = store.read().await?;
+    let file = read.vault.as_ref().ok_or_else(|| twosecret_core::Error::Storage("vault.json did not arrive".into()))?;
+    session.check_vault_file(vault_id, file)?;
+    let readable = read.snapshot.items.iter().filter(|(_, f)| f.data.is_some()).count();
+    if readable < expected || read.snapshot.unreadable > 0 {
+        return Err(twosecret_core::Error::Storage("the copy in the folder is incomplete".into()).into());
+    }
+    Ok(())
+}
+
+/// Create a vault in a storage app's folder: in `<parent>/2Secret/<name>-<id>`.
 pub async fn create_folder_vault(
     session: &mut Session,
     name: &str,
@@ -564,20 +866,18 @@ pub async fn create_folder_vault(
     parent: &Path,
     service: FolderService,
 ) -> Result<String> {
-    if !parent.is_dir() {
-        return Err(not_found(parent));
-    }
-    let id = session.create_vault_at(name, description, VaultLocation::Folder { path: String::new(), service })?;
-    let dir = vault_dir(parent, name, &id);
+    create_vault_in(session, name, description, &MoveTo::Folder { parent: parent.to_path_buf(), service }).await
+}
+
+/// Create a vault in a folder (a storage app's or a WebDAV server's).
+pub async fn create_vault_in(session: &mut Session, name: &str, description: &str, to: &MoveTo) -> Result<String> {
+    let placeholder = VaultLocation::Folder { path: String::new(), service: FolderService::Other };
+    let id = session.create_vault_at(name, description, placeholder)?;
     let result: Result<()> = async {
-        session.set_vault_folder(&id, VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service })?;
+        let (store, location, _) = prepare_target(session, &id, to).await?;
+        session.set_vault_folder(&id, location)?;
         let files = session.folder_export(&id)?;
-        let write_dir = dir.clone();
-        blocking(move || {
-            fs::create_dir_all(&write_dir).map_err(|e| io_error(&write_dir, e))?;
-            write_plan(&write_dir, &files, &[])
-        })
-        .await??;
+        store.write(files, Vec::new()).await?;
         sync_folder(session, &id).await.map(|_| ())
     }
     .await;
@@ -588,29 +888,59 @@ pub async fn create_folder_vault(
     Ok(id)
 }
 
-/// Add a vault that is in a storage folder (made on another device), or
-/// take a vault this device knows as a server placeholder from its folder.
-/// `dir` is the vault's folder or a folder holding one vault folder.
+/// Add a vault that is in a storage app's folder (made on another device),
+/// or take a vault this device knows as a server placeholder from its
+/// folder. `dir` is the vault's folder or a folder holding one vault folder.
 pub async fn attach_folder(session: &mut Session, dir: &Path, service: Option<FolderService>) -> Result<String> {
     let found_in = dir.to_path_buf();
     let dirs = blocking(move || find_vault_dirs(&found_in)).await?;
-    let dir = match dirs.as_slice() {
-        [one] => one.clone(),
-        [] => {
-            return Err(twosecret_core::Error::invalid(format!("there is no 2Secret vault in {}", dir.display())).into())
+    let dir = one_vault(dirs, &dir.display().to_string(), |d| d.file_name().map(|n| n.to_string_lossy().into_owned()))?;
+    let service = match service {
+        Some(s) => s,
+        None => {
+            let probe = dir.clone();
+            blocking(move || service_of(&probe)).await?.unwrap_or_default()
         }
+    };
+    let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
+    attach_store(session, Store::Local(dir), |_, _| Ok(location)).await
+}
+
+/// Add a vault that is on a WebDAV server (made on another device). `url` is
+/// the vault's folder, a folder holding one, or the server's address.
+pub async fn attach_webdav(session: &mut Session, url: &str, user: &str, password: &str) -> Result<String> {
+    let base = connect_webdav(url, user, password).await?;
+    let dirs = find_vault_dirs_dav(&base).await?;
+    let dir = one_vault(dirs, base.url(), |d| d.url().trim_end_matches('/').rsplit('/').next().map(String::from))?;
+    let (user, password) = (user.to_string(), password.to_string());
+    let url = dir.url().to_string();
+    attach_store(session, Store::Dav(dir), move |s, file| {
+        Ok(VaultLocation::WebDav { url, user, password: s.seal_webdav_password_with(file, &password)? })
+    })
+    .await
+}
+
+fn one_vault<T>(mut found: Vec<T>, place: &str, name: impl Fn(&T) -> Option<String>) -> Result<T> {
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => Err(twosecret_core::Error::invalid(format!("there is no 2Secret vault in {place}")).into()),
         _ => {
-            let names: Vec<String> =
-                dirs.iter().filter_map(|d| d.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
-            return Err(twosecret_core::Error::invalid(format!(
+            let names: Vec<String> = found.iter().filter_map(name).collect();
+            Err(twosecret_core::Error::invalid(format!(
                 "there are several vaults in this folder; choose one of: {}",
                 names.join(", ")
             ))
-            .into());
+            .into())
         }
-    };
-    let read_dir = dir.clone();
-    let read = blocking(move || read_folder(&read_dir)).await??;
+    }
+}
+
+async fn attach_store(
+    session: &mut Session,
+    store: Store,
+    location: impl FnOnce(&Session, &VaultFile) -> twosecret_core::Result<VaultLocation>,
+) -> Result<String> {
+    let read = store.read().await?;
     if let Some(moved) = &read.snapshot.moved {
         let to = match &read.vault {
             Some(file) => session.read_moved_with(file, moved),
@@ -622,36 +952,17 @@ pub async fn attach_folder(session: &mut Session, dir: &Path, service: Option<Fo
         }
         .into());
     }
-    let file = read.vault.clone().ok_or_else(|| not_found(&dir))?;
-    let service = match service {
-        Some(s) => s,
-        None => {
-            let probe = dir.clone();
-            blocking(move || service_of(&probe)).await?.unwrap_or_default()
-        }
-    };
-    let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
+    let file = read.vault.clone().ok_or_else(|| twosecret_core::Error::invalid("this folder holds no vault"))?;
+    let location = location(session, &file)?;
     let id = session.attach_folder(&file, &read.snapshot, location)?;
     let mut access = &mut *session;
-    sync_read(&mut access, &id, dir, read).await?;
+    sync_read(&mut access, &id, &store, read).await?;
     Ok(id)
 }
 
-/// Where to move a vault.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MoveTo {
-    /// To the account's server (or, for an account without one, with the
-    /// account on this device).
-    Account,
-    /// Only this device.
-    Device,
-    /// A storage folder: the vault gets a folder in `<parent>/2Secret`.
-    Folder { parent: PathBuf, service: FolderService },
-}
-
-/// Move a vault between the server, this device and storage folders. Its
-/// contents are copied and checked before anything is removed, and the
-/// vault keeps its id and key, so other devices of the account follow it.
+/// Move a vault between the server, this device and folders. Its contents
+/// are copied and checked before anything is removed, and the vault keeps
+/// its id and key, so other devices of the account follow it.
 pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Result<()> {
     session.can_move(vault_id)?;
     let rec = session
@@ -661,13 +972,14 @@ pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Re
         .ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
     let linked = session.server().is_some();
     let from = rec.location.clone();
+    let old_store = if from.is_folder() { Some(Store::of(session, vault_id)?) } else { None };
 
     // Up to date first, wherever it is now.
     match &from {
         VaultLocation::Account if linked => {
             sync(session).await?;
         }
-        VaultLocation::Folder { .. } => match sync_folder(session, vault_id).await {
+        VaultLocation::Folder { .. } | VaultLocation::WebDav { .. } => match sync_folder(session, vault_id).await {
             Ok(_) => {}
             // The folder is gone: move what this device has.
             Err(Error::Core(twosecret_core::Error::FolderNotFound(_))) => {}
@@ -678,74 +990,43 @@ pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Re
     session.can_move(vault_id)?;
     let on_server = match &from {
         VaultLocation::Account => {
-            linked
-                && session
-                    .profile()
-                    .vault(vault_id)
-                    .is_some_and(|v| v.sync_state == twosecret_core::profile::SyncState::Synced)
+            linked && session.profile().vault(vault_id).is_some_and(|v| v.sync_state == SyncState::Synced)
         }
-        VaultLocation::Folder { .. } => linked && rec.on_server,
+        VaultLocation::Folder { .. } | VaultLocation::WebDav { .. } => linked && rec.on_server,
         VaultLocation::Device => false,
     };
 
-    let (location, target) = match &to {
-        MoveTo::Account => (VaultLocation::Account, MoveTarget::Account),
-        MoveTo::Device => (VaultLocation::Device, MoveTarget::Device),
-        MoveTo::Folder { parent, service } => {
-            let name = session.vault(vault_id).map(|v| v.name).unwrap_or_default();
-            let dir = vault_dir(parent, &name, vault_id);
-            if from.folder().is_some_and(|f| Path::new(f) == dir) {
+    let (location, target, new_store) = match &to {
+        MoveTo::Account => (VaultLocation::Account, MoveTarget::Account, None),
+        MoveTo::Device => (VaultLocation::Device, MoveTarget::Device, None),
+        MoveTo::Folder { .. } | MoveTo::WebDav { .. } => {
+            let (store, location, target) = prepare_target(session, vault_id, &to).await?;
+            let same = match (&from, &location) {
+                (VaultLocation::Folder { path: a, .. }, VaultLocation::Folder { path: b, .. }) => a == b,
+                (VaultLocation::WebDav { url: a, .. }, VaultLocation::WebDav { url: b, .. }) => a == b,
+                _ => false,
+            };
+            if same {
                 return Ok(());
             }
-            let files = session.folder_export(vault_id)?;
-            let expected = files.iter().filter(|(p, _)| p.starts_with(ITEMS_DIR)).count();
-            let (write_dir, parent) = (dir.clone(), parent.clone());
-            let read = blocking(move || -> Result<FolderRead> {
-                if !parent.is_dir() {
-                    return Err(not_found(&parent));
-                }
-                fs::create_dir_all(&write_dir).map_err(|e| io_error(&write_dir, e))?;
-                if let Ok(existing) = fs::read_to_string(write_dir.join(VAULT_FILE)) {
-                    // Another vault there: never overwrite it.
-                    let existing = VaultFile::parse(&existing)?;
-                    let ours: VaultFile = VaultFile::parse(&files[0].1)?;
-                    if existing.vault_id != ours.vault_id {
-                        return Err(twosecret_core::Error::invalid("that folder holds another vault").into());
-                    }
-                }
-                let _ = fs::remove_file(write_dir.join(MOVED_FILE));
-                write_plan(&write_dir, &files, &[])?;
-                read_folder(&write_dir)
-            })
-            .await??;
-            // Check that everything arrived and opens.
-            let file = read.vault.as_ref().ok_or_else(|| not_found(&dir))?;
-            session.check_vault_file(vault_id, file)?;
-            let readable = read.snapshot.items.iter().filter(|(_, f)| f.data.is_some()).count();
-            if readable < expected || read.snapshot.unreadable > 0 {
-                return Err(twosecret_core::Error::Storage("the copy in the folder is incomplete".into()).into());
+            if let Err(e) = copy_to(session, vault_id, &store).await {
+                store.remove_all().await;
+                return Err(e);
             }
-            let folder = relative_to_service(*service, &dir);
-            (
-                VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service: *service },
-                MoveTarget::Folder { service: *service, folder },
-            )
+            (location, target, Some(store))
         }
     };
     let moved = MovedTo { to: target.clone(), at: now() };
 
     // The server: mark its copy as a placeholder before leaving it, so the
-    // other devices stop adding to it.
-    if on_server && matches!(target, MoveTarget::Folder { .. }) {
+    // other devices stop adding to it (or tell them where it went now).
+    if on_server && matches!(target, MoveTarget::Folder { .. } | MoveTarget::WebDav { .. }) {
         let client = client_for(session)?;
         let meta = session.placeholder_meta(vault_id, Some(moved.clone()))?;
         let key_rev = session.profile().vault(vault_id).map(|v| v.key_rev);
         if let Err(e) = client.update_vault(vault_id, &UpdateVaultRequest { meta, key_rev }).await {
-            if let VaultLocation::Folder { path, .. } = &location {
-                if from.folder() != Some(path.as_str()) && from.is_account() {
-                    let dir = PathBuf::from(path);
-                    let _ = blocking(move || fs::remove_dir_all(dir)).await;
-                }
+            if let Some(store) = &new_store {
+                store.remove_all().await;
             }
             return Err(e);
         }
@@ -754,10 +1035,9 @@ pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Re
     session.relocate_vault(vault_id, location)?;
 
     // Leave the old place.
-    if let VaultLocation::Folder { path, .. } = &from {
+    if let Some(store) = old_store {
         let moved_json = session.moved_file(vault_id, &moved)?;
-        let dir = PathBuf::from(path);
-        let _ = blocking(move || clear_folder(&dir, &moved_json, false)).await;
+        let _ = store.clear(moved_json, false).await;
     }
     if linked {
         match &target {
@@ -787,18 +1067,17 @@ pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Re
     Ok(())
 }
 
-/// Delete a vault kept in a storage folder: its files go (a `moved.json`
-/// tells the other devices), and so does its server placeholder.
+/// Delete a vault kept in a folder: its files go (a `moved.json` tells the
+/// other devices), and so does its server placeholder.
 pub async fn delete_folder_vault(session: &mut Session, vault_id: &str) -> Result<()> {
     let rec = session
         .profile()
         .vault(vault_id)
         .cloned()
         .ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
-    if let VaultLocation::Folder { path, .. } = &rec.location {
+    if let Ok(store) = Store::of(session, vault_id) {
         let moved_json = session.moved_file(vault_id, &MovedTo { to: MoveTarget::Deleted, at: now() })?;
-        let dir = PathBuf::from(path);
-        let _ = blocking(move || if dir.is_dir() { clear_folder(&dir, &moved_json, true) } else { Ok(()) }).await;
+        let _ = store.clear(moved_json, true).await;
     }
     session.delete_vault(vault_id)?;
     if session.server().is_some() && rec.on_server {

@@ -5,7 +5,7 @@ use twosecret_core::api::MemberDto;
 use twosecret_core::item::{Category, Item};
 use twosecret_core::profile::Role;
 
-use crate::components::location::{LocationPicker, Place};
+use crate::components::location::{DavForm, LocationPicker, Place};
 use crate::components::widgets::*;
 use crate::i18n::{category_name, field_label, role_name, t};
 use crate::icons::{category_icon, either, vault_icon, Icon, ItemAvatar, VAULT_ICONS};
@@ -27,6 +27,7 @@ pub fn ModalHost() -> Element {
         Some(Modal::ShareVault(id)) => rsx! { ShareModal { id } },
         Some(Modal::DeleteVault(id)) => rsx! { DeleteVaultModal { id } },
         Some(Modal::MoveVault(id)) => rsx! { crate::components::location::MoveVaultModal { id } },
+        Some(Modal::AttachWebDav) => rsx! { crate::components::location::AttachWebDavModal {} },
         Some(Modal::MoveItem(id)) => rsx! { MoveItemModal { ids: vec![id] } },
         Some(Modal::MoveItems(ids)) => rsx! { MoveItemModal { ids } },
         Some(Modal::RenameItem(id)) => rsx! { RenameItemModal { id } },
@@ -271,6 +272,7 @@ fn VaultFormModal(id: Option<String>) -> Element {
     let mut icon = use_signal(|| existing.as_ref().map(|v| vault_icon(&v.icon, v.is_shared())).unwrap_or("vault"));
     let place = use_signal(|| Place::Account);
     let folder = use_signal(String::new);
+    let dav = use_signal(DavForm::default);
     let title = if id.is_some() { t("vault.edit") } else { t("vault.new") };
     let id2 = id.clone();
     let save = move |_| {
@@ -286,9 +288,9 @@ fn VaultFormModal(id: Option<String>) -> Element {
                 }
             }
             None => {
-                let (p, f) = (place(), folder());
+                let (p, f, w) = (place(), folder(), dav());
                 spawn(async move {
-                    if let Some(new_id) = crate::components::location::create_at(n, d, i, p, f).await {
+                    if let Some(new_id) = crate::components::location::create_at(n, d, i, p, f, w).await {
                         *NAV.write() = Nav::Vault(new_id);
                         *SELECTED.write() = None;
                         *PANE.write() = Pane::List;
@@ -329,7 +331,7 @@ fn VaultFormModal(id: Option<String>) -> Element {
                 }
             }
             if id.is_none() && !crate::extension::ENABLED {
-                LocationPicker { place, folder }
+                LocationPicker { place, folder, dav }
             }
         }
     }

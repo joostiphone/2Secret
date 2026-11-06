@@ -681,7 +681,7 @@ impl Session {
             VaultLocation::Account => SyncState::PendingCreate,
             VaultLocation::Device => SyncState::Synced,
             // Its name still has to go into the folder.
-            VaultLocation::Folder { .. } => SyncState::PendingUpdate,
+            VaultLocation::Folder { .. } | VaultLocation::WebDav { .. } => SyncState::PendingUpdate,
         };
         let record = VaultRecord {
             id: id.clone(),
@@ -735,7 +735,7 @@ impl Session {
         let on_server = match rec.location {
             VaultLocation::Account => rec.sync_state != SyncState::PendingCreate && linked,
             // A placeholder from a move goes too.
-            VaultLocation::Folder { .. } => rec.on_server && linked,
+            VaultLocation::Folder { .. } | VaultLocation::WebDav { .. } => rec.on_server && linked,
             VaultLocation::Device => false,
         };
         if on_server {

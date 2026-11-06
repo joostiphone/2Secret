@@ -142,6 +142,9 @@ pub struct FolderStatus {
 
 /// Whether this build can keep vaults in storage folders: the desktop apps.
 pub const FOLDER_VAULTS: bool = cfg!(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))));
+/// Whether this build can keep vaults on WebDAV servers: every app but the
+/// web vault and the extension (browsers reach few WebDAV servers).
+pub const DAV_VAULTS: bool = cfg!(not(target_arch = "wasm32"));
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Modal {
@@ -152,6 +155,8 @@ pub enum Modal {
     DeleteVault(String),
     /// Move a vault to the server, this device or a storage folder.
     MoveVault(String),
+    /// Add a vault that is on a WebDAV server.
+    AttachWebDav,
     MoveItem(String),
     /// Move several items (picked in the list) to another vault.
     MoveItems(Vec<String>),
@@ -889,6 +894,9 @@ pub fn client_error(e: &twosecret_client::Error) -> String {
         E::Core(c) => core_error(c),
         E::Unauthorized => t("err.session_expired").into(),
         E::Network(detail) => format!("{} ({detail})", t("err.network")),
+        E::Api { code, .. } if code == "webdav_auth" => t("err.webdav_auth").into(),
+        E::Api { code, .. } if code == "webdav_not_found" => t("err.webdav_not_found").into(),
+        E::Api { code, message, .. } if code.starts_with("webdav") => message.clone(),
         E::Api { status: 401, .. } => t("err.wrong_credentials").into(),
         E::Api { status: 429, .. } => t("err.rate_limited").into(),
         E::Api { code, .. } if code == "storage_quota" => t("err.storage_quota").into(),
@@ -1092,13 +1100,14 @@ impl SessionAccess for GlobalSession {
 /// kept in one.
 pub async fn run_sync(show_result: bool) {
     run_server_sync(show_result).await;
-    #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+    #[cfg(not(target_arch = "wasm32"))]
     run_folder_sync(show_result).await;
 }
 
-/// Synchronise the vaults kept in storage folders (desktop apps). Each
-/// folder on its own: one that is missing does not stop the others.
-#[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
+/// Synchronise the vaults kept in folders (storage apps' folders on the
+/// desktop, WebDAV servers everywhere but the web). Each folder on its own:
+/// one that is missing does not stop the others.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn run_folder_sync(show_result: bool) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static RUNNING: AtomicBool = AtomicBool::new(false);

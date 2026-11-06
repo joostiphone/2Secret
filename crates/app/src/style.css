@@ -672,3 +672,7 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px s
 .place-line { display: flex; gap: 6px; align-items: center; margin: -4px 0 8px; }
 .banner.warn { border-color: var(--warn); background: var(--warn-soft); }
 .settings-row.plain { border: 0; padding-left: 0; }
+.dav-fields { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+.dav-fields .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.note.ok { color: var(--text); }
+.note.ok svg { color: var(--ok); }

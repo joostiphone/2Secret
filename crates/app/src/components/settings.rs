@@ -568,7 +568,7 @@ fn VaultsSection() -> Element {
                             " · {crate::components::location::location_label(&v, linked)}"
                         }
                     }
-                    if v.is_owner && !v.is_shared() && !v.is_placeholder() && (linked || FOLDER_VAULTS || !v.location.is_account()) {
+                    if v.is_owner && !v.is_shared() && !v.is_placeholder() && (linked || FOLDER_VAULTS || DAV_VAULTS || !v.location.is_account()) {
                         button { class: "icon-btn", title: t("move.menu"), onclick: { let id = v.id.clone(); move |_| *MODAL.write() = Some(Modal::MoveVault(id.clone())) },
                             Icon { name: "upload", size: 16 }
                         }
@@ -596,6 +596,11 @@ fn VaultsSection() -> Element {
                 if FOLDER_VAULTS {
                     button { class: "btn small", onclick: move |_| crate::components::location::choose_folder_for(None),
                         Icon { name: "folder", size: 14 } {t("location.add_folder")}
+                    }
+                }
+                if DAV_VAULTS {
+                    button { class: "btn small", onclick: move |_| *MODAL.write() = Some(Modal::AttachWebDav),
+                        Icon { name: "server", size: 14 } {t("location.add_webdav")}
                     }
                 }
             }

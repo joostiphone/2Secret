@@ -117,6 +117,7 @@ so the server cannot swap ciphertexts around undetected:
 | A device's version of a vault's metadata, in a storage folder | `2secret/v1/vault-meta-version/<vault id>` |
 | Deletion of an item, in a storage folder | `2secret/v1/item-tombstone/<vault id>/<item id>` |
 | Where a vault in a storage folder went | `2secret/v1/vault-moved/<vault id>` |
+| Password of the WebDAV server a vault is kept on | `2secret/v1/webdav-password/<vault id>` |
 
 An item moved by the server to another vault, or replaced by a different
 item's ciphertext, fails to decrypt. The decrypted item id is also checked.
@@ -369,6 +370,13 @@ deletion.
 | Number of items, size of each item, when files change, which device changed them | yes (metadata) |
 | The vault's folder name (the vault name the person typed, as it was then, and the start of its id) | yes |
 
+A WebDAV server sees the same, plus the user name and password it gave out
+(which it knows anyway). 2Secret only talks to it over HTTPS (plain HTTP
+only on `localhost`). The password is stored encrypted with the vault key,
+on the devices, in a server placeholder's metadata and in `moved.json`, so
+the account's devices can open the vault; use an app password that opens
+nothing else.
+
 The storage service (or anyone with access to the folder) cannot read or
 change a vault, but it can withhold files, bring back older versions of a
 file or delete files. A device's own copy takes part in every merge, so
@@ -598,9 +606,9 @@ the apps warn about this.
 
 ## Known limitations
 
-- Vaults in storage folders cannot be shared and are not part of emergency
-  access; they work in the desktop apps and the command line, not yet on
-  phones or in the web vault. The vault's folder name contains its name as
+- Vaults in storage folders and on WebDAV servers cannot be shared and are
+  not part of emergency access. Storage folders work in the desktop apps and
+  the command line; WebDAV servers also on phones; neither in the web vault. The vault's folder name contains its name as
   it was when the folder was made. A device that was away for more than 90
   days can bring back items deleted meanwhile (tombstones are cleared after
   90 days).

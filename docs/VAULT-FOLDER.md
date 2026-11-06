@@ -7,10 +7,13 @@ Every vault has a **location**:
 | With the account | On the account's sync server, on all its devices (or, for an account without a server, on this device; such vaults go to a server the account connects to later). The only location where a vault can be shared or be part of emergency access. |
 | This device only | Never leaves the device, also in an account with a sync server. |
 | A storage folder | In a folder that a storage app keeps in sync between devices: iCloud Drive, Dropbox, Google Drive, OneDrive, Syncthing, a network share. Only the account's own devices can open it. |
+| A WebDAV server | In a folder on a WebDAV server: Nextcloud, ownCloud, a Synology or QNAP NAS, Koofr, Fastmail and others. The same format as a storage folder, reached over HTTPS. |
 
-Vaults in folders work in the desktop apps (macOS, Windows, Linux, BSD) and
-the command line. iPhone, iPad, Android, the web vault and the browser
-extension show where such a vault is, but cannot open it yet.
+Vaults in storage folders work in the desktop apps (macOS, Windows, Linux,
+BSD) and the command line. Vaults on a WebDAV server work there **and on
+iPhone, iPad and Android**. The web vault and the browser extension show
+where such a vault is, but cannot open it (browsers may only reach a WebDAV
+server that allows it, which few do).
 
 ## Where each service works
 
@@ -27,6 +30,29 @@ service is chosen:
 | Other folder (Syncthing, a NAS) | ✓ | ✓ | ✓ | ✓ | ✗ | later | ✗ |
 
 ✗ means the service has no app there, so the vault can never show up there.
+
+A vault on a WebDAV server works everywhere except in the web vault and the
+browser extension.
+
+## WebDAV
+
+A vault on a WebDAV server is kept in `<address>/2Secret/<name>-<id8>/`,
+exactly as in a storage folder. The address may be that of a WebDAV folder
+or just the server's: for Nextcloud and ownCloud, 2Secret finds the user's
+files at `remote.php/dav/files/<user>/` by itself. Plain `http://` is only
+accepted for this device (`localhost`). Use an app password where the server
+offers one (Nextcloud: *Settings → Security → Devices & sessions*).
+
+The user name, and the password encrypted with the vault key (associated
+data `2secret/v1/webdav-password/<vault id>`), are stored with the vault, so
+every device of the account can open it: when a vault moves from the sync
+server to a WebDAV server, the placeholder on the sync server (and a
+`moved.json`) carries them, and the account's other devices, phones
+included, follow the vault without being asked.
+
+Files are written with `PUT` (servers keep a half-written upload out of
+sight), listed with `PROPFIND`, and fetched again only when their ETag
+changed.
 
 ## The folder
 
@@ -147,8 +173,13 @@ interrupted move leaves the vault intact where it was.
   the placeholder, which becomes the vault again). `moved.json` tells the
   other devices, which upload what only they still had; the item files are
   removed from the folder.
-- **Folder → this device / another folder**, **this device → server / a
-  folder**: the same steps, without the server where it is not involved.
+- **Server → WebDAV server**: as server → folder; the placeholder also
+  carries the WebDAV password (encrypted with the vault key), so other
+  devices, phones included, take the vault from the WebDAV server
+  themselves.
+- **Folder → this device / another folder / a WebDAV server**, **this
+  device → server / a folder**: the same steps, without the server where it
+  is not involved.
 
 Shared vaults stay on the server (stop sharing first). Emergency access
 covers only vaults on the server.

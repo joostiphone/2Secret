@@ -126,7 +126,7 @@ fn vault_menu(id: &str) -> Option<(String, Vec<Entry>)> {
             entries.push(entry(Action::ShareVault, "share", t("vault.share"), 1));
         }
     }
-    if vault.is_owner && !vault.is_shared() && (linked || FOLDER_VAULTS || !vault.location.is_account()) {
+    if vault.is_owner && !vault.is_shared() && (linked || FOLDER_VAULTS || DAV_VAULTS || !vault.location.is_account()) {
         entries.push(entry(Action::MoveVault, "upload", t("move.menu"), 1));
     }
     let delete = if vault.is_owner { t("vault.delete") } else { t("vault.leave") };

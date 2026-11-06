@@ -20,9 +20,15 @@ reqwest.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "ico", "jpeg", "gif", "webp"] }
 # Waiting for file access done on its own thread (vaults in storage folders).
 tokio = { version = "1", default-features = false, features = ["sync"] }
+# Vaults on WebDAV servers: folder listings, and fetching files side by side.
+quick-xml = "0.41"
+url.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tokio.workspace = true
+# A small WebDAV server for the tests of vaults on WebDAV servers.
+axum = "0.8"
 ed25519-dalek = "2"
 sha2 = "0.10"
 twosecret-server = { path = "../server" }

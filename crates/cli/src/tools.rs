@@ -369,6 +369,8 @@ pub fn sync(ctx: &Ctx) -> Result<()> {
         None => None,
     };
     ctx.save(&session)?;
+    // Before: a vault that moved away is gone afterwards.
+    let names: HashMap<String, String> = session.vaults().into_iter().map(|v| (v.id, v.name)).collect();
     let folders = ctx.block_on(twosecret_client::folder::sync_folders(&mut session))?;
     ctx.save(&session)?;
     if ctx.json {
@@ -389,8 +391,14 @@ pub fn sync(ctx: &Ctx) -> Result<()> {
         );
     }
     for o in &folders {
-        let name = session.vault(&o.vault_id).map(|v| v.name).unwrap_or(o.vault_id.clone());
+        let name = names.get(&o.vault_id).cloned().unwrap_or(o.vault_id.clone());
         match &o.result {
+            Ok(r) if r.moved.is_some() => {
+                eprintln!(
+                    "Folder vault '{name}': moved to {}.",
+                    r.moved.as_ref().map(|m| m.to.to_string()).unwrap_or_default()
+                )
+            }
             Ok(r) => {
                 let waiting =
                     if o.waiting > 0 { format!(", {} files still downloading", o.waiting) } else { String::new() };

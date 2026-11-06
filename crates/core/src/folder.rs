@@ -777,7 +777,7 @@ impl Session {
                 v.leftovers.clear();
                 v.on_server = false;
             }
-            VaultLocation::Device | VaultLocation::Folder { .. } => {
+            VaultLocation::Device | VaultLocation::Folder { .. } | VaultLocation::WebDav { .. } => {
                 let leftovers: Vec<Leftover> = if from_server {
                     p.items
                         .iter()
@@ -826,7 +826,8 @@ impl Session {
     }
 
     /// Point a folder vault at another folder holding the same vault (it
-    /// moved there, or the folder is somewhere else on this device).
+    /// moved there, or the folder is somewhere else on this device, or on
+    /// the WebDAV server).
     pub fn set_vault_folder(&mut self, vault_id: &str, location: VaultLocation) -> Result<()> {
         let rec =
             self.profile_mut().vault_mut(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
@@ -953,6 +954,45 @@ impl FolderService {
 
     pub fn available_on(&self, platform: Platform) -> Availability {
         self.availability().iter().find(|(p, _)| *p == platform).map_or(Availability::No, |(_, a)| *a)
+    }
+}
+
+/// Where a vault on a WebDAV server can be used: every app but the web
+/// vault and the browser extension (browsers only reach a WebDAV server
+/// that allows it, which few do).
+pub fn webdav_availability() -> [(Platform, Availability); 7] {
+    let mut out = [(Platform::MacOs, Availability::Yes); 7];
+    for (i, p) in Platform::ALL.iter().enumerate() {
+        out[i] = (*p, if *p == Platform::Web { Availability::No } else { Availability::Yes });
+    }
+    out
+}
+
+impl Session {
+    /// Encrypt the password of the WebDAV server a vault is kept on.
+    pub fn seal_webdav_password(&self, vault_id: &str, password: &str) -> Result<EncString> {
+        let key = self.vault_key(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        encrypt_json(key, &password, &aad::webdav_password(vault_id))
+    }
+
+    /// The password of the WebDAV server a vault is kept on (or moved to).
+    pub fn open_webdav_password(&self, vault_id: &str, sealed: &EncString) -> Result<String> {
+        let key = self.vault_key(vault_id).ok_or_else(|| Error::not_found(format!("vault {vault_id}")))?;
+        decrypt_json(key, sealed, &aad::webdav_password(vault_id))
+    }
+
+    /// Encrypt a WebDAV password for a vault whose key is in a `vault.json`
+    /// (a vault this device does not have yet).
+    pub fn seal_webdav_password_with(&self, file: &VaultFile, password: &str) -> Result<EncString> {
+        let key = self.folder_key(file)?;
+        encrypt_json(&key, &password, &aad::webdav_password(&file.vault_id))
+    }
+
+    /// The password sealed for a vault whose key is in a `vault.json` (a
+    /// vault this device does not have yet).
+    pub fn open_webdav_password_with(&self, file: &VaultFile, sealed: &EncString) -> Result<String> {
+        let key = self.folder_key(file)?;
+        decrypt_json(&key, sealed, &aad::webdav_password(&file.vault_id))
     }
 }
 

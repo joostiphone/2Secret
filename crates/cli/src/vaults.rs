@@ -11,7 +11,7 @@ use twosecret_core::folder::{Availability, Platform};
 use twosecret_core::profile::{FolderService, MoveTarget, Role, VaultLocation};
 use twosecret_core::session::{Session, VaultInfo};
 
-use crate::context::{confirm, Ctx};
+use crate::context::{confirm, prompt_secret, Ctx};
 use crate::output::{print_json, table};
 
 #[derive(Subcommand)]
@@ -26,7 +26,7 @@ pub enum VaultCmd {
         #[arg(long, default_value = "")]
         description: String,
         /// Keep it only on this device, also when the account has a server.
-        #[arg(long, conflicts_with = "folder")]
+        #[arg(long, conflicts_with_all = ["folder", "webdav"])]
         device: bool,
         /// Keep it in this folder (iCloud Drive, Dropbox, Google Drive,
         /// OneDrive, Syncthing, a network share): in <folder>/2Secret.
@@ -36,25 +36,47 @@ pub enum VaultCmd {
         /// when left out).
         #[arg(long, requires = "folder")]
         service: Option<String>,
+        /// Keep it on a WebDAV server (Nextcloud, ownCloud, a NAS): its
+        /// address, or that of a folder on it. The password is asked for, or
+        /// read from TWOSECRET_WEBDAV_PASSWORD.
+        #[arg(long, conflicts_with = "folder", requires = "user")]
+        webdav: Option<String>,
+        /// The WebDAV user name.
+        #[arg(long)]
+        user: Option<String>,
     },
-    /// Move a vault: to the server, to this device only, or to a folder.
+    /// Move a vault: to the server, to this device only, to a folder or to a
+    /// WebDAV server.
     Move {
         vault: String,
-        /// server, device or folder
+        /// server, device, folder or webdav
         #[arg(long)]
         to: String,
-        /// The folder, with --to folder.
-        folder: Option<PathBuf>,
+        /// The folder (with --to folder) or the WebDAV address (with --to
+        /// webdav).
+        place: Option<String>,
         #[arg(long)]
         service: Option<String>,
+        /// The WebDAV user name.
+        #[arg(long)]
+        user: Option<String>,
         #[arg(long)]
         yes: bool,
     },
-    /// Add a vault that is in a storage folder (made on another device).
+    /// Add a vault that is in a storage folder or on a WebDAV server (made on
+    /// another device).
     Attach {
-        folder: PathBuf,
+        /// The vault's folder, or a folder holding it.
+        #[arg(required_unless_present = "webdav")]
+        folder: Option<PathBuf>,
         #[arg(long)]
         service: Option<String>,
+        /// The WebDAV address (of the vault's folder, a folder holding it,
+        /// or the server).
+        #[arg(long, conflicts_with = "folder", requires = "user")]
+        webdav: Option<String>,
+        #[arg(long)]
+        user: Option<String>,
     },
     /// Rename a vault.
     Rename { vault: String, name: String },
@@ -95,8 +117,20 @@ fn location(session: &Session, v: &VaultInfo) -> String {
         VaultLocation::Account => "this device".into(),
         VaultLocation::Device => "this device only".into(),
         VaultLocation::Folder { service, .. } => service.name().into(),
+        VaultLocation::WebDav { url, .. } => format!("WebDAV ({})", twosecret_core::profile::webdav_host(url)),
     }
 }
+
+/// The WebDAV password: from TWOSECRET_WEBDAV_PASSWORD, or asked for.
+fn webdav_password() -> Result<String> {
+    match std::env::var("TWOSECRET_WEBDAV_PASSWORD") {
+        Ok(pw) if !pw.is_empty() => Ok(pw),
+        _ => prompt_secret("WebDAV password (an app password is best): "),
+    }
+}
+
+const WEBDAV_NOTE: &str =
+    "Vaults on a WebDAV server work in the desktop apps, on iPhone, iPad and Android and on the command line; not in the web vault/browser extension.";
 
 fn service(name: Option<&str>, folder: &std::path::Path) -> Result<FolderService> {
     match name {
@@ -171,9 +205,19 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
             table(&["id", "name", "items", "role", "sharing", "location"], &rows);
             Ok(())
         }
-        VaultCmd::Create { name, description, device, folder: dir, service: svc } => {
+        VaultCmd::Create { name, description, device, folder: dir, service: svc, webdav, user } => {
             let mut session = ctx.unlock()?;
-            let id = if let Some(dir) = &dir {
+            let id = if let Some(url) = &webdav {
+                let to =
+                    MoveTo::WebDav { url: url.clone(), user: user.unwrap_or_default(), password: webdav_password()? };
+                let id = ctx.block_on(folder::create_vault_in(&mut session, &name, &description, &to))?;
+                if !ctx.json {
+                    let at = session.vault(&id).map(|v| location(&session, &v)).unwrap_or_default();
+                    eprintln!("Created vault '{name}' on {at}.");
+                    eprintln!("{WEBDAV_NOTE}");
+                }
+                id
+            } else if let Some(dir) = &dir {
                 let svc = service(svc.as_deref(), dir)?;
                 let id = ctx.block_on(folder::create_folder_vault(&mut session, &name, &description, dir, svc))?;
                 if !ctx.json {
@@ -196,7 +240,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
             }
             Ok(())
         }
-        VaultCmd::Move { vault, to, folder: dir, service: svc, yes } => {
+        VaultCmd::Move { vault, to, place, service: svc, user, yes } => {
             let mut session = ctx.unlock()?;
             if ctx.offline {
                 bail!("--offline was given");
@@ -211,11 +255,20 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                 }
                 "device" | "local" | "here" => MoveTo::Device,
                 "folder" => {
-                    let dir = dir.ok_or_else(|| anyhow!("give the folder: vault move <vault> --to folder <folder>"))?;
+                    let dir = PathBuf::from(
+                        place.ok_or_else(|| anyhow!("give the folder: vault move <vault> --to folder <folder>"))?,
+                    );
                     let svc = service(svc.as_deref(), &dir)?;
                     MoveTo::Folder { parent: dir, service: svc }
                 }
-                _ => bail!("--to must be server, device or folder"),
+                "webdav" => {
+                    let url = place.ok_or_else(|| {
+                        anyhow!("give the address: vault move <vault> --to webdav <url> --user <name>")
+                    })?;
+                    let user = user.ok_or_else(|| anyhow!("give the WebDAV user name with --user"))?;
+                    MoveTo::WebDav { url, user, password: webdav_password()? }
+                }
+                _ => bail!("--to must be server, device, folder or webdav"),
             };
             if !yes {
                 let mut what = format!("Move vault '{}' ({} items)", v.name, v.item_count);
@@ -231,6 +284,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                         parent.display(),
                         availability_note(*service)
                     )),
+                    MoveTo::WebDav { url, .. } => what.push_str(&format!(" to the WebDAV server {url}? {WEBDAV_NOTE}")),
                 }
                 if !confirm(&what)? {
                     bail!("aborted");
@@ -243,10 +297,19 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
             eprintln!("Moved '{}': {moved}.", v.name);
             Ok(())
         }
-        VaultCmd::Attach { folder: dir, service: svc } => {
+        VaultCmd::Attach { folder: dir, service: svc, webdav, user } => {
             let mut session = ctx.unlock()?;
-            let svc = svc.as_deref().map(|n| service(Some(n), &dir)).transpose()?;
-            let id = ctx.block_on(folder::attach_folder(&mut session, &dir, svc))?;
+            let id = match (webdav, dir) {
+                (Some(url), _) => {
+                    let user = user.unwrap_or_default();
+                    ctx.block_on(folder::attach_webdav(&mut session, &url, &user, &webdav_password()?))?
+                }
+                (None, Some(dir)) => {
+                    let svc = svc.as_deref().map(|n| service(Some(n), &dir)).transpose()?;
+                    ctx.block_on(folder::attach_folder(&mut session, &dir, svc))?
+                }
+                (None, None) => bail!("give the folder, or --webdav <url> --user <name>"),
+            };
             ctx.save(&session)?;
             let v = session.vault(&id).ok_or_else(|| anyhow!("vault {id}"))?;
             if ctx.json {
