@@ -1,21 +1,6 @@
-Nieuw uiterlijk: Dashboard, Items en Watchtower staan in een zwevende menubalk van glas onderin het scherm, met een zoekknop ernaast. De inhoud loopt door tot onder de Dynamic Island.
+Kies per kluis waar hij staat: op de syncserver, alleen op dit apparaat, of op een WebDAV-server zoals Nextcloud, ownCloud of een Synology- of QNAP-NAS. Altijd end-to-end versleuteld: alleen je eigen apparaten kunnen hem openen.
 
-- Druk lang op een item of kluis voor een menu met opties, zoals naam wijzigen en wachtwoord kopiëren.
-- Selecteer meerdere items tegelijk om ze te verplaatsen, favoriet te maken of naar de prullenbak te doen.
-- Zoeken toont je favorieten bovenaan.
-- Categorieën, kluizen en labels in het menu klap je in en uit.
-- Website-icoontjes worden sneller en veel vaker gevonden.
-
-iPhone Duo: 2Secret vult nu het hele scherm, opengeklapt en dichtgeklapt.
-
-Automatisch invullen in de stijl van 2Secret: het paneel voor wachtwoorden, passkeys en verificatiecodes toont voor welke website het is, je inlogs met hun website-icoontjes, en volgt het thema van de app.
-
-AI-agents op afstand: een AI-agent op een andere computer (Claude Code in de cloud, een server) kan via je synchronisatieserver om een wachtwoord of code vragen, en jij antwoordt op je iPhone terwijl 2Secret open is. De server kan de vraag en het antwoord niet lezen. Koppel agents in Instellingen → Agents op afstand.
-
-Beveiligingsverbeteringen:
-- Je geheime sleutel gaat niet meer mee in iCloud- en computerback-ups, zodat een back-up hem nooit naast je versleutelde kluis bevat.
-- Automatisch invullen is strenger op websites waar iedereen een eigen subdomein krijgt: een inlog wordt alleen op zijn eigen site voorgesteld.
-- 2Secret maakt alleen via https verbinding met een synchronisatieserver.
-- Veiliger synchroniseren van gedeelde kluizen.
-- 2Secret onthoudt de sleutels van de mensen met wie je kluizen deelt en van je noodcontacten, en waarschuwt je als de server andere sleutels voor hen opgeeft.
-- Deel-links: de server bewaart alleen een hash van wat een link opent.
+- Verhuis een kluis van de ene plek naar de andere: druk er lang op, of Instellingen → Kluizen → Verplaatsen. Alles wordt eerst gekopieerd en gecontroleerd, pas daarna wordt de oude plek leeggemaakt.
+- Een kluis die je op een ander apparaat naar een WebDAV-server verhuist, verschijnt vanzelf op je iPhone.
+- Schuif met je vinger over de tabbalk om van Home naar Items naar Watchtower te gaan.
+- Een levendigere Watchtower-cirkel, met een schaal die laat zien waar je beveiligingsscore staat.

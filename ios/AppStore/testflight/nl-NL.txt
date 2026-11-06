@@ -1,10 +1,17 @@
-2Secret 1.12.2
+2Secret 1.13.0
 
 WAT IS ER NIEUW
-Op iPhone en iPad is niets veranderd. Deze versie voegt de Android-app toe aan de downloads, en het iOS-build heeft hetzelfde versienummer zodat elk platform gelijk loopt. 2Secret staat nu in de App Store: bedankt voor het testen!
+- Kies per kluis waar hij staat: op de syncserver, alleen op dit apparaat, of op een WebDAV-server (Nextcloud, ownCloud, een Synology- of QNAP-NAS, Koofr…). Versleuteld zoals altijd; alleen je eigen apparaten kunnen hem openen.
+- Verhuis een kluis: druk er lang op (of Instellingen → Kluizen) → Verplaatsen…
+- Een kluis die je op een ander apparaat naar een WebDAV-server hebt verhuisd, verschijnt hier vanzelf. Een kluis die op een Mac of pc naar iCloud Drive of Dropbox is verhuisd, laat zien waar hij staat (mappen op de iPhone komen later).
+- Schuif met je vinger over de tabbalk om van Home naar Items naar Watchtower te gaan.
+- Een levendigere Watchtower-cirkel, met een schaal die laat zien waar je score staat.
 
 TEST ALSJEBLIEFT
-1. Werk bij en open de app één keer; ontgrendel met Face ID en met je hoofdwachtwoord.
-2. Alles zoals in 1.12.1: automatisch invullen in Safari, synchroniseren, delen, Watchtower, Instellingen → Agents op afstand.
+1. Schuif over de tabbalk, langzaam en snel; laat op elke tab los. Gewoon tikken moet blijven werken.
+2. Watchtower en Home: ziet de cirkel er goed uit, licht en donker?
+3. Heb je Nextcloud of een NAS: Instellingen → Kluizen → Nieuwe kluis → Een WebDAV-server. Probeer "Verbinding testen" met een fout en het goede wachtwoord, maak de kluis aan, voeg een item toe en kijk of het op een ander apparaat aankomt.
+4. Verplaats een kluis naar "Alleen op dit apparaat" en terug naar de syncserver; er mag niets verloren gaan.
+5. Ontgrendel met Face ID en met je hoofdwachtwoord; automatisch invullen in Safari zoals voorheen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

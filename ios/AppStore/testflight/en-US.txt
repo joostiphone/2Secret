@@ -1,10 +1,17 @@
-2Secret 1.12.2
+2Secret 1.13.0
 
 WHAT'S NEW
-Nothing changed on iPhone and iPad. This release adds the Android app to the downloads, and the iOS build has the same version so every platform matches. 2Secret is in the App Store now: thank you for testing!
+- Choose where each vault is kept: on the sync server, only on this device, or on a WebDAV server (Nextcloud, ownCloud, a Synology or QNAP NAS, Koofr…). Encrypted as always; only your devices can open it.
+- Move a vault: long-press it (or Settings → Vaults) → Move…
+- A vault you moved to a WebDAV server on another device appears here by itself. A vault moved to iCloud Drive or Dropbox on a Mac or PC shows where it is (folders on iPhone come later).
+- Slide a finger along the tab bar to go from Home to Items to Watchtower.
+- A livelier Watchtower ring, with a scale that shows where your score is.
 
 PLEASE TEST
-1. Update and open the app once; unlock with Face ID and with your master password.
-2. Everything as in 1.12.1: AutoFill in Safari, sync, sharing, Watchtower, Settings → Agents elsewhere.
+1. Slide along the tab bar, slowly and quickly; let go on each section. A plain tap should work as before.
+2. Watchtower and Home: does the ring look right in light and dark mode?
+3. If you have Nextcloud or a NAS: Settings → Vaults → New vault → A WebDAV server. Use "Test the connection" with a wrong and the right password, create the vault, add an item and see it arrive on another device.
+4. Move a vault to "This device only" and back to the sync server; nothing should get lost.
+5. Unlock with Face ID and with your master password; AutoFill in Safari as before.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

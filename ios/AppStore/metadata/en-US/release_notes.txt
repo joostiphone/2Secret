@@ -1,21 +1,6 @@
-A new look: Dashboard, Items and Watchtower are in a floating tab bar of glass at the bottom of the screen, with a search button beside it. The content runs on under the Dynamic Island.
+Choose where each vault is kept: on the sync server, only on this device, or on a WebDAV server such as Nextcloud, ownCloud or a Synology or QNAP NAS. Always end-to-end encrypted: only your own devices can open it.
 
-- Long-press an item or a vault for a menu of options, such as rename and copy password.
-- Select several items at once to move them, favorite them or move them to the trash.
-- Search shows your favorites first.
-- Fold categories, vaults and tags in the menu away.
-- Website icons are found faster and far more often.
-
-iPhone Duo: 2Secret now fills the whole screen, open and closed.
-
-AutoFill in 2Secret's own look: the panel for passwords, passkeys and verification codes shows the website it is for, your logins with their website icons, and follows the app's theme.
-
-AI agents elsewhere: an AI agent on another computer (Claude Code in the cloud, a server) can ask for a password or code through your sync server, and you answer on your iPhone while 2Secret is open. The server cannot read the question or the answer. Pair agents in Settings → Agents elsewhere.
-
-Security improvements:
-- Your Secret Key is no longer included in iCloud and computer backups, so a backup never holds it next to your encrypted vault.
-- AutoFill is stricter on websites where everyone gets a subdomain of their own: a login is only suggested on its own site.
-- 2Secret connects to a sync server only over https.
-- Safer syncing of shared vaults.
-- 2Secret remembers the keys of the people you share vaults with and of your emergency contacts, and warns you when the server reports other keys for them.
-- Share links: the server keeps only a hash of what opens a link.
+- Move a vault from one place to another: long-press it, or Settings → Vaults → Move. Everything is copied and checked before the old place is cleared.
+- A vault moved to a WebDAV server on another device appears on your iPhone by itself.
+- Slide a finger along the tab bar to go from Home to Items to Watchtower.
+- A livelier Watchtower ring, with a scale that shows where your security score is.

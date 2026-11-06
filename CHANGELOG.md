@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.13.0
 
 - **Where each vault is kept, per vault**: with the account on its sync
   server (as before), only on this device, or in a folder that iCloud Drive,
@@ -44,6 +44,12 @@
   fills up, with a soft glow and a knob at its end, and a scale shows where
   the score is between *Needs attention* and *Fantastic*. The dashboard has
   the same ring.
+- Update every device: versions before 1.13 see a vault that moved away from
+  the server as an empty vault, and what they put in it is moved to where
+  the vault is now.
+- CI: the browser extension's tests run on Ubuntu 24.04 (Playwright has no
+  Chromium for 26.04 yet), and a test of agent pairing codes no longer fails
+  now and then.
 
 ## 1.12.2
 
