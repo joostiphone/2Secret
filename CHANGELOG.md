@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Vaults in folders on iPhone, iPad and Android**, through the system's
+  folder picker: on iPhone and iPad iCloud Drive and folders on the device
+  (also one that Möbius Sync keeps in sync), on Android folders on the phone
+  (for instance one that Syncthing-Fork or FolderSync keeps in sync). Create
+  a vault there, move one there, or add one from a folder (*Settings →
+  Vaults*). A vault that a computer moved to iCloud Drive shows *Choose the
+  folder*; after choosing it once, vaults moved there later are found by
+  themselves. The Dropbox, Google Drive and OneDrive apps do not let other
+  apps choose a folder on phones; a direct connection to those services is
+  planned.
+- Desktops also find a vault made on a phone in `<service>/2Secret/`.
+
 ## 1.13.0
 
 - **Where each vault is kept, per vault**: with the account on its sync

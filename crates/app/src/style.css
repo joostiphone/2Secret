@@ -660,6 +660,8 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px s
 .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .folder-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .folder-row .input { flex: 1; min-width: 0; }
+/* Phones: the folder chosen in the system's folder picker. */
+.folder-row .picked-folder { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .availability { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .avail { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
 .avail.yes { color: var(--ok, #2f9e44); border-color: currentColor; }

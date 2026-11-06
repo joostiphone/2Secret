@@ -140,8 +140,16 @@ pub struct FolderStatus {
     pub waiting: usize,
 }
 
-/// Whether this build can keep vaults in storage folders: the desktop apps.
-pub const FOLDER_VAULTS: bool = cfg!(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))));
+/// Whether this build can keep vaults in storage folders: the desktop apps,
+/// and the iPhone, iPad and Android apps (through the system's folder
+/// picker).
+pub const FOLDER_VAULTS: bool = cfg!(any(
+    all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))),
+    all(feature = "mobile", any(target_os = "ios", target_os = "android"))
+));
+/// Whether folders are chosen in the system's folder picker (iPhone, iPad,
+/// Android) rather than by their path.
+pub const PICK_FOLDERS: bool = cfg!(all(feature = "mobile", any(target_os = "ios", target_os = "android")));
 /// Whether this build can keep vaults on WebDAV servers: every app but the
 /// web vault and the extension (browsers reach few WebDAV servers).
 pub const DAV_VAULTS: bool = cfg!(not(target_arch = "wasm32"));

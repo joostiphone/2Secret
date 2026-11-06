@@ -8,7 +8,7 @@ use jni::{JNIEnv, JavaVM};
 /// Run `f` with the JNI environment and the app's activity, inside a local
 /// reference frame (the UI thread never returns to Java, so local
 /// references would otherwise pile up).
-fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>) -> Result<T, String> {
+pub(crate) fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>) -> Result<T, String> {
     let ctx = ndk_context::android_context();
     // SAFETY: tao stores the VM and a global reference to the activity in
     // ndk_context before the app starts; both live as long as the app.
@@ -23,7 +23,7 @@ fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>) 
     result.map_err(|e| e.to_string())
 }
 
-fn string(env: &mut JNIEnv, obj: JObject) -> jni::errors::Result<String> {
+pub(crate) fn string(env: &mut JNIEnv, obj: JObject) -> jni::errors::Result<String> {
     Ok(env.get_string(&JString::from(obj))?.into())
 }
 

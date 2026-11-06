@@ -62,7 +62,7 @@ is free, open source, and you can host the sync server yourself.
 | 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
 | ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
-| 🏠 **Sync your way** | Per vault: the 2Secret server (`sync.2secret.app`), your own server – one small binary or Docker image that also serves the web vault –, only this device, a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing (desktop apps and CLI for now), or a WebDAV server such as Nextcloud or a NAS (also on phones) – always end-to-end encrypted. Move a vault from one to the other at any time. |
+| 🏠 **Sync your way** | Per vault: the 2Secret server (`sync.2secret.app`), your own server – one small binary or Docker image that also serves the web vault –, only this device, a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing (desktop apps and CLI; on phones iCloud Drive and folders on the device), or a WebDAV server such as Nextcloud or a NAS – always end-to-end encrypted. Move a vault from one to the other at any time. |
 | 💾 **Backups** | Encrypted backups of all vaults in one file, with a reminder now and then. |
 
 ## Platforms

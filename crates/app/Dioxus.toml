@@ -3,6 +3,9 @@ name = "2Secret"
 default_platform = "desktop"
 out_dir = "dist"
 asset_dir = "assets"
+# Android: the activity also hands Rust the folder chosen in the system's
+# folder picker (vaults in folders).
+android_main_activity = "android/MainActivity.kt"
 
 [web.app]
 title = "2Secret"

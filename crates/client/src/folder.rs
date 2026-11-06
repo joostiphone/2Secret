@@ -220,6 +220,13 @@ fn missing_is_fine(result: io::Result<()>) -> io::Result<()> {
     }
 }
 
+fn gone_is_none<T>(result: io::Result<Option<T>>) -> io::Result<Option<T>> {
+    match result {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        other => other,
+    }
+}
+
 impl FolderFs for LocalFs {
     fn describe(&self) -> String {
         self.dir.display().to_string()
@@ -231,21 +238,30 @@ impl FolderFs for LocalFs {
 
     fn list(&self, dir: &str) -> io::Result<Option<Vec<FsEntry>>> {
         let path = self.at(dir)?;
-        self.coordinate(Access::Read, &path, |path| {
-            if !path.is_dir() {
-                return Ok(None);
-            }
-            let mut out = Vec::new();
-            for entry in fs::read_dir(path)?.flatten() {
-                let meta = fs::metadata(entry.path()).ok();
-                out.push(FsEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    dir: meta.as_ref().is_some_and(|m| m.is_dir()),
-                    stamp: meta.map_or((0, 0), |m| (millis(m.modified().ok()), m.len())),
-                });
-            }
-            Ok(Some(out))
-        })
+        let list = || {
+            gone_is_none(self.coordinate(Access::Read, &path, |path| {
+                if !path.is_dir() {
+                    return Ok(None);
+                }
+                let mut out = Vec::new();
+                for entry in fs::read_dir(path)?.flatten() {
+                    let meta = fs::metadata(entry.path()).ok();
+                    out.push(FsEntry {
+                        name: entry.file_name().to_string_lossy().into_owned(),
+                        dir: meta.as_ref().is_some_and(|m| m.is_dir()),
+                        stamp: meta.map_or((0, 0), |m| (millis(m.modified().ok()), m.len())),
+                    });
+                }
+                Ok(Some(out))
+            }))
+        };
+        let out = list()?;
+        // iOS can list a storage app's folder as empty the first time.
+        if self.coordinator.is_some() && out.as_ref().is_some_and(|l| l.is_empty()) {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            return list();
+        }
+        Ok(out)
     }
 
     fn is_file(&self, path: &str) -> bool {
@@ -254,11 +270,7 @@ impl FolderFs for LocalFs {
 
     fn read(&self, path: &str) -> io::Result<Option<Vec<u8>>> {
         let path = self.at(path)?;
-        self.coordinate(Access::Read, &path, |path| match fs::read(path) {
-            Ok(bytes) => Ok(Some(bytes)),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
-        })
+        gone_is_none(self.coordinate(Access::Read, &path, |path| fs::read(path).map(Some)))
     }
 
     fn write(&self, path: &str, contents: &[u8]) -> io::Result<()> {
@@ -271,9 +283,13 @@ impl FolderFs for LocalFs {
 
     fn remove(&self, path: &str) -> io::Result<()> {
         let path = self.at(path)?;
-        self.coordinate(Access::Remove, &path, |path| {
-            missing_is_fine(if path.is_dir() { fs::remove_dir(path) } else { fs::remove_file(path) })
-        })
+        missing_is_fine(self.coordinate(Access::Remove, &path, |path| {
+            if path.is_dir() {
+                fs::remove_dir(path)
+            } else {
+                fs::remove_file(path)
+            }
+        }))
     }
 
     fn create(&self) -> io::Result<()> {
@@ -281,7 +297,7 @@ impl FolderFs for LocalFs {
     }
 
     fn remove_all(&self) -> io::Result<()> {
-        self.coordinate(Access::Remove, &self.dir, |dir| missing_is_fine(fs::remove_dir_all(dir)))
+        missing_is_fine(self.coordinate(Access::Remove, &self.dir, |dir| fs::remove_dir_all(dir)))
     }
 
     fn child(&self, path: &str) -> Arc<dyn FolderFs> {
@@ -1246,6 +1262,9 @@ async fn prepare_target(session: &Session, vault_id: &str, to: &MoveTo) -> Resul
             .map_err(|_| not_found_at(parent.describe()))?;
             let store = Store::Fs(dir.clone());
             store.create().await?;
+            // The chosen folder is the service's, also for vaults other
+            // devices move there later.
+            picked.remember(root, *service, None);
             // How the account's other devices find it: its path in the
             // service's folder, as far as this device knows.
             let in_service = picked.roots(*service).into_iter().find(|(r, _)| r == root).and_then(|(_, p)| p);

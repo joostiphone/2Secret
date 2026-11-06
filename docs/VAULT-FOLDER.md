@@ -10,10 +10,11 @@ Every vault has a **location**:
 | A WebDAV server | In a folder on a WebDAV server: Nextcloud, ownCloud, a Synology or QNAP NAS, Koofr, Fastmail and others. The same format as a storage folder, reached over HTTPS. |
 
 Vaults in storage folders work in the desktop apps (macOS, Windows, Linux,
-BSD) and the command line. Vaults on a WebDAV server work there **and on
-iPhone, iPad and Android**. The web vault and the browser extension show
-where such a vault is, but cannot open it (browsers may only reach a WebDAV
-server that allows it, which few do).
+BSD), the command line and, through the system's folder picker, on iPhone,
+iPad and Android (see *On iPhone, iPad and Android* below). Vaults on a
+WebDAV server work in all of them. The web vault and the browser extension
+show where such a vault is, but cannot open it (browsers may only reach a
+WebDAV server that allows it, which few do).
 
 ## Where each service works
 
@@ -23,16 +24,48 @@ service is chosen:
 
 | Service | macOS | Windows | Linux | BSD | iPhone/iPad | Android | Web/extension |
 |---|---|---|---|---|---|---|---|
-| iCloud Drive | ✓ | ✓ (iCloud for Windows) | ✗ | ✗ | later | ✗ | ✗ |
+| iCloud Drive | ✓ | ✓ (iCloud for Windows) | ✗ | ✗ | ✓ | ✗ | ✗ |
 | Dropbox | ✓ | ✓ | ✓ | ✗ | later | later | ✗ |
 | Google Drive | ✓ | ✓ | ✗ (no official app) | ✗ | later | later | ✗ |
 | OneDrive | ✓ | ✓ | ✗ (no official app) | ✗ | later | later | ✗ |
-| Other folder (Syncthing, a NAS) | ✓ | ✓ | ✓ | ✓ | ✗ | later | ✗ |
+| Other folder (Syncthing, a NAS) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 
 ✗ means the service has no app there, so the vault can never show up there.
+*Later* means its app does not let other apps choose a folder there; a
+direct connection to the service is planned.
 
 A vault on a WebDAV server works everywhere except in the web vault and the
 browser extension.
+
+## On iPhone, iPad and Android
+
+An app on a phone reaches only the folders the person gives it in the
+system's folder picker. 2Secret keeps what it needs to open such a folder
+again in `picked-folders.json` in its own data folder (it never leaves the
+device), and a vault there records the chosen folder and the way down to
+its own folder (`VaultLocation::Folder.grant`).
+
+- **iPhone and iPad**: the Files app's folder picker. iCloud Drive and *On
+  My iPhone* work, and so does a folder that Möbius Sync (Syncthing) keeps
+  in sync there; most storage apps (Google Drive, OneDrive, often Dropbox)
+  do not let other apps choose a folder. 2Secret keeps a bookmark of the
+  folder and reaches its files through `NSFileCoordinator`, which downloads
+  a file that is still in iCloud before it is read and tells the storage
+  app what changed.
+- **Android**: the system's folder picker (`ACTION_OPEN_DOCUMENT_TREE`).
+  Folders on the phone work, for instance one that Syncthing-Fork or
+  FolderSync keeps in sync; Google Drive and Dropbox offer no folders there.
+  Android cannot replace a file by renaming another onto it, so files are
+  written in place; another device may see a half-written file, which it
+  skips and reads again later.
+
+A phone cannot find a storage app's folder by itself. A vault that another
+device moved to a folder shows *Choose the folder*; once the person chose
+it (the service's own folder, the `2Secret` folder in it or the vault's
+folder), the phone remembers it for that service and finds vaults moved
+there later by itself. A vault made on a phone gets its folder in
+`<chosen folder>/2Secret/`; desktops find it by its path in the service's
+folder, or else in `<service folder>/2Secret/<vault folder>`.
 
 ## WebDAV
 

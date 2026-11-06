@@ -383,6 +383,14 @@ file or delete files. A device's own copy takes part in every merge, so
 an older version brought back loses against the newer one the device has;
 a deleted file is written again by a device that still has it.
 
+On iPhone, iPad and Android, 2Secret reaches only the folders the person
+chose in the system's folder picker. What it keeps to open such a folder
+again (a bookmark on iOS, a document tree address on Android) stays in
+`picked-folders.json` in the app's own data folder and is never sent
+anywhere; Android's own storage cannot replace a file atomically, so files
+are written in place, and a half-written file is skipped like any
+unreadable one.
+
 ## On the device
 
 - **Profile** (`profile.json`): account record, encrypted keyset, encrypted
@@ -607,8 +615,10 @@ the apps warn about this.
 ## Known limitations
 
 - Vaults in storage folders and on WebDAV servers cannot be shared and are
-  not part of emergency access. Storage folders work in the desktop apps and
-  the command line; WebDAV servers also on phones; neither in the web vault. The vault's folder name contains its name as
+  not part of emergency access. Storage folders work in the desktop apps,
+  the command line and, through the system's folder picker, on iPhone, iPad
+  (iCloud Drive and folders on the device) and Android (folders on the
+  device); WebDAV servers everywhere but the web vault. The vault's folder name contains its name as
   it was when the folder was made. A device that was away for more than 90
   days can bring back items deleted meanwhile (tombstones are cleared after
   90 days).

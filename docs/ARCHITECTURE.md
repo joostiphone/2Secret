@@ -57,7 +57,13 @@ uploaded in the next round.
 a thread of its own, finds the folders of iCloud Drive, Dropbox, Google
 Drive and OneDrive, and moves vaults between the server, the device and
 folders (`move_vault`); `sync_folders_with` syncs each folder vault on its
-own, so a missing folder does not stop the others.
+own, so a missing folder does not stop the others. A folder is reached
+through `FolderFs`: the file system (`LocalFs`), or on iPhone, iPad and
+Android a folder chosen in the system's folder picker, which the app
+provides (`PickedFolders`: `crates/app/src/picked.rs`, with
+`ios_folders.rs` for bookmarks and `NSFileCoordinator`, and
+`android_folders.rs` for document trees; `crates/app/android/MainActivity.kt`
+hands over the picker's answer).
 
 ### `twosecret-server`
 

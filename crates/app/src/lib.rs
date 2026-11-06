@@ -6,6 +6,8 @@
 mod agent_access;
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(all(target_os = "android", feature = "mobile"))]
+mod android_folders;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple_autofill;
 #[cfg(feature = "desktop")]
@@ -20,11 +22,15 @@ mod fill_queue;
 mod i18n;
 mod icons;
 #[cfg(all(target_os = "ios", feature = "mobile"))]
+mod ios_folders;
+#[cfg(all(target_os = "ios", feature = "mobile"))]
 mod ios_view;
 #[cfg(all(feature = "desktop", not(target_os = "macos")))]
 mod link_handler;
 #[cfg(feature = "desktop")]
 mod native_host;
+#[cfg(all(any(target_os = "ios", target_os = "android"), feature = "mobile"))]
+mod picked;
 mod platform;
 #[cfg(feature = "desktop")]
 mod quick;
@@ -160,6 +166,9 @@ pub fn run() {
     }
     #[cfg(feature = "mobile")]
     {
+        // Vaults in folders chosen in the system's folder picker.
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        picked::install();
         // maximum-scale: iOS zooms in on a text field with small text when it
         // gets the focus, and an app does not zoom.
         let config = dioxus::mobile::Config::new()

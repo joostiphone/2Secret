@@ -141,7 +141,8 @@ fn suggested(service: FolderService) -> Option<String> {
     }
 }
 
-/// The service offered first: the first one found on this device.
+/// The service offered first: the first one found on this device (iCloud
+/// Drive on iPhone and iPad).
 fn first_service() -> FolderService {
     #[cfg(all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))))]
     {
@@ -149,7 +150,67 @@ fn first_service() -> FolderService {
     }
     #[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
     {
-        FolderService::Other
+        if cfg!(target_os = "ios") {
+            FolderService::ICloudDrive
+        } else {
+            FolderService::Other
+        }
+    }
+}
+
+/// What the `folder` of a form holds for a folder chosen in the system's
+/// folder picker: `picked:<id>`.
+const PICKED_PREFIX: &str = "picked:";
+
+/// The name of the folder chosen in the system's folder picker.
+fn picked_name(folder: &str) -> Option<String> {
+    let root = folder.strip_prefix(PICKED_PREFIX)?;
+    #[cfg(all(feature = "mobile", any(target_os = "ios", target_os = "android")))]
+    {
+        crate::picked::name(root)
+    }
+    #[cfg(not(all(feature = "mobile", any(target_os = "ios", target_os = "android"))))]
+    {
+        let _ = root;
+        None
+    }
+}
+
+/// The service a folder chosen in the folder picker turned out to be in.
+fn picked_service(root: &str) -> Option<FolderService> {
+    #[cfg(all(feature = "mobile", any(target_os = "ios", target_os = "android")))]
+    {
+        crate::picked::service(root)
+    }
+    #[cfg(not(all(feature = "mobile", any(target_os = "ios", target_os = "android"))))]
+    {
+        let _ = root;
+        None
+    }
+}
+
+/// Let the person choose a folder in the system's folder picker (iPhone,
+/// iPad, Android). Returns its id.
+async fn choose_picked(service: Option<FolderService>) -> Option<String> {
+    #[cfg(all(feature = "mobile", any(target_os = "ios", target_os = "android")))]
+    {
+        crate::picked::choose(service).await
+    }
+    #[cfg(not(all(feature = "mobile", any(target_os = "ios", target_os = "android"))))]
+    {
+        let _ = service;
+        None
+    }
+}
+
+/// Where a vault's folder is, for people.
+pub fn folder_display(location: &VaultLocation) -> String {
+    match location {
+        #[cfg(all(feature = "mobile", any(target_os = "ios", target_os = "android")))]
+        VaultLocation::Folder { grant: Some(grant), .. } => crate::picked::display(grant),
+        VaultLocation::Folder { path, .. } => path.clone(),
+        VaultLocation::WebDav { url, .. } => url.clone(),
+        _ => String::new(),
     }
 }
 
@@ -242,12 +303,12 @@ pub fn LocationPicker(
         }
     }
     if FOLDER_VAULTS {
-        options.push((
-            Place::Folder(first_service()),
-            "folder",
-            t("location.folder").to_string(),
-            t("location.folder_desc"),
-        ));
+        let desc = match (PICK_FOLDERS, cfg!(target_os = "ios")) {
+            (true, true) => t("location.folder_desc_ios"),
+            (true, false) => t("location.folder_desc_android"),
+            _ => t("location.folder_desc"),
+        };
+        options.push((Place::Folder(first_service()), "folder", t("location.folder").to_string(), desc));
     }
     if DAV_VAULTS {
         options.push((Place::WebDav, "server", t("location.webdav").to_string(), t("location.webdav_desc")));
@@ -277,7 +338,8 @@ pub fn LocationPicker(
             }
             if let Place::Folder(service) = current {
                 div { class: "chips services", role: "radiogroup", aria_label: t("location.service"),
-                    for s in FolderService::ALL {
+                    // Phones: only the services that have an app there.
+                    for s in FolderService::ALL.into_iter().filter(|s| !PICK_FOLDERS || s.available_on(Platform::current()) != Availability::No) {
                         button { key: "{s.id()}", r#type: "button", role: "radio", aria_checked: s == service,
                             class: either(s == service, "chip on", "chip"),
                             onclick: move |_| {
@@ -288,23 +350,48 @@ pub fn LocationPicker(
                         }
                     }
                 }
-                div { class: "folder-row",
-                    input { class: "input", value: "{folder}", placeholder: t("location.folder_placeholder"),
-                        autocapitalize: "off", spellcheck: "false",
-                        oninput: move |e| folder.set(e.value()) }
-                    button { r#type: "button", class: "btn small",
-                        onclick: move |_| {
-                            spawn(async move {
-                                if let Some(path) = pick_folder(folder()).await {
-                                    folder.set(path);
-                                }
-                            });
-                        },
-                        Icon { name: "folder", size: 14 }
-                        {t("location.choose")}
+                if PICK_FOLDERS {
+                    div { class: "folder-row",
+                        div { class: "picked-folder",
+                            match picked_name(&folder()) {
+                                Some(name) => rsx! { Icon { name: "folder", size: 14 } span { "{name}" } },
+                                None => rsx! { span { class: "muted", {t("location.pick_hint")} } },
+                            }
+                        }
+                        button { r#type: "button", class: "btn small",
+                            onclick: move |_| {
+                                spawn(async move {
+                                    if let Some(root) = choose_picked(Some(service)).await {
+                                        if let Some(found) = picked_service(&root) {
+                                            place.set(Place::Folder(found));
+                                        }
+                                        folder.set(format!("{PICKED_PREFIX}{root}"));
+                                    }
+                                });
+                            },
+                            Icon { name: "folder", size: 14 }
+                            {t("location.choose")}
+                        }
+                    }
+                } else {
+                    div { class: "folder-row",
+                        input { class: "input", value: "{folder}", placeholder: t("location.folder_placeholder"),
+                            autocapitalize: "off", spellcheck: "false",
+                            oninput: move |e| folder.set(e.value()) }
+                        button { r#type: "button", class: "btn small",
+                            onclick: move |_| {
+                                spawn(async move {
+                                    if let Some(path) = pick_folder(folder()).await {
+                                        folder.set(path);
+                                    }
+                                });
+                            },
+                            Icon { name: "folder", size: 14 }
+                            {t("location.choose")}
+                        }
                     }
                 }
-                if service != FolderService::Other && suggested(service).is_none() {
+                if !PICK_FOLDERS && service != FolderService::Other && suggested(service).is_none() {
                     div { class: "note", Icon { name: "alert", size: 14 }
                         span { {t("location.not_here").replace("{service}", service_name(service))} }
                     }
@@ -407,7 +494,10 @@ fn choice(place: Place, folder: String, dav: DavForm) -> Option<MoveChoice> {
         Place::Account => Some(MoveChoice::Account),
         Place::Device => Some(MoveChoice::Device),
         Place::Folder(service) => {
-            if folder.trim().is_empty() {
+            if let Some(root) = folder.strip_prefix(PICKED_PREFIX) {
+                return Some(MoveChoice::Picked(root.to_string(), picked_service(root).unwrap_or(service)));
+            }
+            if folder.trim().is_empty() || PICK_FOLDERS {
                 toast_err(t("location.no_folder"));
                 return None;
             }
@@ -430,6 +520,7 @@ fn move_to_of(choice: MoveChoice) -> twosecret_client::folder::MoveTo {
         MoveChoice::Account => MoveTo::Account,
         MoveChoice::Device => MoveTo::Device,
         MoveChoice::Folder(path, service) => MoveTo::Folder { parent: path.into(), service },
+        MoveChoice::Picked(root, service) => MoveTo::Picked { root, service },
         MoveChoice::WebDav(url, user, password) => MoveTo::WebDav { url, user, password },
     }
 }
@@ -539,7 +630,48 @@ pub fn choose_folder_for(vault: Option<VaultInfo>) {
             Err(e) => toast_err(&client_error(&e)),
         }
     });
-    #[cfg(not(all(feature = "desktop", not(any(target_os = "ios", target_os = "android")))))]
+    #[cfg(all(feature = "mobile", any(target_os = "ios", target_os = "android")))]
+    spawn(async move {
+        // What to look for: where another device keeps the vault, or where
+        // this device had it.
+        let (service, want) = match vault.as_ref() {
+            Some(v) => match (&v.location, v.moved.as_ref().map(|m| &m.to)) {
+                (_, Some(MoveTarget::Folder { service, folder })) if v.is_placeholder() => {
+                    (Some(*service), Some((v.id.clone(), folder.clone())))
+                }
+                (VaultLocation::Folder { service, path, grant }, _) => {
+                    let folder = grant.as_ref().map(|g| g.rel.clone()).unwrap_or_else(|| path.clone());
+                    (Some(*service), Some((v.id.clone(), folder)))
+                }
+                _ => (None, None),
+            },
+            None => (None, None),
+        };
+        let Some(root) = crate::picked::choose(service).await else { return };
+        let service = crate::picked::service(&root).or(service).unwrap_or_default();
+        let Some(mut session) = session_copy() else { return };
+        busy(t("busy.working"));
+        let want_ref = want.as_ref().map(|(id, folder)| (id.as_str(), folder.as_str()));
+        let result = twosecret_client::folder::attach_picked(&mut session, &root, service, want_ref).await;
+        unbusy();
+        match result {
+            Ok(id) => {
+                if let Some(v) = vault.as_ref().filter(|v| v.id != id) {
+                    toast_err(&t("location.other_vault").replace("{name}", &v.name));
+                }
+                install_session(session);
+                *NAV.write() = Nav::Vault(id);
+                *SELECTED.write() = None;
+                toast(t("location.added"));
+                request_sync();
+            }
+            Err(e) => toast_err(&client_error(&e)),
+        }
+    });
+    #[cfg(not(any(
+        all(feature = "desktop", not(any(target_os = "ios", target_os = "android"))),
+        all(feature = "mobile", any(target_os = "ios", target_os = "android"))
+    )))]
     let _ = vault;
 }
 
@@ -551,17 +683,23 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
     drop(folders);
     if let Some(moved) = vault.moved.clone().filter(|_| vault.is_placeholder()) {
         let local = matches!(moved.to, MoveTarget::Folder { .. });
+        // Whether this device can have that service's folder at all.
+        let here = match &moved.to {
+            MoveTarget::Folder { service, .. } => service.available_on(Platform::current()),
+            _ => Availability::Yes,
+        };
         let (service, folder) = match &moved.to {
             MoveTarget::Folder { service, folder } => (service_name(*service).to_string(), folder.clone()),
             MoveTarget::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(url)), url.clone()),
             other => (t("location.elsewhere").to_string(), other.to_string()),
         };
-        let text = match (local, FOLDER_VAULTS, DAV_VAULTS) {
-            (true, true, _) => t("placeholder.desktop"),
-            (false, _, true) => t("placeholder.webdav"),
-            _ => t("placeholder.not_here"),
+        let text = match (local, FOLDER_VAULTS, DAV_VAULTS, here) {
+            (true, true, _, Availability::Yes) => t("placeholder.desktop").to_string(),
+            (true, true, _, Availability::Later) => t("placeholder.later").replace("{service}", &service),
+            (false, _, true, _) => t("placeholder.webdav").to_string(),
+            _ => t("placeholder.not_here").to_string(),
         };
-        let choose = local && FOLDER_VAULTS;
+        let choose = local && FOLDER_VAULTS && here != Availability::No;
         let v = vault.clone();
         return rsx! {
             div { class: "banner",
@@ -576,9 +714,10 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
             }
         };
     }
-    let (name, path, local) = match vault.location.clone() {
-        VaultLocation::Folder { service, path, .. } => (service_name(service).to_string(), path, true),
-        VaultLocation::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(&url)), url, false),
+    let path = folder_display(&vault.location);
+    let (name, local) = match &vault.location {
+        VaultLocation::Folder { service, .. } => (service_name(*service).to_string(), true),
+        VaultLocation::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(url)), false),
         _ => return rsx! {},
     };
     let Some(status) = status else { return rsx! {} };
@@ -673,6 +812,9 @@ enum MoveChoice {
     Device,
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Folder(String, FolderService),
+    /// A folder chosen in the system's folder picker (its id).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    Picked(String, FolderService),
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     WebDav(String, String, String),
 }
@@ -704,7 +846,7 @@ async fn move_to(id: &str, target: MoveChoice) -> bool {
     let to = match target {
         MoveChoice::Account => VaultLocation::Account,
         MoveChoice::Device => VaultLocation::Device,
-        MoveChoice::Folder(..) | MoveChoice::WebDav(..) => return false,
+        MoveChoice::Folder(..) | MoveChoice::Picked(..) | MoveChoice::WebDav(..) => return false,
     };
     let Some(mut session) = session_copy() else { return false };
     busy(t("busy.moving"));
