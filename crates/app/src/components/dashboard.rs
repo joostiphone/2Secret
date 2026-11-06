@@ -69,8 +69,6 @@ pub fn DashboardPage() -> Element {
 
     let (dot, sync_text) = sync_summary(linked, last_sync);
     let (words, color) = rating(&report);
-    let circumference = 2.0 * std::f64::consts::PI * 26.0;
-    let dash = circumference * report.score as f64 / 1000.0;
     let favorite_count = favorites.len();
 
     rsx! {
@@ -206,12 +204,7 @@ pub fn DashboardPage() -> Element {
                             div { class: "section",
                                 CardHead { title: t("home.security"), target: Some(Nav::Watchtower(None)) }
                                 div { class: "mini-score",
-                                    svg { view_box: "0 0 64 64",
-                                        circle { cx: "32", cy: "32", r: "26", fill: "none", stroke: "var(--border)", stroke_width: "7" }
-                                        circle { cx: "32", cy: "32", r: "26", fill: "none", stroke: "{color}", stroke_width: "7", stroke_linecap: "round",
-                                            stroke_dasharray: "{dash} {circumference}", transform: "rotate(-90 32 32)" }
-                                        text { x: "32", y: "37", text_anchor: "middle", font_size: "15", font_weight: "800", fill: "currentColor", "{report.score}" }
-                                    }
+                                    crate::components::watchtower::ScoreRing { score: report.score, small: true }
                                     div {
                                         div { style: "font-weight:700;font-size:17px;color:{color}", "{words}" }
                                         div { class: "small muted", "{report.items_checked} {t(\"wt.items_checked\")}" }

@@ -289,12 +289,66 @@ const KEYBOARD_JS: &str = r#"
 /// the keyboard for a field that gets the focus during the tap, while the
 /// search field may only appear once Rust has handled the tap: a stand-in
 /// field takes the focus now and hands it on when the search field is there.
+///
+/// A finger sliding along the sections takes the drop of glass with it, as
+/// on iOS 26: the section under the finger lights up and opens where the
+/// finger lets go.
 #[cfg(feature = "mobile")]
 const TAB_BAR_JS: &str = r#"
 (function () {
   if (window.twosecretTabBar) return;
   window.twosecretTabBar = true;
   document.addEventListener("touchstart", function () {}, { passive: true });
+  var drag = null;
+  function current(tabs) {
+    var i = parseInt(tabs.getAttribute("data-tab"), 10);
+    return isNaN(i) ? -1 : i;
+  }
+  function follow(d, x) {
+    // In the bar's own pixels: it swells a little while a finger slides.
+    var r = d.tabs.getBoundingClientRect(), width = d.tabs.offsetWidth || r.width;
+    var at = (x - r.left) * width / r.width, n = d.buttons.length, w = (width - 8) / n;
+    var left = Math.max(0, Math.min((n - 1) * w, at - 4 - w / 2));
+    d.pill.style.transform = "translateX(" + left + "px)";
+    d.index = Math.max(0, Math.min(n - 1, Math.floor((at - 4) / w)));
+    d.buttons.forEach(function (b, j) { b.classList.toggle("hover", j === d.index); });
+  }
+  document.addEventListener("touchstart", function (e) {
+    var tabs = e.target.closest && e.target.closest('.tabs');
+    if (!tabs || e.touches.length !== 1) { drag = null; return; }
+    var pill = tabs.querySelector(".tab-pill");
+    if (!pill) return;
+    drag = { tabs: tabs, pill: pill, buttons: Array.prototype.slice.call(tabs.querySelectorAll(".tab")),
+             x0: e.touches[0].clientX, moved: false, index: current(tabs) };
+  }, { passive: true });
+  document.addEventListener("touchmove", function (e) {
+    if (!drag || e.touches.length !== 1) return;
+    var x = e.touches[0].clientX;
+    if (!drag.moved) {
+      if (Math.abs(x - drag.x0) < 6) return;
+      drag.moved = true;
+      clearTimeout(drag.pill.twosecretSettle);
+      drag.tabs.classList.add("dragging");
+    }
+    follow(drag, x);
+  }, { passive: true });
+  function release(e, cancelled) {
+    var d = drag;
+    drag = null;
+    if (!d || !d.moved) return;
+    // No click of its own on the button the finger happens to be on.
+    if (e.cancelable) e.preventDefault();
+    d.tabs.classList.remove("dragging");
+    d.buttons.forEach(function (b) { b.classList.remove("hover"); });
+    var to = cancelled ? current(d.tabs) : d.index;
+    // Settle on that section now; the app marks it a moment later.
+    if (to >= 0) d.pill.style.transform = "translateX(" + to * 100 + "%)";
+    else d.pill.style.transform = "";
+    d.pill.twosecretSettle = setTimeout(function () { d.pill.style.transform = ""; }, 600);
+    if (!cancelled && d.buttons[to] && to !== current(d.tabs)) d.buttons[to].click();
+  }
+  document.addEventListener("touchend", function (e) { release(e, false); }, { passive: false });
+  document.addEventListener("touchcancel", function (e) { release(e, true); }, { passive: false });
   document.addEventListener("click", function (e) {
     var proxy = document.getElementById("search-proxy");
     if (!proxy || !e.target.closest || !e.target.closest("[data-search]")) return;

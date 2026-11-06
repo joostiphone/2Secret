@@ -7,22 +7,138 @@ use crate::i18n::{issue_desc, issue_title, t};
 use crate::icons::{either, Icon};
 use crate::state::*;
 
+/// The bands of the score: where each starts, its name, and the two
+/// colours of its gradient (light to deep).
+const BANDS: [(u32, &str, &str, &str); 5] = [
+    (0, "wt.poor", "#ff8787", "#e03131"),
+    (400, "wt.fair", "#ffa94d", "#e8590c"),
+    (600, "wt.good", "#ffd43b", "#f08c00"),
+    (750, "wt.very_good", "#69db7c", "#2b8a3e"),
+    (900, "wt.fantastic", "#3bc9db", "#4c6ef5"),
+];
+
+fn band(score: u32) -> (u32, &'static str, &'static str, &'static str) {
+    BANDS.iter().rev().find(|b| score >= b.0).copied().unwrap_or(BANDS[0])
+}
+
 /// The security score in words and its colour.
 pub fn rating(report: &Report) -> (&'static str, &'static str) {
-    let words = match report.rating() {
-        "fantastic" => t("wt.fantastic"),
-        "very_good" => t("wt.very_good"),
-        "good" => t("wt.good"),
-        "fair" => t("wt.fair"),
-        _ => t("wt.poor"),
+    let (_, words, _, color) = band(report.score);
+    (t(words), color)
+}
+
+/// `#rrggbb` to its three channels.
+fn rgb(hex: &str) -> [f64; 3] {
+    let v = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0);
+    [((v >> 16) & 255) as f64, ((v >> 8) & 255) as f64, (v & 255) as f64]
+}
+
+/// The colour a fraction `f` of the way from `a` to `b`.
+fn mix(a: &str, b: &str, f: f64) -> String {
+    let (a, b) = (rgb(a), rgb(b));
+    let c: Vec<u8> = (0..3).map(|i| (a[i] + (b[i] - a[i]) * f).round() as u8).collect();
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+}
+
+/// The score as a ring: an arc whose colour sweeps from light to deep as it
+/// fills up, with a soft glow, a knob at its end and the score in the
+/// middle. `small` for the dashboard.
+#[component]
+pub fn ScoreRing(score: u32, #[props(default)] small: bool) -> Element {
+    let score = score.min(1000);
+    let (_, _, light, deep) = band(score);
+    let (r, width, id) = if small { (54.0, 13.0, "ring-s") } else { (56.0, 12.0, "ring-l") };
+    let circumference = 2.0 * std::f64::consts::PI * r;
+    let frac = score as f64 / 1000.0;
+    let dash = circumference * frac;
+    // The sweep: short pieces of the arc, each a shade deeper.
+    const PIECES: f64 = 90.0;
+    let piece = circumference / PIECES;
+    let count = (PIECES * frac).ceil() as usize;
+    let mut sweep = String::new();
+    for i in 0..count {
+        let color = mix(light, deep, if count > 1 { i as f64 / (count - 1) as f64 } else { 1.0 });
+        sweep.push_str(&format!(
+            r#"<circle cx="70" cy="70" r="{r}" fill="none" stroke="{color}" stroke-width="{width}" stroke-dasharray="{len:.3} {circumference:.3}" stroke-dashoffset="{off:.3}"/>"#,
+            len = piece + 0.6,
+            off = -(i as f64) * piece,
+        ));
+    }
+    let degrees = 360.0 * frac;
+    let knob = if score > 0 {
+        format!(
+            r##"<g class="ring-knob" style="transform: rotate({degrees:.2}deg)"><circle cx="70" cy="{y}" r="{kr}" fill="#fff" stroke="{deep}" stroke-width="{kw}"/></g>"##,
+            y = 70.0 - r,
+            kr = width / 2.0 + 1.5,
+            kw = if small { 4 } else { 3 },
+        )
+    } else {
+        String::new()
     };
-    let color = match report.score {
-        900.. => "#1c7ed6",
-        750..=899 => "#37b24d",
-        600..=749 => "#f59f00",
-        _ => "#e03131",
+    let label = if small {
+        format!(r#"<text x="70" y="82" text-anchor="middle" class="ring-num small">{score}</text>"#)
+    } else {
+        format!(
+            r#"<text x="70" y="76" text-anchor="middle" class="ring-num">{score}</text><text x="70" y="96" text-anchor="middle" class="ring-of">/ 1000</text>"#
+        )
     };
-    (words, color)
+    let svg = format!(
+        r##"<svg viewBox="0 0 140 140" aria-hidden="true">
+<defs>
+  <radialGradient id="{id}-d"><stop offset="0" stop-color="{light}" stop-opacity=".24"/><stop offset="1" stop-color="{light}" stop-opacity="0"/></radialGradient>
+  <filter id="{id}-b" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
+  <mask id="{id}-m" maskUnits="userSpaceOnUse" x="0" y="0" width="140" height="140">
+    <circle class="ring-arc" cx="70" cy="70" r="{r}" fill="none" stroke="#fff" stroke-width="{width}" stroke-linecap="round" stroke-dasharray="{dash:.2} {circumference:.2}" transform="rotate(-90 70 70)" style="--ring-dash: {dash:.2}"/>
+  </mask>
+</defs>
+<circle cx="70" cy="70" r="{disc}" fill="url(#{id}-d)"/>
+<circle cx="70" cy="70" r="{r}" fill="none" stroke="{deep}" stroke-opacity=".13" stroke-width="{width}"/>
+<circle cx="70" cy="70" r="{r}" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="1.2" stroke-dasharray="0.01 {tick:.3}" stroke-linecap="round" transform="rotate(-90 70 70)"/>
+<g mask="url(#{id}-m)">
+  <g class="ring-glow" filter="url(#{id}-b)" transform="rotate(-90 70 70)">{sweep}</g>
+  <g transform="rotate(-90 70 70)">{sweep}</g>
+  <circle cx="70" cy="{top}" r="{cap}" fill="{light}"/>
+</g>
+{knob}
+{label}
+</svg>"##,
+        disc = r - width / 2.0 - 2.0,
+        tick = circumference / 40.0,
+        top = 70.0 - r,
+        cap = width / 2.0,
+    );
+    rsx! {
+        div { class: if small { "score-ring small" } else { "score-ring" }, dangerous_inner_html: "{svg}" }
+    }
+}
+
+/// Where the score is among the bands, with their names.
+#[component]
+fn ScoreScale(score: u32) -> Element {
+    let at = score.min(1000) as f64 / 10.0;
+    let current = band(score).0;
+    rsx! {
+        div { class: "score-scale", aria_hidden: "true",
+            div { class: "bar",
+                for (i , (start , _ , light , deep)) in BANDS.iter().enumerate() {
+                    {
+                        let end = BANDS.get(i + 1).map_or(1000, |b| b.0);
+                        let width = (end - start) as f64 / 10.0;
+                        rsx! {
+                            span { key: "{start}", class: if *start == current { "seg on" } else { "seg" },
+                                style: "width:{width}%;background:linear-gradient(90deg,{light},{deep})" }
+                        }
+                    }
+                }
+                span { class: "marker", style: "left:{at}%" }
+            }
+            div { class: "labels",
+                for (start , name , _ , _) in BANDS {
+                    span { key: "{start}", class: if start == current { "on" } else { "" }, style: "left:{start as f64 / 10.0}%", {t(name)} }
+                }
+            }
+        }
+    }
 }
 
 #[component]
@@ -34,9 +150,8 @@ pub fn WatchtowerPage(kind: Option<IssueKind>) -> Element {
     let report = analyze(s.all_items(), &breaches.clone().unwrap_or_default(), None);
     drop(session);
     let score = report.score;
-    let (words, color) = rating(&report);
-    let circumference = 2.0 * std::f64::consts::PI * 52.0;
-    let dash = circumference * score as f64 / 1000.0;
+    let (words, _) = rating(&report);
+    let (_, _, light, deep) = band(score);
 
     let check_breaches = move |_| {
         checking.set(true);
@@ -72,18 +187,14 @@ pub fn WatchtowerPage(kind: Option<IssueKind>) -> Element {
             div { class: "detail-inner",
                 match kind {
                     None => rsx! {
-                        div { class: "section",
+                        div { class: "section score-hero", style: "--band-light:{light};--band-deep:{deep}",
                             div { class: "score",
-                                svg { class: "score-ring", view_box: "0 0 120 120",
-                                    circle { cx: "60", cy: "60", r: "52", fill: "none", stroke: "var(--border)", stroke_width: "10" }
-                                    circle { cx: "60", cy: "60", r: "52", fill: "none", stroke: "{color}", stroke_width: "10", stroke_linecap: "round",
-                                        stroke_dasharray: "{dash} {circumference}", transform: "rotate(-90 60 60)" }
-                                    text { x: "60", y: "66", text_anchor: "middle", font_size: "26", font_weight: "800", fill: "currentColor", "{score}" }
-                                }
-                                div {
-                                    div { class: "score-num", style: "color:{color}", "{words}" }
+                                ScoreRing { score }
+                                div { class: "score-text",
+                                    div { class: "score-num", "{words}" }
                                     div { class: "muted", "{report.items_checked} {t(\"wt.items_checked\")}" }
-                                    div { class: "muted small", style: "margin-top:6px;max-width:420px", {t("wt.explain")} }
+                                    ScoreScale { score }
+                                    div { class: "muted small explain", {t("wt.explain")} }
                                 }
                             }
                         }

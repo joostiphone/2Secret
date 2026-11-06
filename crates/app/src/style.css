@@ -6,7 +6,7 @@
   --danger: #d6336c; --danger-soft: #ffe3ec; --warn: #e8590c; --warn-soft: #fff0e6; --ok: #2b8a3e; --ok-soft: #e6f7ea;
   --sidebar: #1c2030; --sidebar-2: #252a3d; --sidebar-text: #c3c9d9; --sidebar-muted: #7d849a; --sidebar-active: #323a57;
   --input: #ffffff; --shadow: 0 10px 40px rgba(20, 24, 40, .14); --code: #f1f3f7;
-  --glass: rgba(255, 255, 255, .6); --glass-pill: rgba(40, 52, 90, .09);
+  --glass: rgba(255, 255, 255, .6); --glass-pill: rgba(40, 52, 90, .09); --glass-pill-drag: rgba(40, 52, 90, .14);
   --glass-shadow: 0 6px 22px rgba(20, 24, 40, .14), 0 1px 3px rgba(20, 24, 40, .08);
   --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .3) 35%, rgba(255, 255, 255, .15) 65%, rgba(255, 255, 255, .8));
   --radius: 10px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
@@ -19,7 +19,7 @@
   --danger: #f06595; --danger-soft: #3a1d29; --warn: #ff922b; --warn-soft: #3a2817; --ok: #51cf66; --ok-soft: #1b3324;
   --sidebar: #0d0f15; --sidebar-2: #151823; --sidebar-text: #c3c9d9; --sidebar-muted: #6c7389; --sidebar-active: #252b42;
   --input: #11141c; --shadow: 0 10px 40px rgba(0, 0, 0, .5); --code: #10131a;
-  --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16);
+  --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16); --glass-pill-drag: rgba(255, 255, 255, .24);
   --glass-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
   --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .4), rgba(255, 255, 255, .07) 35%, rgba(255, 255, 255, .03) 65%, rgba(255, 255, 255, .22));
 }
@@ -31,7 +31,7 @@
     --danger: #f06595; --danger-soft: #3a1d29; --warn: #ff922b; --warn-soft: #3a2817; --ok: #51cf66; --ok-soft: #1b3324;
     --sidebar: #0d0f15; --sidebar-2: #151823; --sidebar-text: #c3c9d9; --sidebar-muted: #6c7389; --sidebar-active: #252b42;
     --input: #11141c; --shadow: 0 10px 40px rgba(0, 0, 0, .5); --code: #10131a;
-    --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16);
+    --glass: rgba(44, 49, 66, .58); --glass-pill: rgba(255, 255, 255, .16); --glass-pill-drag: rgba(255, 255, 255, .24);
     --glass-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
     --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, .4), rgba(255, 255, 255, .07) 35%, rgba(255, 255, 255, .03) 65%, rgba(255, 255, 255, .22));
   }
@@ -289,9 +289,41 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .segmented button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
 /* Watchtower */
-.score { display: flex; align-items: center; gap: 22px; padding: 20px; }
-.score-ring { width: 120px; height: 120px; flex-shrink: 0; }
-.score-num { font-size: 34px; font-weight: 800; }
+.score { display: flex; align-items: center; gap: 26px; padding: 22px; }
+.score-hero { position: relative; overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--band-light) 16%, transparent), transparent 60%), var(--panel); }
+.score-text { min-width: 0; flex: 1; }
+.score-text .explain { margin-top: 12px; max-width: 460px; }
+.score-ring { width: 150px; height: 150px; flex-shrink: 0; color: var(--text); }
+.score-ring.small { width: 68px; height: 68px; }
+.score-ring svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.ring-num { font-size: 34px; font-weight: 800; fill: var(--text); letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.ring-num.small { font-size: 36px; }
+.ring-of { font-size: 11px; font-weight: 600; fill: var(--muted); letter-spacing: .5px; }
+.ring-glow { opacity: .45; }
+.ring-arc { animation: ring-fill 1.2s cubic-bezier(.22, .9, .25, 1) both; }
+.ring-knob { transform-box: view-box; transform-origin: 70px 70px; animation: ring-knob 1.2s cubic-bezier(.22, .9, .25, 1) both; }
+.ring-knob circle { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25)); }
+@keyframes ring-fill { from { stroke-dashoffset: var(--ring-dash); } }
+@keyframes ring-knob { from { transform: rotate(0deg); } }
+.score-num { font-size: 32px; font-weight: 800; line-height: 1.15; letter-spacing: -.5px;
+  background: linear-gradient(90deg, var(--band-deep), color-mix(in srgb, var(--band-deep) 55%, var(--band-light))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.score-scale { margin-top: 14px; max-width: 420px; }
+.score-scale .bar { position: relative; display: flex; gap: 3px; height: 8px; }
+.score-scale .seg { height: 100%; border-radius: 999px; opacity: .3; }
+.score-scale .seg.on { opacity: 1; }
+.score-scale .marker { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff;
+  border: 3px solid var(--band-deep); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.score-scale .labels { position: relative; height: 16px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.score-scale .labels span { position: absolute; white-space: nowrap; }
+.score-scale .labels span:not(.on) { display: none; }
+.score-scale .labels span.on { color: var(--text); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .ring-arc, .ring-knob { animation: none; } }
+@media (max-width: 599px) {
+  .score { flex-direction: column; text-align: center; gap: 14px; }
+  .score-scale { margin-left: auto; margin-right: auto; }
+  .score-text .explain { margin-left: auto; margin-right: auto; }
+}
 .issue-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .issue-card:hover { background: var(--hover); }
 .issue-card:last-child { border-bottom: none; }
@@ -329,7 +361,7 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
 .dash-row .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dash-row .count { font-weight: 700; min-width: 24px; text-align: right; }
 .mini-score { display: flex; align-items: center; gap: 14px; padding: 2px 16px 14px; }
-.mini-score svg { width: 64px; height: 64px; flex-shrink: 0; }
+.mini-score .score-ring { flex-shrink: 0; }
 .vault-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 16px 16px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2);
@@ -583,10 +615,20 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 5px; border: 1px s
   .tab.on { color: var(--accent); }
   /* The lighter drop of glass behind the open section slides to the next. */
   .tab-pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px; background: var(--glass-pill);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); transition: transform .45s cubic-bezier(.3, 1.4, .5, 1), opacity .2s; }
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); transition: transform .45s cubic-bezier(.3, 1.4, .5, 1), scale .3s, opacity .2s; }
   .tabs[data-tab="1"] .tab-pill { transform: translateX(100%); }
   .tabs[data-tab="2"] .tab-pill { transform: translateX(200%); }
   .tabs[data-tab="none"] .tab-pill { opacity: 0; }
+  /* Sliding a finger along the sections (TAB_BAR_JS in lib.rs): the drop
+     follows it, a little larger, and the section under it lights up. */
+  .tabs { touch-action: none; }
+  .root:not(.ext) .tabs.dragging { transform: scale(1.03); }
+  .tabs.dragging .tab-pill { opacity: 1; scale: 1.04 1.14; background: var(--glass-pill-drag);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 2px 8px rgba(20, 30, 60, .08); transition: transform .1s ease-out, scale .25s, background .25s, opacity .2s; }
+  .tabs.dragging .tab.on:not(.hover) { color: var(--text); }
+  .tabs.dragging .tab.hover { color: var(--accent); }
+  .tab svg { transition: transform .2s; }
+  .tabs.dragging .tab.hover svg { transform: scale(1.12); }
   .tab-search { flex: none; width: 62px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; }
   .root:not(.ext) .search-proxy { display: block; position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; pointer-events: none; }
   .root:not(.ext):has(.tabbar:not(.hidden), .pick-bar) .toast { bottom: calc(max(12px, calc(var(--safe-bottom) - 12px)) + 76px); }

@@ -27,6 +27,13 @@
   folder vaults (also in an account without a server).
 - Shared vaults stay on the server, and emergency access covers vaults on
   the server only.
+- **iPhone, iPad and Android**: slide a finger along the tab bar to move
+  between Home, Items and Watchtower, as in iOS 26: the glass follows the
+  finger, the section under it lights up and opens where you let go.
+- **Watchtower**: the score ring sweeps from a light to a deep colour as it
+  fills up, with a soft glow and a knob at its end, and a scale shows where
+  the score is between *Needs attention* and *Fantastic*. The dashboard has
+  the same ring.
 
 ## 1.12.2
 
