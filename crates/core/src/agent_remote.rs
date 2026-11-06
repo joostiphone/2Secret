@@ -817,14 +817,26 @@ mod tests {
 
     #[test]
     fn code_rejects_typos_and_odd_input() {
-        let code = PairingCode::new("https://s.example", &account().public_keys()).unwrap();
+        let mut code = PairingCode::new("https://s.example", &account().public_keys()).unwrap();
+        // A fixed code: one in 32 typos happens to match the check character
+        // (a 5-bit check), so a random code made this test fail now and then.
+        code.seed = [7u8; CODE_SEED_LEN];
+        code.key_hash = [9u8; CODE_HASH_LEN];
         let text = code.text();
-        // One character changed.
-        let mut chars: Vec<char> = text.chars().collect();
+        assert!(PairingCode::parse(&text, Some("https://s.example")).is_ok());
+        let changed = |i: usize, to: char| {
+            let mut chars: Vec<char> = text.chars().collect();
+            chars[i] = to;
+            chars.into_iter().collect::<String>()
+        };
+        // One character changed in the body.
         let i = 5;
-        chars[i] = if chars[i] == 'A' { 'B' } else { 'A' };
-        let typo: String = chars.into_iter().collect();
-        assert!(PairingCode::parse(&typo, Some("https://s.example")).is_err());
+        let to = if text.as_bytes()[i] == b'A' { 'B' } else { 'A' };
+        assert!(PairingCode::parse(&changed(i, to), Some("https://s.example")).is_err());
+        // The check character itself changed: always caught.
+        let last = text.len() - 1;
+        let to = if text.ends_with('A') { 'B' } else { 'A' };
+        assert!(PairingCode::parse(&changed(last, to), Some("https://s.example")).is_err());
         // Too short, bad alphabet, no server.
         assert!(PairingCode::parse(&text[..20], Some("https://s.example")).is_err());
         assert!(PairingCode::parse(&text.replace('A', "0"), Some("https://s.example")).is_err());
