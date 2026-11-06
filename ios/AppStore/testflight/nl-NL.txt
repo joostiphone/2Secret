@@ -1,17 +1,18 @@
-2Secret 1.13.0
+2Secret 1.14.0
 
 WAT IS ER NIEUW
-- Kies per kluis waar hij staat: op de syncserver, alleen op dit apparaat, of op een WebDAV-server (Nextcloud, ownCloud, een Synology- of QNAP-NAS, Koofr…). Versleuteld zoals altijd; alleen je eigen apparaten kunnen hem openen.
-- Verhuis een kluis: druk er lang op (of Instellingen → Kluizen) → Verplaatsen…
-- Een kluis die je op een ander apparaat naar een WebDAV-server hebt verhuisd, verschijnt hier vanzelf. Een kluis die op een Mac of pc naar iCloud Drive of Dropbox is verhuisd, laat zien waar hij staat (mappen op de iPhone komen later).
-- Schuif met je vinger over de tabbalk om van Home naar Items naar Watchtower te gaan.
-- Een levendigere Watchtower-cirkel, met een schaal die laat zien waar je score staat.
+- Kluizen in een map op iPhone en iPad: bewaar een kluis in iCloud Drive of in een map op je iPhone (ook een map die Möbius Sync synchroniseert). Versleuteld zoals altijd; alleen je eigen apparaten kunnen hem openen.
+- Nieuwe kluis (of Verplaatsen…) → Een map in een clouddienst → Kiezen… opent de mappenkiezer van de Bestanden-app.
+- Een kluis die je op je Mac naar iCloud Drive hebt verplaatst, toont hier "Kies de map". Kies hem één keer; kluizen die je er later neerzet, verschijnen dan vanzelf.
+- Instellingen → Kluizen → Kluis uit een map toevoegen: open een kluis die een ander apparaat in een map bewaart.
+- Google Drive, OneDrive en (vaak) Dropbox laten andere apps op de iPhone geen map kiezen; een directe koppeling met die diensten volgt later.
 
 TEST ALSJEBLIEFT
-1. Schuif over de tabbalk, langzaam en snel; laat op elke tab los. Gewoon tikken moet blijven werken.
-2. Watchtower en Home: ziet de cirkel er goed uit, licht en donker?
-3. Heb je Nextcloud of een NAS: Instellingen → Kluizen → Nieuwe kluis → Een WebDAV-server. Probeer "Verbinding testen" met een fout en het goede wachtwoord, maak de kluis aan, voeg een item toe en kijk of het op een ander apparaat aankomt.
-4. Verplaats een kluis naar "Alleen op dit apparaat" en terug naar de syncserver; er mag niets verloren gaan.
-5. Ontgrendel met Face ID en met je hoofdwachtwoord; automatisch invullen in Safari zoals voorheen.
+1. Maak een kluis in iCloud Drive: Instellingen → Kluizen → Nieuwe kluis → Een map in een clouddienst → iCloud Drive → Kiezen… Voeg een item toe, sluit de app helemaal af en open hem opnieuw: de kluis en het item moeten er nog zijn.
+2. Zet dezelfde kluis op je Mac: in de Mac-app Instellingen → Kluizen → Kluis uit een map toevoegen → kies iCloud Drive/2Secret. Wijzig een item op het ene apparaat en kijk of het op het andere aankomt (iCloud kan een minuut duren).
+3. Verplaats op de Mac een kluis van de syncserver naar iCloud Drive. Open hem op de iPhone en tik op "Kies de map"; verplaats daarna op de Mac een tweede kluis daarheen: verschijnt die vanzelf op de iPhone?
+4. Probeer een map op Mijn iPhone, en als je het gebruikt een map van Möbius Sync.
+5. Verplaats een kluis uit een map terug naar de syncserver; er mag niets verloren gaan.
+6. Zoals altijd: ontgrendelen met Face ID, automatisch invullen in Safari, de tabbalk.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

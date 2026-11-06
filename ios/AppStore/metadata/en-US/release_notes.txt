@@ -1,6 +1,5 @@
-Choose where each vault is kept: on the sync server, only on this device, or on a WebDAV server such as Nextcloud, ownCloud or a Synology or QNAP NAS. Always end-to-end encrypted: only your own devices can open it.
+Keep a vault in iCloud Drive or in a folder on your iPhone, next to the sync server and WebDAV. Always end-to-end encrypted: only your own devices can open it.
 
-- Move a vault from one place to another: long-press it, or Settings → Vaults → Move. Everything is copied and checked before the old place is cleared.
-- A vault moved to a WebDAV server on another device appears on your iPhone by itself.
-- Slide a finger along the tab bar to go from Home to Items to Watchtower.
-- A livelier Watchtower ring, with a scale that shows where your security score is.
+- New vault or Move → A folder in a cloud service → choose the folder in the Files app.
+- A vault you moved to iCloud Drive on your Mac: choose the folder once, and vaults you move there later appear by themselves.
+- Settings → Vaults → Add a vault from a folder, for a vault another device keeps in a folder.

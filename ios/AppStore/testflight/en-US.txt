@@ -1,17 +1,18 @@
-2Secret 1.13.0
+2Secret 1.14.0
 
 WHAT'S NEW
-- Choose where each vault is kept: on the sync server, only on this device, or on a WebDAV server (Nextcloud, ownCloud, a Synology or QNAP NAS, Koofr…). Encrypted as always; only your devices can open it.
-- Move a vault: long-press it (or Settings → Vaults) → Move…
-- A vault you moved to a WebDAV server on another device appears here by itself. A vault moved to iCloud Drive or Dropbox on a Mac or PC shows where it is (folders on iPhone come later).
-- Slide a finger along the tab bar to go from Home to Items to Watchtower.
-- A livelier Watchtower ring, with a scale that shows where your score is.
+- Vaults in folders on iPhone and iPad: keep a vault in iCloud Drive or in a folder on your iPhone (also one that Möbius Sync keeps in sync). Encrypted as always; only your devices can open it.
+- New vault (or Move…) → A folder in a cloud service → Choose… opens the Files app's folder picker.
+- A vault you moved to iCloud Drive on your Mac shows "Choose the folder" here. Choose it once; vaults you move there later then appear by themselves.
+- Settings → Vaults → Add a vault from a folder: open a vault another device keeps in a folder.
+- Google Drive, OneDrive and (often) Dropbox don't let other apps choose a folder on iPhone; a direct connection to them comes later.
 
 PLEASE TEST
-1. Slide along the tab bar, slowly and quickly; let go on each section. A plain tap should work as before.
-2. Watchtower and Home: does the ring look right in light and dark mode?
-3. If you have Nextcloud or a NAS: Settings → Vaults → New vault → A WebDAV server. Use "Test the connection" with a wrong and the right password, create the vault, add an item and see it arrive on another device.
-4. Move a vault to "This device only" and back to the sync server; nothing should get lost.
-5. Unlock with Face ID and with your master password; AutoFill in Safari as before.
+1. Make a vault in iCloud Drive: Settings → Vaults → New vault → A folder in a cloud service → iCloud Drive → Choose… Add an item, quit and reopen the app: the vault and item should still be there.
+2. Put the same vault on your Mac: in the Mac app, Settings → Vaults → Add a vault from a folder → choose iCloud Drive/2Secret. Change an item on one device and see it arrive on the other (iCloud can take a minute).
+3. On the Mac, move a vault from the sync server to iCloud Drive. On the iPhone, open it and tap "Choose the folder"; then move a second vault there on the Mac: does it appear on the iPhone by itself?
+4. Try a folder On My iPhone, and if you use it, a Möbius Sync folder.
+5. Move a vault from a folder back to the sync server; nothing should get lost.
+6. As before: unlock with Face ID, AutoFill in Safari, the tab bar.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

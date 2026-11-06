@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14.0
 
 - **Vaults in folders on iPhone, iPad and Android**, through the system's
   folder picker: on iPhone and iPad iCloud Drive and folders on the device

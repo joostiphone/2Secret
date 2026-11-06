@@ -1,6 +1,5 @@
-Kies per kluis waar hij staat: op de syncserver, alleen op dit apparaat, of op een WebDAV-server zoals Nextcloud, ownCloud of een Synology- of QNAP-NAS. Altijd end-to-end versleuteld: alleen je eigen apparaten kunnen hem openen.
+Bewaar een kluis in iCloud Drive of in een map op je iPhone, naast de syncserver en WebDAV. Altijd end-to-end versleuteld: alleen je eigen apparaten kunnen hem openen.
 
-- Verhuis een kluis van de ene plek naar de andere: druk er lang op, of Instellingen → Kluizen → Verplaatsen. Alles wordt eerst gekopieerd en gecontroleerd, pas daarna wordt de oude plek leeggemaakt.
-- Een kluis die je op een ander apparaat naar een WebDAV-server verhuist, verschijnt vanzelf op je iPhone.
-- Schuif met je vinger over de tabbalk om van Home naar Items naar Watchtower te gaan.
-- Een levendigere Watchtower-cirkel, met een schaal die laat zien waar je beveiligingsscore staat.
+- Nieuwe kluis of Verplaatsen → Een map in een clouddienst → kies de map in de Bestanden-app.
+- Een kluis die je op je Mac naar iCloud Drive hebt verplaatst: kies de map één keer, en kluizen die je er later neerzet, verschijnen vanzelf.
+- Instellingen → Kluizen → Kluis uit een map toevoegen, voor een kluis die een ander apparaat in een map bewaart.
