@@ -577,7 +577,7 @@ pub fn VaultPlaceBanner(vault: VaultInfo) -> Element {
         };
     }
     let (name, path, local) = match vault.location.clone() {
-        VaultLocation::Folder { service, path } => (service_name(service).to_string(), path, true),
+        VaultLocation::Folder { service, path, .. } => (service_name(service).to_string(), path, true),
         VaultLocation::WebDav { url, .. } => (format!("WebDAV ({})", webdav_host(&url)), url, false),
         _ => return rsx! {},
     };

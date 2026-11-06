@@ -285,8 +285,16 @@ pub enum VaultLocation {
     /// In a folder that a storage app keeps in sync between devices (iCloud
     /// Drive, Dropbox, Google Drive, OneDrive, Syncthing, a network share).
     /// `path` is the vault's own folder on this device (the one holding
-    /// `vault.json`); it is never sent anywhere.
-    Folder { path: String, service: FolderService },
+    /// `vault.json`); it is never sent anywhere. On iPhone, iPad and Android,
+    /// where an app only reaches the folders the person chose in the
+    /// system's folder picker, `grant` says how to open it again and `path`
+    /// only describes it.
+    Folder {
+        path: String,
+        service: FolderService,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        grant: Option<FolderGrant>,
+    },
     /// In a folder on a WebDAV server (Nextcloud, ownCloud, a Synology NAS,
     /// Koofr…), in the same format. `url` is the vault's own folder; the
     /// password is encrypted with the vault key (associated data
@@ -322,6 +330,18 @@ impl VaultLocation {
             _ => None,
         }
     }
+}
+
+/// A folder this device reaches through the system's folder picker (iPhone,
+/// iPad, Android): `root` names the folder the person chose (the app keeps
+/// what the system needs to open it again: a bookmark on iOS, a document
+/// tree on Android), and `rel` is the vault's folder inside it (names with
+/// `/` between them, empty when the person chose the vault's folder itself).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderGrant {
+    pub root: String,
+    #[serde(default)]
+    pub rel: String,
 }
 
 /// The app that keeps a storage folder in sync.

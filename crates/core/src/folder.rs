@@ -908,9 +908,16 @@ impl Platform {
     }
 
     /// Whether 2Secret on this platform can keep vaults in a storage folder
-    /// yet (the desktop apps and the command line).
+    /// (all but the web vault and the browser extension; on iPhone, iPad
+    /// and Android through the system's folder picker).
     pub fn has_folder_vaults(&self) -> bool {
-        matches!(self, Platform::MacOs | Platform::Windows | Platform::Linux | Platform::Bsd)
+        !matches!(self, Platform::Web)
+    }
+
+    /// Whether folders are reached through the system's folder picker
+    /// (iPhone, iPad, Android) rather than by their path.
+    pub fn picks_folders(&self) -> bool {
+        matches!(self, Platform::Ios | Platform::Android)
     }
 }
 
@@ -933,11 +940,17 @@ impl FolderService {
         use Availability::*;
         let row: [Availability; 7] = match self {
             // macOS, Windows (iCloud for Windows), Linux, BSD, iOS, Android, web
-            FolderService::ICloudDrive => [Yes, Yes, No, No, Later, No, No],
+            // On iPhone, iPad and Android 2Secret reaches the folders the
+            // system's folder picker gives it: iCloud Drive and the phone's
+            // own folders (which Möbius Sync or Syncthing-Fork can keep in
+            // sync). The Dropbox, Google Drive and OneDrive apps do not let
+            // other apps choose a folder there; a direct connection to those
+            // services comes later.
+            FolderService::ICloudDrive => [Yes, Yes, No, No, Yes, No, No],
             FolderService::Dropbox => [Yes, Yes, Yes, No, Later, Later, No],
             FolderService::GoogleDrive => [Yes, Yes, No, No, Later, Later, No],
             FolderService::OneDrive => [Yes, Yes, No, No, Later, Later, No],
-            FolderService::Other => [Yes, Yes, Yes, Yes, No, Later, No],
+            FolderService::Other => [Yes, Yes, Yes, Yes, Yes, Yes, No],
         };
         let mut out = [(Platform::MacOs, Yes); 7];
         for (i, p) in Platform::ALL.iter().enumerate() {
@@ -1052,7 +1065,7 @@ mod tests {
     }
 
     fn location() -> VaultLocation {
-        VaultLocation::Folder { path: "/tmp/x".into(), service: FolderService::Dropbox }
+        VaultLocation::Folder { path: "/tmp/x".into(), service: FolderService::Dropbox, grant: None }
     }
 
     /// Device `a` with a folder vault, and device `b` of the same account
@@ -1276,7 +1289,10 @@ mod tests {
         );
         assert_eq!(FolderService::Dropbox.available_on(Platform::Linux), Availability::Yes);
         assert_eq!(FolderService::GoogleDrive.available_on(Platform::Linux), Availability::No);
-        assert_eq!(FolderService::Other.available_on(Platform::Ios), Availability::No);
+        assert_eq!(FolderService::Other.available_on(Platform::Ios), Availability::Yes);
+        assert_eq!(FolderService::ICloudDrive.available_on(Platform::Ios), Availability::Yes);
+        assert_eq!(FolderService::GoogleDrive.available_on(Platform::Android), Availability::Later);
+        assert!(Platform::Android.picks_folders() && !Platform::MacOs.picks_folders());
         assert!(Platform::current().has_folder_vaults() || cfg!(target_arch = "wasm32"));
         for s in FolderService::ALL {
             assert_eq!(FolderService::parse(s.id()), Some(s));

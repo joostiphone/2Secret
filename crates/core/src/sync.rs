@@ -968,7 +968,7 @@ mod tests {
     }
 
     fn folder() -> VaultLocation {
-        VaultLocation::Folder { path: "/tmp/work".into(), service: crate::profile::FolderService::Dropbox }
+        VaultLocation::Folder { path: "/tmp/work".into(), service: crate::profile::FolderService::Dropbox, grant: None }
     }
 
     #[test]

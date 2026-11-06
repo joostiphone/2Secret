@@ -4,15 +4,19 @@
 //! and folders. The format and the merge rules are in
 //! [`twosecret_core::folder`]; `docs/VAULT-FOLDER.md` describes them.
 //!
-//! File access runs on its own thread: opening a file a storage app has not
-//! downloaded yet can wait for the network.
+//! A folder is reached through [`FolderFs`]: the file system on desktops
+//! ([`LocalFs`]), or a folder the person chose in the system's folder picker
+//! on iPhone, iPad and Android (the app provides those, see
+//! [`set_picked_folders`]). File access runs on its own thread: opening a
+//! file a storage app has not downloaded yet can wait for the network.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
-use std::time::SystemTime;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::stream::{self, StreamExt};
 use twosecret_core::api::UpdateVaultRequest;
@@ -20,7 +24,7 @@ use twosecret_core::folder::{
     self as format, FolderPlan, FolderReport, ItemFile, MetaFile, Snapshot, VaultFile, ITEMS_DIR, MOVED_FILE,
     PARENT_DIR, TEMP_PREFIX, VAULT_FILE,
 };
-use twosecret_core::profile::{FolderService, MoveTarget, MovedTo, SyncState, VaultLocation};
+use twosecret_core::profile::{FolderGrant, FolderService, MoveTarget, MovedTo, SyncState, VaultLocation};
 use twosecret_core::session::Session;
 use twosecret_core::util::now;
 
@@ -37,12 +41,314 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     rx.await.map_err(|_| Error::Core(twosecret_core::Error::Storage("the folder could not be read".into())))
 }
 
-fn io_error(path: &Path, e: std::io::Error) -> Error {
-    Error::Core(twosecret_core::Error::Storage(format!("{}: {e}", path.display())))
+fn fs_error(fs: &dyn FolderFs, e: io::Error) -> Error {
+    Error::Core(twosecret_core::Error::Storage(format!("{}: {e}", fs.describe())))
+}
+
+fn not_found_at(place: String) -> Error {
+    Error::Core(twosecret_core::Error::FolderNotFound(place))
 }
 
 fn not_found(path: &Path) -> Error {
-    Error::Core(twosecret_core::Error::FolderNotFound(path.display().to_string()))
+    not_found_at(path.display().to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Reaching a folder's files
+// ---------------------------------------------------------------------------
+
+/// One entry of a folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FsEntry {
+    pub name: String,
+    pub dir: bool,
+    /// When it was last changed (milliseconds since 1970, 0 when unknown)
+    /// and its size: a file whose stamp did not change is not read again.
+    pub stamp: (i64, u64),
+}
+
+/// A folder's files, wherever the platform keeps them: on the file system
+/// ([`LocalFs`]), or in a folder the system's folder picker gave this app
+/// (iPhone, iPad, Android). Paths are relative to the folder, with `/`
+/// between names; `""` is the folder itself. The calls block.
+pub trait FolderFs: Send + Sync {
+    /// Where the folder is, for people (and to tell folders apart).
+    fn describe(&self) -> String;
+    /// The folder's own name.
+    fn name(&self) -> String;
+    /// The entries of the folder `dir`; `None` when it is not there.
+    fn list(&self, dir: &str) -> io::Result<Option<Vec<FsEntry>>>;
+    /// Whether the file `path` is there.
+    fn is_file(&self, path: &str) -> bool {
+        let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+        self.list(dir).ok().flatten().is_some_and(|l| l.iter().any(|e| !e.dir && e.name == name))
+    }
+    /// A file's contents; `None` when it is not there.
+    fn read(&self, path: &str) -> io::Result<Option<Vec<u8>>>;
+    /// Write a file, making the folders it is in. Atomic where the platform
+    /// allows it; elsewhere another device may see a half-written file,
+    /// which it skips and reads again later.
+    fn write(&self, path: &str, contents: &[u8]) -> io::Result<()>;
+    /// Remove a file or an empty folder; one that is not there is fine.
+    fn remove(&self, path: &str) -> io::Result<()>;
+    /// Make the folder itself (its parent is there).
+    fn create(&self) -> io::Result<()>;
+    /// Remove the folder and everything in it.
+    fn remove_all(&self) -> io::Result<()>;
+    /// The folder at `path` inside this one.
+    fn child(&self, path: &str) -> Arc<dyn FolderFs>;
+    /// Ask the storage app to download files it only has placeholders for.
+    fn request_downloads(&self, _paths: &[String]) {}
+}
+
+/// Refuse a relative path that could leave the folder.
+fn check_rel(rel: &str) -> io::Result<()> {
+    let bad = rel.starts_with('/')
+        || rel.contains('\\')
+        || rel.split('/').any(|p| p.is_empty() || p == "." || p == "..")
+        || Path::new(rel).components().any(|c| !matches!(c, Component::Normal(_)));
+    if bad && !rel.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("unexpected file name {rel}")));
+    }
+    Ok(())
+}
+
+/// `a/b` from `a` and `b` (either may be empty).
+fn join_rel(a: &str, b: &str) -> String {
+    match (a.is_empty(), b.is_empty()) {
+        (true, _) => b.to_string(),
+        (_, true) => a.to_string(),
+        _ => format!("{a}/{b}"),
+    }
+}
+
+fn millis(t: Option<SystemTime>) -> i64 {
+    t.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Coordinates file access with the storage apps, on systems that ask for it
+/// (iPhone and iPad: `NSFileCoordinator`, which also downloads a file that
+/// is still in the cloud before it is read, and tells the storage app what
+/// changed).
+pub trait Coordinator: Send + Sync {
+    /// Run `f` to read `path` (a file or a folder).
+    fn read(&self, path: &Path, f: &mut dyn FnMut(&Path) -> io::Result<()>) -> io::Result<()>;
+    /// Run `f` to write or replace `path`.
+    fn write(&self, path: &Path, f: &mut dyn FnMut(&Path) -> io::Result<()>) -> io::Result<()>;
+    /// Run `f` to remove `path`.
+    fn remove(&self, path: &Path, f: &mut dyn FnMut(&Path) -> io::Result<()>) -> io::Result<()>;
+    /// Ask for files that are still in the cloud to be downloaded.
+    fn download(&self, _paths: &[PathBuf]) {}
+}
+
+#[derive(Clone, Copy)]
+enum Access {
+    Read,
+    Write,
+    Remove,
+}
+
+/// A folder on the file system.
+#[derive(Clone)]
+pub struct LocalFs {
+    dir: PathBuf,
+    coordinator: Option<Arc<dyn Coordinator>>,
+}
+
+impl LocalFs {
+    pub fn new(dir: impl Into<PathBuf>) -> LocalFs {
+        LocalFs { dir: dir.into(), coordinator: None }
+    }
+
+    /// A folder whose files are reached through a [`Coordinator`].
+    pub fn coordinated(dir: impl Into<PathBuf>, coordinator: Arc<dyn Coordinator>) -> LocalFs {
+        LocalFs { dir: dir.into(), coordinator: Some(coordinator) }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.dir
+    }
+
+    fn at(&self, rel: &str) -> io::Result<PathBuf> {
+        check_rel(rel)?;
+        Ok(rel.split('/').filter(|p| !p.is_empty()).fold(self.dir.clone(), |p, part| p.join(part)))
+    }
+
+    fn coordinate<T>(&self, access: Access, path: &Path, f: impl FnOnce(&Path) -> io::Result<T>) -> io::Result<T> {
+        let Some(c) = &self.coordinator else { return f(path) };
+        let mut f = Some(f);
+        let mut out: Option<io::Result<T>> = None;
+        let mut run = |p: &Path| -> io::Result<()> {
+            if let Some(f) = f.take() {
+                out = Some(f(p));
+            }
+            Ok(())
+        };
+        match access {
+            Access::Read => c.read(path, &mut run),
+            Access::Write => c.write(path, &mut run),
+            Access::Remove => c.remove(path, &mut run),
+        }?;
+        out.unwrap_or_else(|| Err(io::Error::other("the storage app gave no access to the file")))
+    }
+}
+
+/// Write a file atomically: a temporary file next to it, then a rename.
+fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+    fs::create_dir_all(parent)?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let suffix: String = twosecret_core::util::new_id().chars().take(8).collect();
+    let tmp = parent.join(format!("{TEMP_PREFIX}{suffix}-{name}"));
+    let result = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn missing_is_fine(result: io::Result<()>) -> io::Result<()> {
+    match result {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+impl FolderFs for LocalFs {
+    fn describe(&self) -> String {
+        self.dir.display().to_string()
+    }
+
+    fn name(&self) -> String {
+        self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    }
+
+    fn list(&self, dir: &str) -> io::Result<Option<Vec<FsEntry>>> {
+        let path = self.at(dir)?;
+        self.coordinate(Access::Read, &path, |path| {
+            if !path.is_dir() {
+                return Ok(None);
+            }
+            let mut out = Vec::new();
+            for entry in fs::read_dir(path)?.flatten() {
+                let meta = fs::metadata(entry.path()).ok();
+                out.push(FsEntry {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    dir: meta.as_ref().is_some_and(|m| m.is_dir()),
+                    stamp: meta.map_or((0, 0), |m| (millis(m.modified().ok()), m.len())),
+                });
+            }
+            Ok(Some(out))
+        })
+    }
+
+    fn is_file(&self, path: &str) -> bool {
+        self.at(path).is_ok_and(|p| p.is_file())
+    }
+
+    fn read(&self, path: &str) -> io::Result<Option<Vec<u8>>> {
+        let path = self.at(path)?;
+        self.coordinate(Access::Read, &path, |path| match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        })
+    }
+
+    fn write(&self, path: &str, contents: &[u8]) -> io::Result<()> {
+        if path.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "no file name"));
+        }
+        let path = self.at(path)?;
+        self.coordinate(Access::Write, &path, |path| write_atomic(path, contents))
+    }
+
+    fn remove(&self, path: &str) -> io::Result<()> {
+        let path = self.at(path)?;
+        self.coordinate(Access::Remove, &path, |path| {
+            missing_is_fine(if path.is_dir() { fs::remove_dir(path) } else { fs::remove_file(path) })
+        })
+    }
+
+    fn create(&self) -> io::Result<()> {
+        self.coordinate(Access::Write, &self.dir, |dir| fs::create_dir_all(dir))
+    }
+
+    fn remove_all(&self) -> io::Result<()> {
+        self.coordinate(Access::Remove, &self.dir, |dir| missing_is_fine(fs::remove_dir_all(dir)))
+    }
+
+    fn child(&self, path: &str) -> Arc<dyn FolderFs> {
+        let dir = path.split('/').filter(|p| !p.is_empty()).fold(self.dir.clone(), |p, part| p.join(part));
+        Arc::new(LocalFs { dir, coordinator: self.coordinator.clone() })
+    }
+
+    fn request_downloads(&self, paths: &[String]) {
+        let paths: Vec<PathBuf> = paths.iter().take(64).filter_map(|p| self.at(p).ok()).collect();
+        match &self.coordinator {
+            Some(c) => c.download(&paths),
+            None => request_downloads(&paths),
+        }
+    }
+}
+
+/// Ask iCloud Drive to download files it only has placeholders for.
+fn request_downloads(paths: &[PathBuf]) {
+    #[cfg(target_os = "macos")]
+    for path in paths {
+        let _ = std::process::Command::new("/usr/bin/brctl")
+            .arg("download")
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = paths;
+}
+
+// ---------------------------------------------------------------------------
+// Folders chosen in the system's folder picker (iPhone, iPad, Android)
+// ---------------------------------------------------------------------------
+
+/// The folders the person chose in the system's folder picker, kept by the
+/// app on iPhone, iPad and Android, where an app only reaches the folders
+/// it was given. Each has a name (`root`) that [`FolderGrant`]s refer to.
+pub trait PickedFolders: Send + Sync {
+    /// Open the chosen folder `root`.
+    fn open(&self, root: &str) -> io::Result<Arc<dyn FolderFs>>;
+    /// The chosen folders kept in sync by `service`, with where each is in
+    /// the service's own folder when known (`""`: the service's folder
+    /// itself), to look for vaults other devices moved there.
+    fn roots(&self, service: FolderService) -> Vec<(String, Option<String>)>;
+    /// Remember that `root` is kept in sync by `service`, at `path` in the
+    /// service's own folder when that turned out.
+    fn remember(&self, root: &str, service: FolderService, path: Option<String>);
+}
+
+static PICKED: OnceLock<Box<dyn PickedFolders>> = OnceLock::new();
+
+/// Set how this app reaches the folders chosen in the system's folder
+/// picker (once, at start).
+pub fn set_picked_folders(folders: impl PickedFolders + 'static) {
+    let _ = PICKED.set(Box::new(folders));
+}
+
+fn picked() -> Option<&'static dyn PickedFolders> {
+    PICKED.get().map(|p| &**p)
+}
+
+/// Open a vault folder this device reaches through the folder picker.
+fn open_grant(grant: &FolderGrant) -> Result<Arc<dyn FolderFs>> {
+    let place = || not_found_at(grant.rel.clone());
+    let root = picked().ok_or_else(place)?.open(&grant.root).map_err(|_| place())?;
+    Ok(if grant.rel.is_empty() { root } else { root.child(&grant.rel) })
 }
 
 // ---------------------------------------------------------------------------
@@ -56,8 +362,8 @@ pub struct FolderRead {
     pub vault: Option<VaultFile>,
     pub snapshot: Snapshot,
     /// Files the storage app has not downloaded yet (iCloud's
-    /// `.name.icloud` placeholders): where they will be.
-    pub waiting: Vec<PathBuf>,
+    /// `.name.icloud` placeholders): where they will be, in the folder.
+    pub waiting: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -66,182 +372,147 @@ enum Parsed {
     Meta(MetaFile),
 }
 
-/// A file read before: when it was changed, its size, what it holds.
-type Cached = (SystemTime, u64, Parsed);
+/// A file read before: the stamp it had, what it holds.
+type Cached = ((i64, u64), Parsed);
 
-/// Files read before, by path: unchanged files are not read again.
-static CACHE: Mutex<Option<HashMap<PathBuf, Cached>>> = Mutex::new(None);
+/// Files read before, by folder and path: unchanged files are not read
+/// again.
+static CACHE: Mutex<Option<HashMap<String, Cached>>> = Mutex::new(None);
 
-fn read_cached(path: &Path, item: bool) -> Option<Parsed> {
-    let meta = fs::metadata(path).ok()?;
-    let stamp = (meta.modified().ok()?, meta.len());
-    if let Some((t, len, parsed)) = CACHE.lock().ok()?.as_ref().and_then(|c| c.get(path)) {
-        if (*t, *len) == stamp {
-            return Some(parsed.clone());
+fn read_text(fs: &dyn FolderFs, rel: &str) -> Option<String> {
+    fs.read(rel).ok().flatten().and_then(|b| String::from_utf8(b).ok())
+}
+
+fn read_cached(fs: &dyn FolderFs, rel: &str, stamp: (i64, u64), item: bool) -> Option<Parsed> {
+    let key = format!("{}\n{rel}", fs.describe());
+    // Without a time of change, a file could change without its stamp.
+    let cacheable = stamp.0 != 0;
+    if cacheable {
+        if let Some((s, parsed)) = CACHE.lock().ok()?.as_ref().and_then(|c| c.get(&key)) {
+            if *s == stamp {
+                return Some(parsed.clone());
+            }
         }
     }
-    let json = fs::read_to_string(path).ok()?;
+    let json = read_text(fs, rel)?;
     let parsed = if item {
         Parsed::Item(serde_json::from_str(&json).ok()?)
     } else {
         Parsed::Meta(serde_json::from_str(&json).ok()?)
     };
-    if let Ok(mut cache) = CACHE.lock() {
-        cache.get_or_insert_with(HashMap::new).insert(path.to_path_buf(), (stamp.0, stamp.1, parsed.clone()));
+    if cacheable {
+        if let Ok(mut cache) = CACHE.lock() {
+            cache.get_or_insert_with(HashMap::new).insert(key, (stamp, parsed.clone()));
+        }
     }
     Some(parsed)
 }
 
-/// An iCloud placeholder (`.name.icloud`): the file it stands for.
-fn icloud_placeholder(dir: &Path, name: &str) -> Option<PathBuf> {
-    let real = name.strip_prefix('.')?.strip_suffix(".icloud")?;
-    Some(dir.join(real))
+/// An iCloud placeholder (`.name.icloud`): the name of the file it stands for.
+fn icloud_placeholder(name: &str) -> Option<String> {
+    name.strip_prefix('.')?.strip_suffix(".icloud").filter(|n| !n.is_empty()).map(String::from)
+}
+
+/// A temporary file left by a write that never finished (older than a day).
+fn remove_stale_temp(fs: &dyn FolderFs, rel: &str, entry: &FsEntry) {
+    if !entry.name.starts_with(TEMP_PREFIX) || entry.stamp.0 == 0 {
+        return;
+    }
+    let age = millis(Some(SystemTime::now())) - entry.stamp.0;
+    if age > 86_400_000 {
+        let _ = fs.remove(rel);
+    }
+}
+
+/// Read everything in a vault's folder on this device (blocking).
+pub fn read_folder(dir: &Path) -> Result<FolderRead> {
+    read_fs(&LocalFs::new(dir))
 }
 
 /// Read everything in a vault's folder (blocking).
-pub fn read_folder(dir: &Path) -> Result<FolderRead> {
-    if !dir.is_dir() {
-        return Err(not_found(dir));
-    }
+pub fn read_fs(fs: &dyn FolderFs) -> Result<FolderRead> {
+    let Some(top) = fs.list("").map_err(|e| fs_error(fs, e))? else { return Err(not_found_at(fs.describe())) };
+    let has = |name: &str| top.iter().any(|e| !e.dir && e.name == name);
     let mut out = FolderRead::default();
-    let moved_path = dir.join(MOVED_FILE);
-    if moved_path.exists() {
-        out.snapshot.moved = fs::read_to_string(&moved_path).ok().and_then(|j| serde_json::from_str(&j).ok());
+    if has(MOVED_FILE) {
+        out.snapshot.moved = read_text(fs, MOVED_FILE).and_then(|j| serde_json::from_str(&j).ok());
         if out.snapshot.moved.is_none() {
             out.snapshot.unreadable += 1;
         }
     }
-    let vault_path = dir.join(VAULT_FILE);
-    match fs::read_to_string(&vault_path) {
-        Ok(json) => out.vault = Some(VaultFile::parse(&json)?),
-        Err(_) if dir.join(format!(".{VAULT_FILE}.icloud")).exists() => {
-            out.waiting.push(vault_path);
-            request_downloads(&out.waiting);
-            return Err(Error::Core(twosecret_core::Error::FolderNotFound(format!(
-                "{} (still downloading)",
-                dir.display()
-            ))));
+    match has(VAULT_FILE).then(|| read_text(fs, VAULT_FILE)).flatten() {
+        Some(json) => out.vault = Some(VaultFile::parse(&json)?),
+        None if has(&format!(".{VAULT_FILE}.icloud")) => {
+            out.waiting.push(VAULT_FILE.to_string());
+            fs.request_downloads(&out.waiting);
+            return Err(not_found_at(format!("{} (still downloading)", fs.describe())));
         }
-        Err(_) if out.snapshot.moved.is_some() => {}
-        Err(_) => return Err(not_found(dir)),
+        None if out.snapshot.moved.is_some() => {}
+        None => return Err(not_found_at(fs.describe())),
     }
 
-    let entries = fs::read_dir(dir).map_err(|e| io_error(dir, e))?;
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if let Some(real) = icloud_placeholder(dir, &name) {
+    for entry in top.iter().filter(|e| !e.dir) {
+        if let Some(real) = icloud_placeholder(&entry.name) {
             out.waiting.push(real);
             continue;
         }
-        remove_stale_temp(&entry.path(), &name);
-        if !name.starts_with("meta~") || format::parse_file_name(&name).is_none() {
+        remove_stale_temp(fs, &entry.name, entry);
+        if !entry.name.starts_with("meta~") || format::parse_file_name(&entry.name).is_none() {
             continue;
         }
-        match read_cached(&entry.path(), false) {
-            Some(Parsed::Meta(m)) => out.snapshot.metas.push((name, m)),
+        match read_cached(fs, &entry.name, entry.stamp, false) {
+            Some(Parsed::Meta(m)) => out.snapshot.metas.push((entry.name.clone(), m)),
             _ => out.snapshot.unreadable += 1,
         }
     }
 
-    let items = dir.join(ITEMS_DIR);
-    if let Ok(entries) = fs::read_dir(&items) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if let Some(real) = icloud_placeholder(&items, &name) {
-                out.waiting.push(real);
+    if top.iter().any(|e| e.dir && e.name == ITEMS_DIR) {
+        let items = fs.list(ITEMS_DIR).map_err(|e| fs_error(fs, e))?.unwrap_or_default();
+        for entry in items.iter().filter(|e| !e.dir) {
+            let rel = join_rel(ITEMS_DIR, &entry.name);
+            if let Some(real) = icloud_placeholder(&entry.name) {
+                out.waiting.push(join_rel(ITEMS_DIR, &real));
                 continue;
             }
-            remove_stale_temp(&entry.path(), &name);
-            if format::parse_file_name(&name).is_none() {
+            remove_stale_temp(fs, &rel, entry);
+            if format::parse_file_name(&entry.name).is_none() {
                 continue;
             }
-            match read_cached(&entry.path(), true) {
-                Some(Parsed::Item(f)) => out.snapshot.items.push((name, f)),
+            match read_cached(fs, &rel, entry.stamp, true) {
+                Some(Parsed::Item(f)) => out.snapshot.items.push((entry.name.clone(), f)),
                 _ => out.snapshot.unreadable += 1,
             }
         }
     }
     out.snapshot.items.sort_by(|a, b| a.0.cmp(&b.0));
     out.snapshot.metas.sort_by(|a, b| a.0.cmp(&b.0));
-    request_downloads(&out.waiting);
+    fs.request_downloads(&out.waiting);
     Ok(out)
 }
 
-/// A temporary file left by a write that never finished (older than a day).
-fn remove_stale_temp(path: &Path, name: &str) {
-    if !name.starts_with(TEMP_PREFIX) {
-        return;
-    }
-    let old = fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.elapsed().ok())
-        .is_some_and(|age| age.as_secs() > 86_400);
-    if old {
-        let _ = fs::remove_file(path);
-    }
-}
-
-/// Ask iCloud Drive to download files it only has placeholders for.
-fn request_downloads(paths: &[PathBuf]) {
-    #[cfg(target_os = "macos")]
-    for path in paths.iter().take(64) {
-        let _ = std::process::Command::new("/usr/bin/brctl")
-            .arg("download")
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = paths;
-}
-
-/// The path of `rel` (`a/b.json`) inside `dir`, refusing anything that could
-/// leave it.
-fn inside(dir: &Path, rel: &str) -> Result<PathBuf> {
-    let rel_path = Path::new(rel);
-    if rel.is_empty() || rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
-        return Err(Error::Core(twosecret_core::Error::invalid(format!("unexpected file name {rel}"))));
-    }
-    Ok(dir.join(rel_path))
-}
-
-/// Write a file atomically: a temporary file next to it, then a rename.
-fn write_atomic(path: &Path, contents: &str) -> Result<()> {
-    let parent = path.parent().ok_or_else(|| not_found(path))?;
-    fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let suffix: String = twosecret_core::util::new_id().chars().take(8).collect();
-    let tmp = parent.join(format!("{TEMP_PREFIX}{suffix}-{name}"));
-    let result = (|| {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(contents.as_bytes())?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&tmp, path)
-    })();
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
-        return Err(io_error(path, e));
-    }
-    Ok(())
+/// Write and remove the files of a plan in a folder on this device
+/// (blocking).
+pub fn write_plan(dir: &Path, write: &[(String, String)], remove: &[String]) -> Result<()> {
+    write_fs(&LocalFs::new(dir), write, remove)
 }
 
 /// Write and remove the files of a plan (blocking).
-pub fn write_plan(dir: &Path, write: &[(String, String)], remove: &[String]) -> Result<()> {
-    if !dir.is_dir() {
-        return Err(not_found(dir));
+pub fn write_fs(fs: &dyn FolderFs, write: &[(String, String)], remove: &[String]) -> Result<()> {
+    if fs.list("").map_err(|e| fs_error(fs, e))?.is_none() {
+        return Err(not_found_at(fs.describe()));
     }
+    let checked = |rel: &str| {
+        check_rel(rel)
+            .and_then(|()| if rel.is_empty() { Err(io::ErrorKind::InvalidInput.into()) } else { Ok(()) })
+            .map_err(|_| Error::Core(twosecret_core::Error::invalid(format!("unexpected file name {rel}"))))
+    };
     for (rel, contents) in write {
-        write_atomic(&inside(dir, rel)?, contents)?;
+        checked(rel)?;
+        fs.write(rel, contents.as_bytes()).map_err(|e| fs_error(fs, e))?;
     }
     for rel in remove {
-        match fs::remove_file(inside(dir, rel)?) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(io_error(&dir.join(rel), e)),
-        }
+        checked(rel)?;
+        fs.remove(rel).map_err(|e| fs_error(fs, e))?;
     }
     Ok(())
 }
@@ -249,28 +520,25 @@ pub fn write_plan(dir: &Path, write: &[(String, String)], remove: &[String]) -> 
 /// Remove a vault's items and names from its folder, keeping a `moved.json`
 /// that says where it went (blocking). `vault.json` goes too when the vault
 /// was deleted.
-fn clear_folder(dir: &Path, moved_json: &str, deleted: bool) -> Result<()> {
-    write_atomic(&dir.join(MOVED_FILE), moved_json)?;
-    if let Ok(entries) = fs::read_dir(dir.join(ITEMS_DIR)) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.ends_with(".json") || name.ends_with(".icloud") {
-                let _ = fs::remove_file(entry.path());
+fn clear_fs(fs: &dyn FolderFs, moved_json: &str, deleted: bool) -> Result<()> {
+    fs.write(MOVED_FILE, moved_json.as_bytes()).map_err(|e| fs_error(fs, e))?;
+    if let Ok(Some(items)) = fs.list(ITEMS_DIR) {
+        for entry in items.iter().filter(|e| !e.dir) {
+            if entry.name.ends_with(".json") || entry.name.ends_with(".icloud") {
+                let _ = fs.remove(&join_rel(ITEMS_DIR, &entry.name));
             }
         }
+        let _ = fs.remove(ITEMS_DIR);
     }
-    let _ = fs::remove_dir(dir.join(ITEMS_DIR));
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with("meta~") || (deleted && name == VAULT_FILE) {
-                let _ = fs::remove_file(entry.path());
+    if let Ok(Some(top)) = fs.list("") {
+        for entry in top.iter().filter(|e| !e.dir) {
+            if entry.name.starts_with("meta~") || (deleted && entry.name == VAULT_FILE) {
+                let _ = fs.remove(&entry.name);
             }
         }
     }
     Ok(())
 }
-
 // ---------------------------------------------------------------------------
 // Where the storage apps keep their folders
 // ---------------------------------------------------------------------------
@@ -369,42 +637,138 @@ fn relative_to_service(service: FolderService, path: &Path) -> String {
     rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
 }
 
-/// Where a vault folder another device moved a vault to is on this device.
-fn locate(service: FolderService, folder: &str) -> Option<PathBuf> {
+/// Where a vault folder that another device keeps at `folder` (its path in
+/// the service's own folder) may be in a folder called `root_name`, which is
+/// at `root_path` in the service's folder when known: the likeliest first.
+fn candidates(root_name: &str, root_path: Option<&str>, folder: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    match root_path {
+        Some("") => out.push(folder.to_string()),
+        Some(rp) if folder == rp => out.push(String::new()),
+        Some(rp) => {
+            if let Some(rest) = folder.strip_prefix(&format!("{rp}/")) {
+                out.push(rest.to_string());
+            }
+        }
+        None => {}
+    }
+    let last = folder.rsplit('/').next().unwrap_or_default();
+    if !last.is_empty() {
+        if root_name == last {
+            out.push(String::new());
+        }
+        if root_name == PARENT_DIR {
+            out.push(last.to_string());
+        }
+        out.push(format!("{PARENT_DIR}/{last}"));
+        out.push(last.to_string());
+    }
+    let mut seen = Vec::new();
+    out.retain(|c| {
+        let new = !seen.contains(c);
+        seen.push(c.clone());
+        new
+    });
+    out
+}
+
+/// Whether the folder `rel` in `root` holds vault `vault_id` (any vault for
+/// `None`).
+fn holds(root: &dyn FolderFs, rel: &str, vault_id: Option<&str>) -> bool {
+    let file = join_rel(rel, VAULT_FILE);
+    match vault_id {
+        None => root.is_file(&file),
+        Some(id) => read_text(root, &file).and_then(|j| VaultFile::parse(&j).ok()).is_some_and(|f| f.vault_id == id),
+    }
+}
+
+/// The folder in `root` that holds the vault another device keeps at
+/// `folder` in the service's folder (see [`candidates`]): its path in `root`.
+fn locate_in(root: &dyn FolderFs, root_path: Option<&str>, folder: &str, vault_id: Option<&str>) -> Option<String> {
     if folder.is_empty() || folder.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
         return None;
     }
-    service_roots()
-        .into_iter()
-        .filter(|(s, _)| *s == service)
-        .map(|(_, root)| folder.split('/').fold(root, |p, part| p.join(part)))
-        .find(|p| p.join(VAULT_FILE).is_file())
+    candidates(&root.name(), root_path, folder).into_iter().find(|rel| holds(root, rel, vault_id))
+}
+
+/// Where a vault folder another device moved a vault to is on this device.
+fn locate(service: FolderService, folder: &str) -> Option<PathBuf> {
+    service_roots().into_iter().filter(|(s, _)| *s == service).find_map(|(_, root)| {
+        let rel = locate_in(&LocalFs::new(&root), Some(""), folder, None)?;
+        Some(rel.split('/').filter(|p| !p.is_empty()).fold(root, |p, part| p.join(part)))
+    })
+}
+
+/// Where a chosen folder is in its service's folder, learnt from finding the
+/// vault another device keeps at `folder` at `rel` in it.
+fn root_path_from(folder: &str, rel: &str) -> Option<String> {
+    if rel.is_empty() {
+        Some(folder.to_string())
+    } else if folder == rel {
+        Some(String::new())
+    } else {
+        folder.strip_suffix(&format!("/{rel}")).map(String::from)
+    }
+}
+
+/// The vault folder of a vault that another device keeps at `folder` in
+/// `service`'s folder, among the folders chosen on this device: the place
+/// and how to open it.
+fn find_picked(service: FolderService, folder: &str, vault_id: &str) -> Option<(Arc<dyn FolderFs>, VaultLocation)> {
+    let picked = picked()?;
+    for (root, root_path) in picked.roots(service) {
+        let Ok(fs) = picked.open(&root) else { continue };
+        let Some(rel) = locate_in(&*fs, root_path.as_deref(), folder, Some(vault_id)) else { continue };
+        if root_path.is_none() {
+            picked.remember(&root, service, root_path_from(folder, &rel));
+        }
+        let dir = if rel.is_empty() { fs } else { fs.child(&rel) };
+        let location = VaultLocation::Folder { path: dir.describe(), service, grant: Some(FolderGrant { root, rel }) };
+        return Some((dir, location));
+    }
+    None
 }
 
 /// The vault folder for a new vault in `parent`: `<parent>/2Secret/<name>-<id>`
 /// (without the extra `2Secret` when `parent` is already called that).
 pub fn vault_dir(parent: &Path, name: &str, vault_id: &str) -> PathBuf {
-    let base = if parent.file_name().is_some_and(|n| n == PARENT_DIR) {
-        parent.to_path_buf()
+    vault_rel(&parent.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), name, vault_id)
+        .split('/')
+        .fold(parent.to_path_buf(), |p, part| p.join(part))
+}
+
+/// Where a new vault's folder goes in a folder called `parent_name`.
+fn vault_rel(parent_name: &str, name: &str, vault_id: &str) -> String {
+    let dir = format::vault_dir_name(name, vault_id);
+    if parent_name == PARENT_DIR {
+        dir
     } else {
-        parent.join(PARENT_DIR)
-    };
-    base.join(format::vault_dir_name(name, vault_id))
+        format!("{PARENT_DIR}/{dir}")
+    }
 }
 
 /// Vault folders in `dir`: `dir` itself, or the ones in it (also in a
 /// `2Secret` folder in it).
 pub fn find_vault_dirs(dir: &Path) -> Vec<PathBuf> {
-    if dir.join(VAULT_FILE).is_file() || dir.join(MOVED_FILE).is_file() {
-        return vec![dir.to_path_buf()];
+    find_vault_rels(&LocalFs::new(dir))
+        .into_iter()
+        .map(|rel| rel.split('/').filter(|p| !p.is_empty()).fold(dir.to_path_buf(), |p, part| p.join(part)))
+        .collect()
+}
+
+/// Vault folders in a folder (see [`find_vault_dirs`]): their paths in it.
+fn find_vault_rels(fs: &dyn FolderFs) -> Vec<String> {
+    let Some(top) = fs.list("").ok().flatten() else { return Vec::new() };
+    if top.iter().any(|e| !e.dir && (e.name == VAULT_FILE || e.name == MOVED_FILE)) {
+        return vec![String::new()];
     }
     let mut out = Vec::new();
-    for base in [dir.to_path_buf(), dir.join(PARENT_DIR)] {
-        if let Ok(entries) = fs::read_dir(&base) {
-            for entry in entries.flatten() {
-                if entry.path().join(VAULT_FILE).is_file() {
-                    out.push(entry.path());
-                }
+    for base in ["", PARENT_DIR] {
+        let entries = if base.is_empty() { Some(top.clone()) } else { fs.list(base).ok().flatten() };
+        for entry in entries.unwrap_or_default().iter().filter(|e| e.dir && !e.name.starts_with('.')) {
+            let rel = join_rel(base, &entry.name);
+            if fs.is_file(&join_rel(&rel, VAULT_FILE)) {
+                out.push(rel);
             }
         }
     }
@@ -416,18 +780,30 @@ pub fn find_vault_dirs(dir: &Path) -> Vec<PathBuf> {
 // Where a vault's files are
 // ---------------------------------------------------------------------------
 
-/// Where a vault's files are: a folder on this device or on a WebDAV server.
-#[derive(Clone, Debug)]
+/// Where a vault's files are: a folder (on this device, or one chosen in the
+/// system's folder picker) or a folder on a WebDAV server.
+#[derive(Clone)]
 pub enum Store {
-    Local(PathBuf),
+    Fs(Arc<dyn FolderFs>),
     Dav(Dav),
 }
 
+impl fmt::Debug for Store {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Store({})", self.describe())
+    }
+}
+
 fn dav_not_found(d: &Dav) -> Error {
-    Error::Core(twosecret_core::Error::FolderNotFound(d.url().to_string()))
+    not_found_at(d.url().to_string())
 }
 
 impl Store {
+    /// A folder on this device.
+    pub fn local(dir: impl Into<PathBuf>) -> Store {
+        Store::Fs(Arc::new(LocalFs::new(dir)))
+    }
+
     /// The files of a vault kept in a folder.
     pub fn of(session: &Session, vault_id: &str) -> Result<Store> {
         let rec = session
@@ -435,7 +811,8 @@ impl Store {
             .vault(vault_id)
             .ok_or_else(|| twosecret_core::Error::not_found(format!("vault {vault_id}")))?;
         match &rec.location {
-            VaultLocation::Folder { path, .. } => Ok(Store::Local(PathBuf::from(path))),
+            VaultLocation::Folder { grant: Some(grant), .. } => Ok(Store::Fs(open_grant(grant)?)),
+            VaultLocation::Folder { path, .. } => Ok(Store::local(path)),
             VaultLocation::WebDav { url, user, password } => {
                 let password = session.open_webdav_password(vault_id, password)?;
                 Ok(Store::Dav(Dav::new(url, user, &password)?))
@@ -444,12 +821,20 @@ impl Store {
         }
     }
 
+    /// Where the files are, for people.
+    pub fn describe(&self) -> String {
+        match self {
+            Store::Fs(fs) => fs.describe(),
+            Store::Dav(d) => d.url().to_string(),
+        }
+    }
+
     /// Read everything in the folder.
     pub async fn read(&self) -> Result<FolderRead> {
         match self {
-            Store::Local(dir) => {
-                let dir = dir.clone();
-                blocking(move || read_folder(&dir)).await?
+            Store::Fs(fs) => {
+                let fs = fs.clone();
+                blocking(move || read_fs(&*fs)).await?
             }
             Store::Dav(d) => read_dav(d).await,
         }
@@ -458,9 +843,9 @@ impl Store {
     /// Write and remove files (paths relative to the folder).
     pub async fn write(&self, write: Vec<(String, String)>, remove: Vec<String>) -> Result<()> {
         match self {
-            Store::Local(dir) => {
-                let dir = dir.clone();
-                blocking(move || write_plan(&dir, &write, &remove)).await?
+            Store::Fs(fs) => {
+                let fs = fs.clone();
+                blocking(move || write_fs(&*fs, &write, &remove)).await?
             }
             Store::Dav(d) => {
                 if write.iter().any(|(p, _)| p.starts_with(ITEMS_DIR)) {
@@ -483,9 +868,9 @@ impl Store {
     /// Make the folder (its parent must exist, or be made on this device).
     async fn create(&self) -> Result<()> {
         match self {
-            Store::Local(dir) => {
-                let dir = dir.clone();
-                blocking(move || fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))).await?
+            Store::Fs(fs) => {
+                let fs = fs.clone();
+                blocking(move || fs.create().map_err(|e| fs_error(&*fs, e))).await?
             }
             Store::Dav(d) => d.mkcol("").await,
         }
@@ -494,9 +879,9 @@ impl Store {
     /// Remove the folder and everything in it (a copy that failed).
     async fn remove_all(&self) {
         match self {
-            Store::Local(dir) => {
-                let dir = dir.clone();
-                let _ = blocking(move || fs::remove_dir_all(dir)).await;
+            Store::Fs(fs) => {
+                let fs = fs.clone();
+                let _ = blocking(move || fs.remove_all()).await;
             }
             Store::Dav(d) => {
                 let _ = d.delete("").await;
@@ -507,9 +892,16 @@ impl Store {
     /// Clear the folder of a vault that moved away, leaving `moved.json`.
     async fn clear(&self, moved_json: String, deleted: bool) -> Result<()> {
         match self {
-            Store::Local(dir) => {
-                let dir = dir.clone();
-                blocking(move || if dir.is_dir() { clear_folder(&dir, &moved_json, deleted) } else { Ok(()) }).await?
+            Store::Fs(fs) => {
+                let fs = fs.clone();
+                blocking(move || {
+                    if fs.list("").ok().flatten().is_some() {
+                        clear_fs(&*fs, &moved_json, deleted)
+                    } else {
+                        Ok(())
+                    }
+                })
+                .await?
             }
             Store::Dav(d) => {
                 let Some(entries) = d.list("").await? else { return Ok(()) };
@@ -707,9 +1099,7 @@ async fn follow_move<A: SessionAccess>(access: &mut A, vault_id: &str, moved: &M
         }
         MoveTarget::Device | MoveTarget::Deleted => access.with_session(|s| s.forget_folder_vault(&id))?,
         MoveTarget::Folder { service, folder } => {
-            let (service, folder) = (*service, folder.clone());
-            if let Some(path) = blocking(move || locate(service, &folder)).await? {
-                let location = VaultLocation::Folder { path: path.to_string_lossy().into_owned(), service };
+            if let Some((_, location)) = find_moved(*service, folder, vault_id).await? {
                 access.with_session(|s| s.set_vault_folder(&id, location))??;
             }
         }
@@ -719,6 +1109,21 @@ async fn follow_move<A: SessionAccess>(access: &mut A, vault_id: &str, moved: &M
         }
     }
     Ok(())
+}
+
+/// Where this device finds the folder of a vault that another device keeps
+/// at `folder` in `service`'s folder: in the storage app's folder on this
+/// device, or in a folder chosen in the system's folder picker.
+async fn find_moved(service: FolderService, folder: &str, vault_id: &str) -> Result<Option<(Store, VaultLocation)>> {
+    let (folder, id) = (folder.to_string(), vault_id.to_string());
+    blocking(move || {
+        if let Some(dir) = locate(service, &folder) {
+            let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service, grant: None };
+            return Some((Store::local(dir), location));
+        }
+        find_picked(service, &folder, &id).map(|(fs, location)| (Store::Fs(fs), location))
+    })
+    .await
 }
 
 /// Sync every vault kept in a folder (on this device or a WebDAV server),
@@ -755,9 +1160,8 @@ pub async fn attach_moved_with<A: SessionAccess>(access: &mut A) -> Result<Vec<S
     for (id, target) in moved {
         let (store, location) = match target {
             MoveTarget::Folder { service, folder } => {
-                let Some(dir) = blocking(move || locate(service, &folder)).await? else { continue };
-                let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
-                (Store::Local(dir), location)
+                let Some(found) = find_moved(service, &folder, &id).await? else { continue };
+                found
             }
             MoveTarget::WebDav { url, user, password } => {
                 let Ok(Ok(pw)) = access.with_session(|s| s.open_webdav_password(&id, &password)) else { continue };
@@ -794,6 +1198,10 @@ pub enum MoveTo {
     Device,
     /// A storage app's folder: the vault gets a folder in `<parent>/2Secret`.
     Folder { parent: PathBuf, service: FolderService },
+    /// A folder chosen in the system's folder picker (iPhone, iPad,
+    /// Android), as the app named it: the vault gets a folder in
+    /// `<folder>/2Secret`.
+    Picked { root: String, service: FolderService },
     /// A WebDAV server: the vault gets a folder in `<url>/2Secret`. `url` may
     /// also be just the address of a Nextcloud or ownCloud server.
     WebDav { url: String, user: String, password: String },
@@ -810,9 +1218,43 @@ async fn prepare_target(session: &Session, vault_id: &str, to: &MoveTo) -> Resul
             }
             let dir = vault_dir(parent, &name, vault_id);
             let folder = relative_to_service(*service, &dir);
-            let store = Store::Local(dir.clone());
+            let store = Store::local(dir.clone());
             store.create().await?;
-            let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service: *service };
+            let location =
+                VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service: *service, grant: None };
+            Ok((store, location, MoveTarget::Folder { service: *service, folder }))
+        }
+        MoveTo::Picked { root, service } => {
+            let picked = picked().ok_or_else(|| not_found_at(root.clone()))?;
+            let parent = picked.open(root).map_err(|_| not_found_at(root.clone()))?;
+            let rel = vault_rel(&parent.name(), &name, vault_id);
+            let dir = parent.child(&rel);
+            let make = parent.clone();
+            let base = rel.rsplit_once('/').map(|(b, _)| b.to_string());
+            blocking(move || {
+                if make.list("")?.is_none() {
+                    return Err(io::Error::from(io::ErrorKind::NotFound));
+                }
+                if let Some(base) = base {
+                    if make.list(&base)?.is_none() {
+                        make.child(&base).create()?;
+                    }
+                }
+                Ok(())
+            })
+            .await?
+            .map_err(|_| not_found_at(parent.describe()))?;
+            let store = Store::Fs(dir.clone());
+            store.create().await?;
+            // How the account's other devices find it: its path in the
+            // service's folder, as far as this device knows.
+            let in_service = picked.roots(*service).into_iter().find(|(r, _)| r == root).and_then(|(_, p)| p);
+            let folder = join_rel(in_service.as_deref().unwrap_or_default(), &rel);
+            let location = VaultLocation::Folder {
+                path: dir.describe(),
+                service: *service,
+                grant: Some(FolderGrant { root: root.clone(), rel }),
+            };
             Ok((store, location, MoveTarget::Folder { service: *service, folder }))
         }
         MoveTo::WebDav { url, user, password } => {
@@ -871,7 +1313,7 @@ pub async fn create_folder_vault(
 
 /// Create a vault in a folder (a storage app's or a WebDAV server's).
 pub async fn create_vault_in(session: &mut Session, name: &str, description: &str, to: &MoveTo) -> Result<String> {
-    let placeholder = VaultLocation::Folder { path: String::new(), service: FolderService::Other };
+    let placeholder = VaultLocation::Folder { path: String::new(), service: FolderService::Other, grant: None };
     let id = session.create_vault_at(name, description, placeholder)?;
     let result: Result<()> = async {
         let (store, location, _) = prepare_target(session, &id, to).await?;
@@ -902,8 +1344,50 @@ pub async fn attach_folder(session: &mut Session, dir: &Path, service: Option<Fo
             blocking(move || service_of(&probe)).await?.unwrap_or_default()
         }
     };
-    let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service };
-    attach_store(session, Store::Local(dir), |_, _| Ok(location)).await
+    let location = VaultLocation::Folder { path: dir.to_string_lossy().into_owned(), service, grant: None };
+    attach_store(session, Store::local(dir), |_, _| Ok(location)).await
+}
+
+/// Add a vault from a folder chosen in the system's folder picker (`root`,
+/// as the app named it): the vault's folder, or a folder holding it. With
+/// `vault`, the vault (a server placeholder, or a vault whose folder this
+/// device lost) and where another device keeps it in the service's folder:
+/// that vault is looked for, and the folder is remembered as the service's,
+/// so vaults moved there later are found by themselves.
+pub async fn attach_picked(
+    session: &mut Session,
+    root: &str,
+    service: FolderService,
+    vault: Option<(&str, &str)>,
+) -> Result<String> {
+    let picked = picked().ok_or_else(|| not_found_at(root.to_string()))?;
+    let fs = picked.open(root).map_err(|_| not_found_at(root.to_string()))?;
+    let probe = fs.clone();
+    let want = vault.map(|(id, folder)| (id.to_string(), folder.to_string()));
+    let (rels, learnt) = blocking(move || {
+        if let Some((id, folder)) = &want {
+            if let Some(rel) = locate_in(&*probe, None, folder, Some(id)) {
+                let learnt = root_path_from(folder, &rel);
+                return (vec![rel], learnt);
+            }
+            let rels: Vec<String> =
+                find_vault_rels(&*probe).into_iter().filter(|rel| holds(&*probe, rel, Some(id))).collect();
+            if !rels.is_empty() {
+                return (rels, None);
+            }
+        }
+        (find_vault_rels(&*probe), None)
+    })
+    .await?;
+    let rel = one_vault(rels, &fs.describe(), |r| r.rsplit('/').next().map(String::from))?;
+    picked.remember(root, service, learnt);
+    let dir = if rel.is_empty() { fs } else { fs.child(&rel) };
+    let location = VaultLocation::Folder {
+        path: dir.describe(),
+        service,
+        grant: Some(FolderGrant { root: root.to_string(), rel }),
+    };
+    attach_store(session, Store::Fs(dir), |_, _| Ok(location)).await
 }
 
 /// Add a vault that is on a WebDAV server (made on another device). `url` is
@@ -999,10 +1483,12 @@ pub async fn move_vault(session: &mut Session, vault_id: &str, to: MoveTo) -> Re
     let (location, target, new_store) = match &to {
         MoveTo::Account => (VaultLocation::Account, MoveTarget::Account, None),
         MoveTo::Device => (VaultLocation::Device, MoveTarget::Device, None),
-        MoveTo::Folder { .. } | MoveTo::WebDav { .. } => {
+        MoveTo::Folder { .. } | MoveTo::Picked { .. } | MoveTo::WebDav { .. } => {
             let (store, location, target) = prepare_target(session, vault_id, &to).await?;
             let same = match (&from, &location) {
-                (VaultLocation::Folder { path: a, .. }, VaultLocation::Folder { path: b, .. }) => a == b,
+                (VaultLocation::Folder { .. }, VaultLocation::Folder { .. }) => {
+                    old_store.as_ref().is_some_and(|old| old.describe() == store.describe())
+                }
                 (VaultLocation::WebDav { url: a, .. }, VaultLocation::WebDav { url: b, .. }) => a == b,
                 _ => false,
             };

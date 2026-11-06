@@ -165,8 +165,10 @@ pub fn availability_note(service: FolderService) -> String {
             note.push(' ');
         }
         note.push_str(&format!(
-            "Vaults in folders work in the desktop apps and the command line for now; not yet on {}.",
-            names(later)
+            "On {} the {} app does not let other apps choose a folder: this vault shows up there once 2Secret connects to {} itself (a later version).",
+            names(later),
+            service.name(),
+            service.name()
         ));
     }
     note
@@ -285,6 +287,7 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                         availability_note(*service)
                     )),
                     MoveTo::WebDav { url, .. } => what.push_str(&format!(" to the WebDAV server {url}? {WEBDAV_NOTE}")),
+                    MoveTo::Picked { service, .. } => what.push_str(&format!(" to {}?", service.name())),
                 }
                 if !confirm(&what)? {
                     bail!("aborted");
