@@ -70,9 +70,27 @@ impl Error {
 }
 
 impl From<reqwest::Error> for Error {
+    /// With the causes underneath ("error sending request" alone does not
+    /// say whether the name was not found, the connection was refused or the
+    /// certificate was not trusted).
     fn from(e: reqwest::Error) -> Self {
-        Error::Network(e.to_string())
+        Error::Network(with_causes(&e))
     }
+}
+
+/// An error's text followed by the causes under it that add something.
+fn with_causes(e: &dyn std::error::Error) -> String {
+    let mut text = e.to_string();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        let part = cause.to_string();
+        if !part.is_empty() && !text.contains(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
+        source = cause.source();
+    }
+    text
 }
 
 /// Normalise a server URL typed by a user (`vault.example.com` →
@@ -511,6 +529,18 @@ impl AgentClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn network_errors_say_why() {
+        // Nothing listens there: the connection is refused.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let e = reqwest::get(format!("http://127.0.0.1:{port}/")).await.unwrap_err();
+        let Error::Network(text) = Error::from(e) else { panic!("not a network error") };
+        assert!(text.starts_with("error sending request"), "{text}");
+        assert!(text.to_lowercase().contains("refused"), "{text}");
+    }
 
     #[test]
     fn plain_http_only_on_this_device() {
