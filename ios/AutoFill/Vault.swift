@@ -103,7 +103,22 @@ enum VaultError: Error {
     /// The master password was not entered for 14 days.
     case passwordNeeded
     case cancelled
+    /// The system could not ask for Face ID or Touch ID right now
+    /// (errSecInteractionNotAllowed): the panel was not on screen yet, or
+    /// another prompt was showing. Asking again a moment later works.
+    case notNow
     case failed(String)
+
+    /// What the panel says about it.
+    var message: String {
+        switch self {
+        case .notSetUp: return L.notSetUp
+        case .passwordNeeded: return L.passwordNeeded
+        case .cancelled: return L.cancel
+        case .notNow: return L.notNow
+        case let .failed(detail): return L.failed(detail)
+        }
+    }
 }
 
 /// Shared by the iOS (ios/AutoFill) and macOS (macos/AutoFill) extensions.
@@ -184,6 +199,8 @@ enum Vault {
             throw VaultError.notSetUp
         case errSecUserCanceled:
             throw VaultError.cancelled
+        case errSecInteractionNotAllowed:
+            throw VaultError.notNow
         default:
             throw VaultError.failed("keychain error \(status)")
         }
@@ -282,6 +299,18 @@ enum L {
     static func forSite(_ host: String) -> String { t("for \(host)", "voor \(host)") }
     static let cancel = t("Cancel", "Annuleren")
     static let close = t("Close", "Sluiten")
+    static let tryAgain = t("Try again", "Probeer opnieuw")
+    #if os(macOS)
+    static let notNow = t("Touch ID could not be asked just now.", "Touch ID kon zojuist niet worden gevraagd.")
+    #else
+    static let notNow = t(
+        "Face ID or Touch ID could not be asked just now.",
+        "Face ID of Touch ID kon zojuist niet worden gevraagd."
+    )
+    #endif
+    static func failed(_ detail: String) -> String {
+        t("Unlocking did not work (\(detail)).", "Ontgrendelen lukte niet (\(detail)).")
+    }
     static let search = t("Search", "Zoeken")
     #if os(macOS)
     static let unlocking = t("Unlocking with Touch ID…", "Ontgrendelen met Touch ID…")

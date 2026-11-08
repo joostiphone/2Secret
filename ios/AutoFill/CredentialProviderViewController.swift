@@ -32,6 +32,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var oneTimeCodes = false
     private var sections: [(title: String, rows: [Row])] = []
     private var messageAction: (() -> Void)?
+    /// Unlocking waits until the panel is on screen: iOS does not ask for
+    /// Face ID or Touch ID for a panel that is still appearing (the keychain
+    /// then answers errSecInteractionNotAllowed).
+    private var appeared = false
+    private var waiting: [() -> Void] = []
 
     /// The website the request is for, as shown in the header and the Face
     /// ID dialog (`www.` left out).
@@ -236,11 +241,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     // MARK: - Unlocking and answering
 
-    private func unlock(then use: @escaping (AutofillCache) -> Void) {
+    /// `again`: ask once more by itself when the system could not ask now.
+    private func unlock(again: Bool = true, then use: @escaping (AutofillCache) -> Void) {
         if let cache {
             use(cache)
             return
         }
+        guard appeared else {
+            waiting.append { [weak self] in self?.unlock(again: again, then: use) }
+            return
+        }
+        showUnlocking()
         let reason = L.reason(host: host)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try Vault.load(reason: reason) }
@@ -258,8 +269,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                         self.show(message: L.passwordNeeded, button: L.close) { [weak self] in self?.cancelTapped() }
                     case .notSetUp:
                         self.show(message: L.notSetUp, button: L.close) { [weak self] in self?.cancelTapped() }
+                    case .notNow where again:
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                            self?.unlock(again: false, then: use)
+                        }
+                    case .notNow:
+                        self.show(message: L.notNow, button: L.tryAgain) { [weak self] in
+                            self?.unlock(again: false, then: use)
+                        }
                     default:
-                        self.show(message: "\(error)", button: L.close) { [weak self] in self?.cancelTapped() }
+                        let message = (error as? VaultError)?.message ?? L.failed("\(error)")
+                        self.show(message: message, button: L.close) { [weak self] in self?.cancelTapped() }
                     }
                 }
             }
@@ -297,6 +317,28 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     // MARK: - Messages
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        appeared = true
+        let run = waiting
+        waiting = []
+        run.forEach { $0() }
+    }
+
+    /// Back to "Unlocking…" (when asking again).
+    private func showUnlocking() {
+        loadViewIfNeeded()
+        spinner.startAnimating()
+        bigLogo.isHidden = false
+        messageLabel.text = L.unlocking
+        messageLabel.textColor = Brand.text
+        messageHost.isHidden = (host ?? "").isEmpty
+        messageButton.isHidden = true
+        stateStack.isHidden = false
+        tableView.isHidden = true
+        searchBar.isHidden = true
+    }
 
     private func show(message: String, button: String, action: @escaping () -> Void) {
         loadViewIfNeeded()

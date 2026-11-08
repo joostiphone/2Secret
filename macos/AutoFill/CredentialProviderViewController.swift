@@ -297,8 +297,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                         self.show(message: L.passwordNeeded, button: L.close) { [weak self] in self?.cancelTapped() }
                     case .notSetUp:
                         self.show(message: L.notSetUp, button: L.close) { [weak self] in self?.cancelTapped() }
+                    case .notNow:
+                        self.show(message: L.notNow, button: L.tryAgain) { [weak self] in self?.unlock(then: use) }
                     default:
-                        self.show(message: "\(error)", button: L.close) { [weak self] in self?.cancelTapped() }
+                        let message = (error as? VaultError)?.message ?? L.failed("\(error)")
+                        self.show(message: message, button: L.close) { [weak self] in self?.cancelTapped() }
                     }
                 }
             }
