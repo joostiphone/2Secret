@@ -1,18 +1,16 @@
-2Secret 1.14.0
+2Secret 1.14.1
 
 WAT IS ER NIEUW
-- Kluizen in een map op iPhone en iPad: bewaar een kluis in iCloud Drive of in een map op je iPhone (ook een map die Möbius Sync synchroniseert). Versleuteld zoals altijd; alleen je eigen apparaten kunnen hem openen.
-- Nieuwe kluis (of Verplaatsen…) → Een map in een clouddienst → Kiezen… opent de mappenkiezer van de Bestanden-app.
-- Een kluis die je op je Mac naar iCloud Drive hebt verplaatst, toont hier "Kies de map". Kies hem één keer; kluizen die je er later neerzet, verschijnen dan vanzelf.
-- Instellingen → Kluizen → Kluis uit een map toevoegen: open een kluis die een ander apparaat in een map bewaart.
-- Google Drive, OneDrive en (vaak) Dropbox laten andere apps op de iPhone geen map kiezen; een directe koppeling met die diensten volgt later.
+- Face ID en Touch ID: het vergrendelscherm zegt niet meer "nu niet beschikbaar" als het vraagt terwijl de app nog naar voren komt. Het wacht tot de app vooraan staat en vraagt zo nodig nog één keer; lukt de automatische vraag niet, dan blijft de knop staan zonder foutmelding.
+- Kan Face ID of Touch ID echt niet, dan zegt de melding waarom: geblokkeerd na te veel pogingen, uitgezet of niets ingesteld, of vingerafdrukken/gezicht gewijzigd (zet het dan opnieuw aan in Instellingen).
+- "Kan de server niet bereiken" zegt nu waarom (naam niet gevonden, verbinding geweigerd, certificaat niet vertrouwd).
+- Nog steeds nieuw sinds 1.14.0: kluizen in iCloud Drive of in een map op je iPhone.
 
 TEST ALSJEBLIEFT
-1. Maak een kluis in iCloud Drive: Instellingen → Kluizen → Nieuwe kluis → Een map in een clouddienst → iCloud Drive → Kiezen… Voeg een item toe, sluit de app helemaal af en open hem opnieuw: de kluis en het item moeten er nog zijn.
-2. Zet dezelfde kluis op je Mac: in de Mac-app Instellingen → Kluizen → Kluis uit een map toevoegen → kies iCloud Drive/2Secret. Wijzig een item op het ene apparaat en kijk of het op het andere aankomt (iCloud kan een minuut duren).
-3. Verplaats op de Mac een kluis van de syncserver naar iCloud Drive. Open hem op de iPhone en tik op "Kies de map"; verplaats daarna op de Mac een tweede kluis daarheen: verschijnt die vanzelf op de iPhone?
-4. Probeer een map op Mijn iPhone, en als je het gebruikt een map van Möbius Sync.
-5. Verplaats een kluis uit een map terug naar de syncserver; er mag niets verloren gaan.
-6. Zoals altijd: ontgrendelen met Face ID, automatisch invullen in Safari, de tabbalk.
+1. Sluit 2Secret helemaal af en open hem opnieuw, een paar keer: Face ID of Touch ID moet vanzelf vragen, zonder rode melding.
+2. Ga naar een andere app en terug, en laat de app vergrendelen; ontgrendel met de knop voor Face ID / Touch ID.
+3. Zie je toch een melding over Face ID of Touch ID: maak een schermafbeelding en vertel wanneer hij verscheen.
+4. Mappen (uit 1.14.0): Instellingen → Kluizen → Nieuwe kluis → Een map in een clouddienst → iCloud Drive → Kiezen…; voeg een item toe, sluit de app af en open hem opnieuw.
+5. Zoals altijd: automatisch invullen in Safari, synchroniseren met je andere apparaten.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14.1
 
 - iPhone and iPad: Face ID and Touch ID no longer say "not available right
   now" when the app asks too early (while it is still coming to the front):

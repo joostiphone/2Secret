@@ -2,4 +2,5 @@ Bewaar een kluis in iCloud Drive of in een map op je iPhone, naast de syncserver
 
 - Nieuwe kluis of Verplaatsen → Een map in een clouddienst → kies de map in de Bestanden-app.
 - Een kluis die je op je Mac naar iCloud Drive hebt verplaatst: kies de map één keer, en kluizen die je er later neerzet, verschijnen vanzelf.
-- Instellingen → Kluizen → Kluis uit een map toevoegen, voor een kluis die een ander apparaat in een map bewaart.
+- Face ID en Touch ID vragen betrouwbaar bij het openen van de app, en zeggen waarom als ze niet kunnen.
+- "Kan de server niet bereiken" zegt nu waarom.

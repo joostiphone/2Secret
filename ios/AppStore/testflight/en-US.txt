@@ -1,18 +1,16 @@
-2Secret 1.14.0
+2Secret 1.14.1
 
 WHAT'S NEW
-- Vaults in folders on iPhone and iPad: keep a vault in iCloud Drive or in a folder on your iPhone (also one that Möbius Sync keeps in sync). Encrypted as always; only your devices can open it.
-- New vault (or Move…) → A folder in a cloud service → Choose… opens the Files app's folder picker.
-- A vault you moved to iCloud Drive on your Mac shows "Choose the folder" here. Choose it once; vaults you move there later then appear by themselves.
-- Settings → Vaults → Add a vault from a folder: open a vault another device keeps in a folder.
-- Google Drive, OneDrive and (often) Dropbox don't let other apps choose a folder on iPhone; a direct connection to them comes later.
+- Face ID and Touch ID: the lock screen no longer says "not available right now" when it asks while the app is still coming to the front. It waits until the app is in front and asks again once; if the automatic prompt does not work, the button stays without an error.
+- When Face ID or Touch ID really cannot be used, the message says why: locked after too many attempts, turned off or nothing enrolled, or fingerprints/face changed (then turn it on again in Settings).
+- "Could not reach the server" now says why (name not found, connection refused, certificate not trusted).
+- Still new since 1.14.0: vaults in iCloud Drive or a folder on your iPhone.
 
 PLEASE TEST
-1. Make a vault in iCloud Drive: Settings → Vaults → New vault → A folder in a cloud service → iCloud Drive → Choose… Add an item, quit and reopen the app: the vault and item should still be there.
-2. Put the same vault on your Mac: in the Mac app, Settings → Vaults → Add a vault from a folder → choose iCloud Drive/2Secret. Change an item on one device and see it arrive on the other (iCloud can take a minute).
-3. On the Mac, move a vault from the sync server to iCloud Drive. On the iPhone, open it and tap "Choose the folder"; then move a second vault there on the Mac: does it appear on the iPhone by itself?
-4. Try a folder On My iPhone, and if you use it, a Möbius Sync folder.
-5. Move a vault from a folder back to the sync server; nothing should get lost.
-6. As before: unlock with Face ID, AutoFill in Safari, the tab bar.
+1. Quit 2Secret completely and open it again, several times: Face ID or Touch ID should ask by itself, without a red message.
+2. Switch to another app and back, and let the app lock; unlock with the Face ID / Touch ID button.
+3. If you see a message about Face ID or Touch ID: take a screenshot and tell us when it appeared.
+4. Folders (from 1.14.0): Settings → Vaults → New vault → A folder in a cloud service → iCloud Drive → Choose…; add an item, quit and reopen the app.
+5. As always: AutoFill in Safari, syncing with your other devices.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

@@ -2,4 +2,5 @@ Keep a vault in iCloud Drive or in a folder on your iPhone, next to the sync ser
 
 - New vault or Move → A folder in a cloud service → choose the folder in the Files app.
 - A vault you moved to iCloud Drive on your Mac: choose the folder once, and vaults you move there later appear by themselves.
-- Settings → Vaults → Add a vault from a folder, for a vault another device keeps in a folder.
+- Face ID and Touch ID ask reliably when the app opens, and say why when they cannot be used.
+- "Could not reach the server" now says why.
