@@ -115,8 +115,11 @@ for device in "$@"; do
 
   ok=1
   echo "Starting"
-  limit 120 xcrun simctl launch "$udid" "$bundle" > /dev/null || ok=0
-  [ "$ok" = 0 ] || check "$udid" "started" || ok=0
+  # Like openurl below, simctl launch can take minutes to return on a busy
+  # runner, also once the app is up: whether 2Secret runs is what counts.
+  limit 300 xcrun simctl launch "$udid" "$bundle" > /dev/null ||
+    echo "::warning::simctl did not finish starting the app on $device"
+  check "$udid" "started" || ok=0
   if [ "$ok" = 1 ]; then
     screenshot "$udid" "$name" "$device"
     echo "Opening a link"
