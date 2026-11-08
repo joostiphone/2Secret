@@ -4,7 +4,9 @@
 
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;

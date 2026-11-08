@@ -40,14 +40,34 @@ impl Kind {
     }
 }
 
-#[cfg_attr(not(any(target_os = "macos", target_os = "ios", windows)), allow(dead_code))]
+// Windows Hello knows fewer of these than Apple's systems.
+#[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     /// The person cancelled the prompt or chose to type their password.
     Cancelled,
-    /// Not available on this device (any more), e.g. no fingers enrolled.
-    Unavailable,
+    /// The system could not ask right now: the app was not in front yet
+    /// (just started or coming back), or another prompt was showing. Asking
+    /// again a moment later works.
+    NotNow,
+    /// Not available on this device (any more), and why.
+    Unavailable(Why),
     Failed(String),
+}
+
+/// Why biometric unlock is not available.
+#[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    /// No biometry, nothing enrolled, or no device passcode.
+    Off,
+    /// Locked after too many failed attempts; unlocking the device with its
+    /// passcode turns it on again.
+    Lockout,
+    /// The device key is gone: the enrolled fingers or face changed (the
+    /// system then forgets the key), or it was removed. Biometric unlock has
+    /// to be turned on again.
+    KeyGone,
 }
 
 /// The biometric method this device offers, if any. Shows no prompt.
@@ -73,14 +93,14 @@ pub fn delete_device_key(account_id: &str) {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod imp {
-    use super::{Error, Kind};
+    use super::{Error, Kind, Why};
     use block2::RcBlock;
     use core_foundation::base::{CFType, CFTypeRef, TCFType};
     use core_foundation::string::CFString;
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_foundation::{NSError, NSString};
-    use objc2_local_authentication::{LABiometryType, LAContext, LAError, LAPolicy};
+    use objc2_local_authentication::{LABiometryType, LAContext, LAPolicy};
     use security_framework::access_control::{ProtectionMode, SecAccessControl};
     use security_framework::passwords::{
         delete_generic_password_options, generic_password, set_generic_password_options, AccessControlOptions,
@@ -93,43 +113,49 @@ mod imp {
     const SERVICE: &str = "2Secret biometric unlock";
     const POLICY: LAPolicy = LAPolicy::DeviceOwnerAuthenticationWithBiometrics;
 
-    fn kind_of(context: &LAContext) -> Option<Kind> {
-        unsafe { context.canEvaluatePolicy_error(POLICY) }.ok()?;
+    /// What a LocalAuthentication error code means here.
+    fn la_error(code: isize) -> Error {
+        match code {
+            // UserCancel, UserFallback (the person chose the password)
+            -2 | -3 => Error::Cancelled,
+            // SystemCancel, AppCancel, InvalidContext, NotInteractive (the
+            // app was not in front, or another prompt was showing)
+            -4 | -9 | -10 | -1004 => Error::NotNow,
+            // PasscodeNotSet, BiometryNotAvailable, BiometryNotEnrolled
+            -7..=-5 => Error::Unavailable(Why::Off),
+            // BiometryLockout
+            -8 => Error::Unavailable(Why::Lockout),
+            _ => Error::Failed(format!("authentication failed ({code})")),
+        }
+    }
+
+    /// The kind of biometry the context can use, or why it cannot.
+    fn kind_of(context: &LAContext) -> Result<Kind, Error> {
+        unsafe { context.canEvaluatePolicy_error(POLICY) }.map_err(|e| la_error(e.code()))?;
         match unsafe { context.biometryType() } {
-            LABiometryType::TouchID => Some(Kind::TouchId),
-            LABiometryType::FaceID => Some(Kind::FaceId),
-            LABiometryType::OpticID => Some(Kind::OpticId),
-            _ => None,
+            LABiometryType::TouchID => Ok(Kind::TouchId),
+            LABiometryType::FaceID => Ok(Kind::FaceId),
+            LABiometryType::OpticID => Ok(Kind::OpticId),
+            _ => Err(Error::Unavailable(Why::Off)),
         }
     }
 
     pub fn available() -> Option<Kind> {
         let context = unsafe { LAContext::new() };
-        kind_of(&context)
+        kind_of(&context).ok()
     }
 
     /// Show the biometric prompt; on success the returned context counts as
     /// authenticated for the keychain read that follows.
     fn authenticate(reason: &str) -> Result<Retained<LAContext>, Error> {
         let context = unsafe { LAContext::new() };
-        if kind_of(&context).is_none() {
-            return Err(Error::Unavailable);
-        }
+        kind_of(&context)?;
         let (tx, rx) = std::sync::mpsc::channel::<Result<(), Error>>();
         let reply = RcBlock::new(move |success: Bool, error: *mut NSError| {
             let result = if success.as_bool() {
                 Ok(())
             } else {
-                let code = unsafe { error.as_ref() }.map(|e| e.code()).unwrap_or(0);
-                match LAError(code) {
-                    LAError::UserCancel | LAError::AppCancel | LAError::SystemCancel | LAError::UserFallback => {
-                        Err(Error::Cancelled)
-                    }
-                    LAError::BiometryNotAvailable | LAError::BiometryNotEnrolled | LAError::BiometryLockout => {
-                        Err(Error::Unavailable)
-                    }
-                    _ => Err(Error::Failed(format!("authentication failed ({code})"))),
-                }
+                Err(la_error(unsafe { error.as_ref() }.map(|e| e.code()).unwrap_or(0)))
             };
             let _ = tx.send(result);
         });
@@ -166,8 +192,9 @@ mod imp {
 
     fn keychain_error(e: security_framework::base::Error) -> Error {
         match e.code() {
-            -25300 => Error::Unavailable, // errSecItemNotFound
-            -128 => Error::Cancelled,     // errSecUserCanceled
+            -25300 => Error::Unavailable(Why::KeyGone), // errSecItemNotFound
+            -128 => Error::Cancelled,                   // errSecUserCanceled
+            -25308 => Error::NotNow,                    // errSecInteractionNotAllowed
             _ => Error::Failed(format!("keychain: {e}")),
         }
     }
@@ -197,7 +224,7 @@ mod imp {
             Err(e) if e.code() == -25300 => move_from_login_keychain(account_id)?,
             Err(e) => return Err(keychain_error(e)),
         };
-        let key = SymmetricKey::from_slice(&bytes).map_err(|_| Error::Unavailable);
+        let key = SymmetricKey::from_slice(&bytes).map_err(|_| Error::Unavailable(Why::KeyGone));
         drop(context);
         key
     }
@@ -221,7 +248,7 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use super::{Error, Kind};
+    use super::{Error, Kind, Why};
     use twosecret_core::crypto::{hkdf32, SymmetricKey};
     use windows::core::{w, Array, HSTRING, PCWSTR};
     use windows::Security::Credentials::{
@@ -280,7 +307,7 @@ mod imp {
         match status {
             KeyCredentialStatus::Success => Ok(()),
             KeyCredentialStatus::UserCanceled | KeyCredentialStatus::UserPrefersPassword => Err(Error::Cancelled),
-            KeyCredentialStatus::NotFound => Err(Error::Unavailable),
+            KeyCredentialStatus::NotFound => Err(Error::Unavailable(Why::KeyGone)),
             other => Err(Error::Failed(format!("Windows Hello: status {}", other.0))),
         }
     }
@@ -331,7 +358,7 @@ mod imp {
 
 #[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
 mod imp {
-    use super::{Error, Kind};
+    use super::{Error, Kind, Why};
     use twosecret_core::crypto::SymmetricKey;
 
     pub fn available() -> Option<Kind> {
@@ -339,11 +366,11 @@ mod imp {
     }
 
     pub fn create_device_key(_account_id: &str, _reason: &str) -> Result<SymmetricKey, Error> {
-        Err(Error::Unavailable)
+        Err(Error::Unavailable(Why::Off))
     }
 
     pub fn device_key(_account_id: &str, _reason: &str) -> Result<SymmetricKey, Error> {
-        Err(Error::Unavailable)
+        Err(Error::Unavailable(Why::Off))
     }
 
     pub fn delete_device_key(_account_id: &str) {}

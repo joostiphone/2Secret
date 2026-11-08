@@ -48,3 +48,18 @@ pub fn follow_theme(theme: &str) {
         }
     }
 }
+
+/// Whether the app is in front and active: not still starting or coming
+/// back, when iOS does not let it show the Face ID or Touch ID prompt.
+pub fn app_active() -> bool {
+    let Some(class) = objc2::runtime::AnyClass::get(c"UIApplication") else { return true };
+    unsafe {
+        let app: *mut AnyObject = msg_send![class, sharedApplication];
+        if app.is_null() {
+            return true;
+        }
+        // UIApplicationStateActive
+        let state: isize = msg_send![app, applicationState];
+        state == 0
+    }
+}

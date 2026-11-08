@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- iPhone and iPad: Face ID and Touch ID no longer say "not available right
+  now" when the app asks too early (while it is still coming to the front):
+  it waits until it is in front and asks again once. The messages say why
+  it is not available (locked after too many attempts; set up anew after
+  fingerprints or a face changed, which turns biometric unlock off until it
+  is turned on again).
+- "Could not reach the server" says why: the name was not found, the
+  connection was refused or timed out, or the certificate was not trusted.
+
 ## 1.14.0
 
 - **Vaults in folders on iPhone, iPad and Android**, through the system's

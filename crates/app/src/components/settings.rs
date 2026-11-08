@@ -660,7 +660,13 @@ fn BiometricRow() -> Element {
                     toast(&with_kind(t("settings.biometric_on"), kind));
                 }
                 Err(biometric::Error::Cancelled) => {}
-                Err(biometric::Error::Unavailable) => toast_err(&with_kind(t("settings.biometric_unavailable"), kind)),
+                Err(biometric::Error::NotNow) => toast_err(&with_kind(t("lock.biometric_not_now"), kind)),
+                Err(biometric::Error::Unavailable(biometric::Why::Lockout)) => {
+                    toast_err(&with_kind(t("lock.biometric_lockout"), kind))
+                }
+                Err(biometric::Error::Unavailable(_)) => {
+                    toast_err(&with_kind(t("settings.biometric_unavailable"), kind))
+                }
                 Err(biometric::Error::Failed(msg)) => toast_err(&msg),
             }
         });

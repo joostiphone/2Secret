@@ -193,7 +193,10 @@ static TABLE: &[Entry] = &[
     ("lock.biometric", "Unlock with {kind}", "Ontgrendelen met {kind}"),
     ("lock.biometric_reason", "unlock your vault", "je kluis ontgrendelen"),
     ("lock.biometric_password_needed", "Enter your master password. 2Secret asks for it every 14 days, so you will not forget it.", "Vul je hoofdwachtwoord in. 2Secret vraagt er elke 14 dagen om, zodat je het niet vergeet."),
-    ("lock.biometric_unavailable", "{kind} is not available right now. Enter your master password.", "{kind} is nu niet beschikbaar. Vul je hoofdwachtwoord in."),
+    ("lock.biometric_unavailable", "{kind} is not available on this device right now (turned off, or nothing enrolled). Enter your master password.", "{kind} is nu niet beschikbaar op dit apparaat (uitgezet, of niets ingesteld). Vul je hoofdwachtwoord in."),
+    ("lock.biometric_lockout", "{kind} is locked after too many attempts. Enter your master password; once you unlock the device with its passcode, {kind} works again.", "{kind} is geblokkeerd na te veel pogingen. Vul je hoofdwachtwoord in; als je het apparaat met je toegangscode ontgrendelt, werkt {kind} weer."),
+    ("lock.biometric_gone", "{kind} was set up anew on this device (fingerprints or face changed), so 2Secret has to ask for your master password. Turn {kind} on again afterwards in Settings.", "{kind} is op dit apparaat opnieuw ingesteld (vingerafdrukken of gezicht gewijzigd), dus vraagt 2Secret je hoofdwachtwoord. Zet {kind} daarna weer aan in Instellingen."),
+    ("lock.biometric_not_now", "{kind} could not be asked just now. Try again.", "{kind} kon zojuist niet worden gevraagd. Probeer het nog eens."),
     ("reauth.explain", "Your session on the sync server has ended. Enter your master password to sign in again.", "Je sessie op de synchronisatieserver is beëindigd. Vul je hoofdwachtwoord in om opnieuw in te loggen."),
 
     // Busy messages

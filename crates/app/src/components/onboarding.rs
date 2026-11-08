@@ -333,6 +333,25 @@ pub fn offer_biometric_again() {
     BIOMETRIC_PROMPTED.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Wait until the app is in front and active (iPhone, iPad: at most a few
+/// seconds), so the system lets it show the Face ID or Touch ID prompt.
+async fn wait_until_in_front() {
+    #[cfg(all(target_os = "ios", feature = "mobile"))]
+    {
+        if crate::ios_view::app_active() {
+            return;
+        }
+        for _ in 0..40 {
+            platform::sleep_ms(100).await;
+            if crate::ios_view::app_active() {
+                // Settled: the window takes a moment to be the key window.
+                platform::sleep_ms(250).await;
+                return;
+            }
+        }
+    }
+}
+
 /// On the screens for adding a profile: back to the other one.
 #[component]
 fn BackToProfile() -> Element {
@@ -369,15 +388,33 @@ pub fn LockScreen() -> Element {
     let password_needed = bio_config.as_ref().is_some_and(|c| c.password_required());
     let bio_ready = bio_kind.filter(|_| !password_needed);
 
-    let mut unlock_biometric = move || {
+    // Biometric unlock was turned off here (its key turned out to be gone).
+    let mut bio_off = use_signal(|| false);
+    let bio_ready = bio_ready.filter(|_| !bio_off());
+
+    // `asked`: the person pressed the button (else the lock screen asked by
+    // itself when the app started).
+    let mut unlock_biometric = move |asked: bool| {
         let (Some(kind), Some(profile), Some(config)) = (bio_ready, load_profile(), biometric_unlock()) else {
             return;
         };
         error.set(None);
         spawn(async move {
             let reason = t("lock.biometric_reason").to_string();
-            let account_id = config.account_id.clone();
-            let device_key = platform::run_heavy(move || biometric::device_key(&account_id, &reason)).await;
+            // The system may refuse while the app is still coming to the
+            // front: ask once more a moment later.
+            let mut again = true;
+            let device_key = loop {
+                wait_until_in_front().await;
+                let (id, why) = (config.account_id.clone(), reason.clone());
+                match platform::run_heavy(move || biometric::device_key(&id, &why)).await {
+                    Err(biometric::Error::NotNow) if again => {
+                        again = false;
+                        platform::sleep_ms(700).await;
+                    }
+                    other => break other,
+                }
+            };
             let result = match device_key {
                 Ok(key) => platform::run_heavy(move || {
                     config.account_key(&key).and_then(|ak| Session::open_with_account_key(profile, ak))
@@ -385,7 +422,20 @@ pub fn LockScreen() -> Element {
                 .await
                 .map_err(|e| core_error(&e)),
                 Err(biometric::Error::Cancelled) => return,
-                Err(biometric::Error::Unavailable) => Err(with_kind(t("lock.biometric_unavailable"), kind)),
+                // Not asked for: the button stays.
+                Err(biometric::Error::NotNow) if !asked => return,
+                Err(biometric::Error::NotNow) => Err(with_kind(t("lock.biometric_not_now"), kind)),
+                Err(biometric::Error::Unavailable(biometric::Why::Lockout)) => {
+                    Err(with_kind(t("lock.biometric_lockout"), kind))
+                }
+                Err(biometric::Error::Unavailable(biometric::Why::KeyGone)) => {
+                    disable_biometric_unlock();
+                    bio_off.set(true);
+                    Err(with_kind(t("lock.biometric_gone"), kind))
+                }
+                Err(biometric::Error::Unavailable(biometric::Why::Off)) => {
+                    Err(with_kind(t("lock.biometric_unavailable"), kind))
+                }
                 Err(biometric::Error::Failed(msg)) => Err(msg),
             };
             match result {
@@ -396,7 +446,7 @@ pub fn LockScreen() -> Element {
     };
     use_hook(move || {
         if bio_ready.is_some() && !BIOMETRIC_PROMPTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            unlock_biometric();
+            unlock_biometric(false);
         }
     });
     let (name, email) = profile.as_ref().map(|p| (p.account.name.clone(), p.account.email.clone())).unwrap_or_default();
@@ -456,7 +506,7 @@ pub fn LockScreen() -> Element {
                     div { class: "info-box small", {t("lock.biometric_password_needed")} }
                 }
                 if let Some(kind) = bio_ready {
-                    button { class: "btn block", style: "margin-bottom:16px", onclick: move |_| unlock_biometric(),
+                    button { class: "btn block", style: "margin-bottom:16px", onclick: move |_| unlock_biometric(true),
                         Icon { name: "shield", size: 16 }
                         {with_kind(t("lock.biometric"), kind)}
                     }
