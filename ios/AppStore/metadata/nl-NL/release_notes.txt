@@ -1,6 +1,15 @@
-Bewaar een kluis in iCloud Drive of in een map op je iPhone, naast de syncserver en WebDAV. Altijd end-to-end versleuteld: alleen je eigen apparaten kunnen hem openen.
+Kies per kluis waar hij staat, nu ook met iCloud Drive en je eigen server. Alles blijft end-to-end versleuteld: alleen je eigen apparaten kunnen je kluizen openen.
 
-- Nieuwe kluis of Verplaatsen → Een map in een clouddienst → kies de map in de Bestanden-app.
-- Een kluis die je op je Mac naar iCloud Drive hebt verplaatst: kies de map één keer, en kluizen die je er later neerzet, verschijnen vanzelf.
+Nieuw sinds versie 1.12.1:
+
+- Kies per kluis waar hij staat: op de syncserver, alleen op dit apparaat, in iCloud Drive of in een map op je iPhone of iPad (ook een map die Möbius Sync synchroniseert), of op een WebDAV-server zoals Nextcloud, ownCloud of een Synology- of QNAP-NAS.
+- Verhuis een kluis wanneer je wilt: druk er lang op, of Instellingen → Kluizen → Verplaatsen. Alles wordt eerst gekopieerd en gecontroleerd voordat de oude plek wordt leeggemaakt.
+- Je andere apparaten volgen vanzelf: een kluis die naar een WebDAV-server verhuist, verschijnt vanzelf. Voor een kluis die je Mac naar iCloud Drive heeft verplaatst, kies je één keer de map; kluizen die je er later neerzet, verschijnen vanzelf.
+- Voeg een kluis toe die een ander apparaat in een map of op een WebDAV-server bewaart (Instellingen → Kluizen).
+- Schuif met je vinger over de tabbalk om van Home naar Items naar Watchtower te gaan.
+- Een levendigere Watchtower-cirkel, met een schaal die laat zien waar je beveiligingsscore staat.
 - Face ID en Touch ID vragen betrouwbaar bij het openen van de app en bij automatisch invullen, en zeggen waarom als ze niet kunnen.
+- Automatisch invullen stopt niet meer bij "keychain error -25308". Kan Face ID of Touch ID even niet worden gevraagd, tik dan op Probeer opnieuw.
 - "Kan de server niet bereiken" zegt nu waarom.
+
+De apps van Dropbox, Google Drive en OneDrive laten andere apps op iPhone en iPad geen map kiezen; een directe koppeling met die diensten staat op de planning.

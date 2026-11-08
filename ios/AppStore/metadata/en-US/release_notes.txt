@@ -1,6 +1,15 @@
-Keep a vault in iCloud Drive or in a folder on your iPhone, next to the sync server and WebDAV. Always end-to-end encrypted: only your own devices can open it.
+Choose where each vault is kept, now also with iCloud Drive and your own server. Everything stays end-to-end encrypted: only your own devices can open your vaults.
 
-- New vault or Move → A folder in a cloud service → choose the folder in the Files app.
-- A vault you moved to iCloud Drive on your Mac: choose the folder once, and vaults you move there later appear by themselves.
+New since version 1.12.1:
+
+- Choose per vault where it is kept: on the sync server, only on this device, in iCloud Drive or a folder on your iPhone or iPad (also one that Möbius Sync keeps in sync), or on a WebDAV server such as Nextcloud, ownCloud or a Synology or QNAP NAS.
+- Move a vault at any time: long-press it, or Settings → Vaults → Move. Everything is copied and checked before the old place is cleared.
+- Your other devices follow: a vault moved to a WebDAV server appears by itself. For a vault your Mac moved to iCloud Drive, choose the folder once; vaults moved there later appear by themselves.
+- Add a vault that another device keeps in a folder or on a WebDAV server (Settings → Vaults).
+- Slide a finger along the tab bar to go from Home to Items to Watchtower.
+- A livelier Watchtower ring, with a scale that shows where your security score is.
 - Face ID and Touch ID ask reliably when the app opens and when AutoFill fills a password, and say why when they cannot be used.
+- AutoFill no longer stops at "keychain error -25308". If Face ID or Touch ID cannot be asked, tap Try again.
 - "Could not reach the server" now says why.
+
+The Dropbox, Google Drive and OneDrive apps do not let other apps choose a folder on iPhone and iPad; a direct connection to those services is planned.
