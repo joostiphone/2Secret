@@ -1,16 +1,14 @@
-2Secret 1.14.1
+2Secret 1.14.2
 
 WHAT'S NEW
-- Face ID and Touch ID: the lock screen no longer says "not available right now" when it asks while the app is still coming to the front. It waits until the app is in front and asks again once; if the automatic prompt does not work, the button stays without an error.
-- When Face ID or Touch ID really cannot be used, the message says why: locked after too many attempts, turned off or nothing enrolled, or fingerprints/face changed (then turn it on again in Settings).
-- "Could not reach the server" now says why (name not found, connection refused, certificate not trusted).
-- Still new since 1.14.0: vaults in iCloud Drive or a folder on your iPhone.
+- AutoFill in Safari and other apps no longer stops at "keychain error -25308". The 2Secret panel asked for Face ID or Touch ID before it was on screen, which iOS refuses. It now waits until the panel is shown, asks once more by itself if needed, and otherwise shows "Face ID or Touch ID could not be asked just now" with a Try again button.
+- Still new since 1.14.1: Face ID and Touch ID in the app ask reliably when it opens. Since 1.14.0: vaults in iCloud Drive or in a folder on your iPhone.
 
 PLEASE TEST
-1. Quit 2Secret completely and open it again, several times: Face ID or Touch ID should ask by itself, without a red message.
-2. Switch to another app and back, and let the app lock; unlock with the Face ID / Touch ID button.
-3. If you see a message about Face ID or Touch ID: take a screenshot and tell us when it appeared.
-4. Folders (from 1.14.0): Settings → Vaults → New vault → A folder in a cloud service → iCloud Drive → Choose…; add an item, quit and reopen the app.
-5. As always: AutoFill in Safari, syncing with your other devices.
+1. In Safari, open a site where you have a login (for example google.com), tap the username field and choose 2Secret above the keyboard or from the key icon. Face ID or Touch ID should ask, and the login should fill in.
+2. Do this several times, also right after opening Safari and after unlocking the phone.
+3. If a message appears in the 2Secret panel: take a screenshot, tap Try again, and tell us whether it then worked.
+4. Fill a passkey and a verification code if you use them.
+5. As always: opening the app with Face ID or Touch ID, syncing with your other devices.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

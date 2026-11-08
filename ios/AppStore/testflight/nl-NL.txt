@@ -1,16 +1,14 @@
-2Secret 1.14.1
+2Secret 1.14.2
 
 WAT IS ER NIEUW
-- Face ID en Touch ID: het vergrendelscherm zegt niet meer "nu niet beschikbaar" als het vraagt terwijl de app nog naar voren komt. Het wacht tot de app vooraan staat en vraagt zo nodig nog één keer; lukt de automatische vraag niet, dan blijft de knop staan zonder foutmelding.
-- Kan Face ID of Touch ID echt niet, dan zegt de melding waarom: geblokkeerd na te veel pogingen, uitgezet of niets ingesteld, of vingerafdrukken/gezicht gewijzigd (zet het dan opnieuw aan in Instellingen).
-- "Kan de server niet bereiken" zegt nu waarom (naam niet gevonden, verbinding geweigerd, certificaat niet vertrouwd).
-- Nog steeds nieuw sinds 1.14.0: kluizen in iCloud Drive of in een map op je iPhone.
+- Automatisch invullen in Safari en andere apps stopt niet meer bij "keychain error -25308". Het 2Secret-paneel vroeg om Face ID of Touch ID voordat het op het scherm stond, en dat weigert iOS. Het wacht nu tot het paneel zichtbaar is, vraagt zo nodig zelf nog één keer, en toont anders "Face ID of Touch ID kon zojuist niet worden gevraagd" met de knop Probeer opnieuw.
+- Nog steeds nieuw sinds 1.14.1: Face ID en Touch ID vragen betrouwbaar bij het openen van de app. Sinds 1.14.0: kluizen in iCloud Drive of in een map op je iPhone.
 
 TEST ALSJEBLIEFT
-1. Sluit 2Secret helemaal af en open hem opnieuw, een paar keer: Face ID of Touch ID moet vanzelf vragen, zonder rode melding.
-2. Ga naar een andere app en terug, en laat de app vergrendelen; ontgrendel met de knop voor Face ID / Touch ID.
-3. Zie je toch een melding over Face ID of Touch ID: maak een schermafbeelding en vertel wanneer hij verscheen.
-4. Mappen (uit 1.14.0): Instellingen → Kluizen → Nieuwe kluis → Een map in een clouddienst → iCloud Drive → Kiezen…; voeg een item toe, sluit de app af en open hem opnieuw.
-5. Zoals altijd: automatisch invullen in Safari, synchroniseren met je andere apparaten.
+1. Open in Safari een site waarvoor je een login hebt (bijvoorbeeld google.com), tik op het veld voor de gebruikersnaam en kies 2Secret boven het toetsenbord of via het sleutelicoon. Face ID of Touch ID moet vragen, en de login moet worden ingevuld.
+2. Doe dit een paar keer, ook direct na het openen van Safari en na het ontgrendelen van de telefoon.
+3. Verschijnt er een melding in het 2Secret-paneel: maak een schermafbeelding, tik op Probeer opnieuw, en vertel of het daarna lukte.
+4. Vul een passkey en een verificatiecode in als je die gebruikt.
+5. Zoals altijd: de app openen met Face ID of Touch ID, synchroniseren met je andere apparaten.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

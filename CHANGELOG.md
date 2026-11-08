@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.14.2
 
 - iPhone and iPad AutoFill: filling no longer stops at "keychain error
   -25308". The panel asked for Face ID or Touch ID before it was on screen,
