@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Server: SQLite 3.54.1 (rusqlite 0.41). Older SQLite could return stale
+  memory when it opened a database together with a crafted `-wal` file
+  (RUSTSEC-2026-0459, CVE-2026-119375). The server only opens its own
+  database, which no one else writes, so it was not exposed; the update
+  keeps it that way. Building 2Secret now needs Rust 1.89 or newer.
+
 ## 1.14.2
 
 - iPhone and iPad AutoFill: filling no longer stops at "keychain error

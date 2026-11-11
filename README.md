@@ -162,7 +162,7 @@ vulnerability? Please follow [SECURITY.md](SECURITY.md).
 
 ## Building from source
 
-Requirements: Rust 1.85+ (`rustup`), and for GUI builds the
+Requirements: Rust 1.89+ (`rustup`), and for GUI builds the
 [Dioxus CLI](https://dioxuslabs.com/learn/0.7/getting_started) `dx` 0.7.
 
 ```sh
