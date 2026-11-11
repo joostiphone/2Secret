@@ -21,7 +21,7 @@ use twosecret_core::util::{new_id, now};
 
 use crate::auth::Auth;
 use crate::error::{ApiError, ApiResult};
-use crate::routes::valid_id;
+use crate::routes::{check_quota, valid_id, valid_wrapped_key, wrapped_key_len};
 use crate::{db, AppState};
 
 /// People one account can trust at a time.
@@ -165,12 +165,26 @@ async fn overview(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<E
 /// Store vault keys sealed to the contact of arrangement `id`: only of vaults
 /// the trusting account owns, and of their current generation. When the
 /// contact already opened the vaults, a vault added later opens too.
-fn store_keys(conn: &Connection, id: &str, c: &Contact, keys: &[EmergencyKey]) -> ApiResult<()> {
+fn store_keys(conn: &Connection, quota: Option<u64>, id: &str, c: &Contact, keys: &[EmergencyKey]) -> ApiResult<()> {
+    // They take room on the server, so they count for the trusting account.
+    let mut growth = 0;
     for key in keys {
         valid_id(&key.vault_id)?;
         if !key.wrapped_key.is_sealed() {
             return Err(ApiError::bad_request("emergency keys must be sealed to the contact's public key"));
         }
+        valid_wrapped_key(&key.wrapped_key)?;
+        let old: Option<i64> = conn
+            .query_row(
+                "SELECT LENGTH(wrapped_key) FROM emergency_keys WHERE contact_id = ?1 AND vault_id = ?2",
+                params![id, key.vault_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        growth += wrapped_key_len(&key.wrapped_key)? - old.unwrap_or(-db::ROW_BYTES);
+    }
+    check_quota(conn, quota, &c.grantor_id, growth)?;
+    for key in keys {
         let owner = db::membership(conn, &key.vault_id, &c.grantor_id)?.is_some_and(|m| m.role == Role::Owner);
         if !owner {
             return Err(ApiError::forbidden("only the keys of vaults you own can be given"));
@@ -251,6 +265,7 @@ async fn add(
     }
     let id = new_id();
     let response = AddEmergencyContactResponse { id: id.clone() };
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |conn| {
@@ -275,7 +290,7 @@ async fn add(
                 return Err(ApiError::conflict("this person already is an emergency contact"));
             }
             let c = as_grantor(&tx, &id, &auth.account_id)?;
-            store_keys(&tx, &id, &c, &req.keys)?;
+            store_keys(&tx, quota, &id, &c, &req.keys)?;
             tx.commit()?;
             Ok(())
         })
@@ -289,12 +304,13 @@ async fn set_keys(
     Path(id): Path<String>,
     Json(req): Json<EmergencyKeysRequest>,
 ) -> ApiResult<StatusCode> {
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |conn| {
             let tx = conn.transaction()?;
             let c = as_grantor(&tx, &id, &auth.account_id)?;
-            store_keys(&tx, &id, &c, &req.keys)?;
+            store_keys(&tx, quota, &id, &c, &req.keys)?;
             tx.commit()?;
             Ok(())
         })

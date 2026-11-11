@@ -6,10 +6,12 @@ use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use twosecret_core::api::*;
-use twosecret_core::crypto::{constant_time_eq, hkdf32, EncString, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey};
+use twosecret_core::crypto::{
+    constant_time_eq, hkdf32, EncString, EncryptedKeyset, KdfParams, PqPublicKey, PublicKey, WrappedKey,
+};
 use twosecret_core::profile::Role;
 use twosecret_core::util::{b64, normalize_email, now};
 
@@ -160,8 +162,31 @@ const MAX_OWNED_VAULTS: u64 = 1000;
 /// Encrypted vault metadata (name, description, icon).
 const MAX_VAULT_META: usize = 64 * 1024;
 
+/// A wrapped vault key must look like one: a "key" of megabytes would go
+/// around the storage limit and slow down every member's vault list.
+pub(crate) fn valid_wrapped_key(key: &WrappedKey) -> ApiResult<()> {
+    if key.is_well_formed() {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request("invalid vault key"))
+    }
+}
+
+/// Bytes a wrapped key takes in the database.
+pub(crate) fn wrapped_key_len(key: &WrappedKey) -> ApiResult<i64> {
+    Ok(serde_json::to_string(key)?.len() as i64)
+}
+
+fn valid_keyset(keyset: &EncryptedKeyset) -> ApiResult<()> {
+    if keyset.is_well_formed() {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request("invalid keyset"))
+    }
+}
+
 /// Refuse a write that would take the owner's storage over the limit.
-fn check_quota(conn: &rusqlite::Connection, quota: Option<u64>, owner: &str, growth: i64) -> ApiResult<()> {
+pub(crate) fn check_quota(conn: &rusqlite::Connection, quota: Option<u64>, owner: &str, growth: i64) -> ApiResult<()> {
     match quota {
         Some(q) if growth > 0 && db::storage_used(conn, owner)?.saturating_add(growth as u64) > q => {
             Err(ApiError::storage_full(q))
@@ -233,6 +258,7 @@ async fn register(
     let auth_key = decode_auth_key(&req.auth_key)?;
     PublicKey::from_b64(&req.keyset.public_key).map_err(|_| ApiError::bad_request("invalid public key"))?;
     valid_pq_key(req.keyset.pq_public_key.as_deref())?;
+    valid_keyset(&req.keyset)?;
     let name = clean_name(&req.name);
 
     // The cheap refusals first: hashing is what costs the server.
@@ -355,6 +381,7 @@ async fn login(
                 ts,
                 ts + session_days * 86_400,
             )?;
+            db::trim_sessions(conn, &account_id)?;
             Ok(db::avatar(conn, &account_id)?)
         })
         .await?;
@@ -440,6 +467,7 @@ async fn change_password(
     valid_salt(&req.salt)?;
     valid_kdf(&req.kdf)?;
     valid_pq_key(req.keyset.pq_public_key.as_deref())?;
+    valid_keyset(&req.keyset)?;
     let new_key = decode_auth_key(&req.new_auth_key)?;
     let auth_hash = hash_job(&state, move || hash_auth_key(&new_key)).await??;
     let mut new_ks = req.keyset.clone();
@@ -572,7 +600,16 @@ async fn set_avatar(
         return Err(ApiError::bad_request("the photo is too large"));
     }
     let avatar = req.avatar.map(|a| a.to_string());
-    state.db.run(move |c| Ok(db::set_avatar(c, &auth.account_id, avatar.as_deref(), now())?)).await?;
+    let quota = state.config.account_quota_bytes;
+    state
+        .db
+        .run(move |c| {
+            let old = db::avatar(c, &auth.account_id)?.map_or(0, |a| a.len() as i64);
+            let new = avatar.as_ref().map_or(0, |a| a.len() as i64);
+            check_quota(c, quota, &auth.account_id, new - old)?;
+            Ok(db::set_avatar(c, &auth.account_id, avatar.as_deref(), now())?)
+        })
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -624,6 +661,8 @@ async fn create_vault(
     if req.meta.len() > MAX_VAULT_META || !valid_enc(&req.meta) {
         return Err(ApiError::bad_request("invalid vault metadata"));
     }
+    valid_wrapped_key(&req.wrapped_key)?;
+    let growth = req.meta.len() as i64 + wrapped_key_len(&req.wrapped_key)? + 2 * db::ROW_BYTES;
     let quota = state.config.account_quota_bytes;
     let dto = state
         .db
@@ -645,7 +684,7 @@ async fn create_vault(
             if db::owned_vaults(&tx, &auth.account_id)? >= MAX_OWNED_VAULTS {
                 return Err(ApiError::forbidden("too many vaults"));
             }
-            check_quota(&tx, quota, &auth.account_id, req.meta.len() as i64)?;
+            check_quota(&tx, quota, &auth.account_id, growth)?;
             let ts = now();
             tx.execute(
                 "INSERT INTO vaults (id, owner_id, meta, revision, created_at, updated_at) VALUES (?1, ?2, ?3, 0, ?4, ?4)",
@@ -771,10 +810,13 @@ async fn add_member(
     if !req.wrapped_key.is_sealed() {
         return Err(ApiError::bad_request("shared vault keys must be sealed to the member's public key"));
     }
+    valid_wrapped_key(&req.wrapped_key)?;
+    let key_len = wrapped_key_len(&req.wrapped_key)?;
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |c| {
-            require_role(c, &id, &auth.account_id, Role::Manager)?;
+            let m = require_role(c, &id, &auth.account_id, Role::Manager)?;
             require_key_rev(c, &id, req.key_rev)?;
             if db::account_by_id(c, &req.account_id)?.is_none() {
                 return Err(ApiError::not_found("account not found"));
@@ -784,6 +826,14 @@ async fn add_member(
                     return Err(ApiError::bad_request("the owner already has access"));
                 }
             }
+            let old: Option<i64> = c
+                .query_row(
+                    "SELECT LENGTH(wrapped_key) FROM vault_members WHERE vault_id = ?1 AND account_id = ?2",
+                    params![id, req.account_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            check_quota(c, quota, &m.owner_id, key_len - old.map_or(-db::ROW_BYTES, |o| o))?;
             c.execute(
                 "INSERT INTO vault_members (vault_id, account_id, role, wrapped_key, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
@@ -809,11 +859,20 @@ async fn set_own_vault_key(
     if req.wrapped_key.is_sealed() {
         return Err(ApiError::bad_request("a vault key can only be rewrapped with your own account key"));
     }
+    valid_wrapped_key(&req.wrapped_key)?;
+    let key_len = wrapped_key_len(&req.wrapped_key)?;
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |c| {
-            require_role(c, &id, &auth.account_id, Role::Viewer)?;
+            let m = require_role(c, &id, &auth.account_id, Role::Viewer)?;
             require_key_rev(c, &id, req.key_rev)?;
+            let old: i64 = c.query_row(
+                "SELECT LENGTH(wrapped_key) FROM vault_members WHERE vault_id = ?1 AND account_id = ?2",
+                params![id, auth.account_id],
+                |r| r.get(0),
+            )?;
+            check_quota(c, quota, &m.owner_id, key_len - old)?;
             let updated = c.execute(
                 "UPDATE vault_members SET wrapped_key = ?1 WHERE vault_id = ?2 AND account_id = ?3",
                 params![serde_json::to_string(&req.wrapped_key)?, id, auth.account_id],
@@ -843,11 +902,15 @@ async fn rotate_vault_key(
     if req.meta.len() > MAX_VAULT_META || !valid_enc(&req.meta) {
         return Err(ApiError::bad_request("invalid vault metadata"));
     }
+    for m in &req.members {
+        valid_wrapped_key(&m.wrapped_key)?;
+    }
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |conn| {
             let tx = conn.transaction()?;
-            require_role(&tx, &id, &auth.account_id, Role::Manager)?;
+            let membership = require_role(&tx, &id, &auth.account_id, Role::Manager)?;
             if db::key_rev(&tx, &id)? != req.key_rev {
                 return Err(ApiError::conflict("the vault key was replaced meanwhile; sync and try again"));
             }
@@ -874,6 +937,20 @@ async fn rotate_vault_key(
             if sent.len() != req.items.len() || sent != items {
                 return Err(ApiError::conflict("the items of this vault changed; sync and try again"));
             }
+
+            // The new ciphertexts may be larger than the old ones.
+            let old: i64 = tx.query_row(
+                "SELECT COALESCE((SELECT SUM(LENGTH(data)) FROM items WHERE vault_id = ?1), 0)
+                      + (SELECT LENGTH(meta) FROM vaults WHERE id = ?1)
+                      + COALESCE((SELECT SUM(LENGTH(wrapped_key)) FROM vault_members WHERE vault_id = ?1), 0)",
+                [&id],
+                |r| r.get(0),
+            )?;
+            let mut new = req.meta.len() as i64 + req.items.iter().map(|i| i.data.len() as i64).sum::<i64>();
+            for m in &req.members {
+                new += wrapped_key_len(&m.wrapped_key)?;
+            }
+            check_quota(&tx, quota, &membership.owner_id, new - old)?;
 
             let mut revision: i64 = tx.query_row("SELECT revision FROM vaults WHERE id = ?1", [&id], |r| r.get(0))?;
             let at = now();
@@ -1011,8 +1088,14 @@ async fn sync(
                             continue;
                         }
                         if let Some(q) = quota {
-                            let old = current.as_ref().and_then(|c| c.data.as_ref()).map_or(0, |d| d.len() as u64);
-                            let new = change.data.as_ref().map_or(0, |d| d.len() as u64);
+                            // A new row costs its overhead too, also when it
+                            // only records a deletion.
+                            let old = match &current {
+                                Some(c) => c.data.as_ref().map_or(0, |d| d.len() as u64),
+                                None => 0,
+                            };
+                            let row = if current.is_none() { db::ROW_BYTES as u64 } else { 0 };
+                            let new = change.data.as_ref().map_or(0, |d| d.len() as u64) + row;
                             let owner_used = match used.get_mut(&vault.owner_id) {
                                 Some(u) => u,
                                 None => used

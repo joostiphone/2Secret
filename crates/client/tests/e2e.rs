@@ -386,6 +386,71 @@ async fn limits_for_a_public_server() {
 }
 
 #[tokio::test]
+async fn the_storage_limit_cannot_be_gone_around() {
+    use twosecret_core::api::{CreateShareRequest, CreateVaultRequest};
+    use twosecret_core::crypto::{encrypt, SymmetricKey};
+    let url = start_server(Config { account_quota_bytes: Some(1_000_000), ..Config::default() }).await;
+    let (mut s, _) = client::signup(&url, "Q", "q@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let vault = s.default_vault_id().unwrap();
+    client::sync(&mut s).await.unwrap();
+    let api = Client::new(&url).with_token(s.server_token().unwrap());
+    let meta = api.vaults().await.unwrap()[0].meta.clone();
+    let used = || async { api.account().await.unwrap().storage_used.unwrap() };
+    let start = used().await;
+    assert!(start > 0, "the vault itself takes room");
+
+    // A "vault key" of half a megabyte is no key: refused, whatever the room.
+    let huge = encrypt(&SymmetricKey::generate(), &vec![0u8; 500_000], b"x");
+    let req = CreateVaultRequest {
+        id: twosecret_core::util::new_id(),
+        meta: meta.clone(),
+        wrapped_key: WrappedKey::Symmetric { ct: huge },
+    };
+    assert_eq!(api.create_vault(&req).await.unwrap_err().status(), Some(400));
+    assert_eq!(used().await, start);
+
+    // Deleted items keep a row on the server: they count too, so creating
+    // and deleting small items cannot fill the disk for free.
+    let items: Vec<String> = (0..20).map(|n| s.add_item(&vault, Item::new(Category::Login, &format!("Tiny {n}"))).unwrap()).collect();
+    client::sync(&mut s).await.unwrap();
+    for id in &items {
+        s.delete_item(id).unwrap();
+    }
+    client::sync(&mut s).await.unwrap();
+    assert!(used().await >= start + 20 * 128, "deleted items still count");
+
+    // Share links count for their owner.
+    let share = |n: u8| CreateShareRequest {
+        id: format!("link{n:018}"),
+        data: "x".repeat(450_000),
+        proof: twosecret_core::util::b64url(&[n; 32]),
+        label: meta.clone(),
+        expires_at: twosecret_core::util::now() + 3600,
+        max_views: None,
+        password: false,
+    };
+    api.create_share(&share(1)).await.unwrap();
+    api.create_share(&share(2)).await.unwrap();
+    let err = api.create_share(&share(3)).await.unwrap_err();
+    assert_eq!(err.status(), Some(507), "the third link does not fit");
+    assert!(used().await <= 1_000_000);
+
+    // And with the room taken by links, a new vault does not fit either.
+    let key = WrappedKey::wrap_symmetric(&SymmetricKey::generate(), &SymmetricKey::generate(), b"x");
+    let mut created = 0;
+    let err = loop {
+        let req = CreateVaultRequest { id: twosecret_core::util::new_id(), meta: meta.clone(), wrapped_key: key.clone() };
+        match api.create_vault(&req).await {
+            Ok(_) => created += 1,
+            Err(e) => break e,
+        }
+        assert!(created < 1000, "vaults keep fitting");
+    };
+    assert_eq!(err.status(), Some(507));
+    assert!(used().await <= 1_000_000);
+}
+
+#[tokio::test]
 async fn the_server_refuses_what_would_break_other_accounts() {
     use twosecret_core::api::{ItemChange, SetPqKeyRequest, SyncRequest, UpdateVaultRequest, VaultSyncRequest};
     let url = start_server(Config::default()).await;

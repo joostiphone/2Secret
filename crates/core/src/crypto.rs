@@ -730,6 +730,18 @@ pub struct EncryptedKeyset {
     pub pq_public_key: Option<String>,
 }
 
+impl EncryptedKeyset {
+    /// Whether this has the shape and size of a keyset (two encrypted keys
+    /// and public keys), so a server stores no more than that.
+    pub fn is_well_formed(&self) -> bool {
+        small_ciphertext(&self.account_key)
+            && small_ciphertext(&self.private_key)
+            && self.public_key.len() <= 64
+            && PublicKey::from_b64(&self.public_key).is_ok()
+            && self.pq_public_key.as_deref().is_none_or(|k| k.len() <= 2048 && PqPublicKey::from_b64(k).is_ok())
+    }
+}
+
 /// The decrypted account keyset.
 #[derive(Clone)]
 pub struct Keyset {
@@ -862,6 +874,30 @@ impl WrappedKey {
     pub fn is_sealed(&self) -> bool {
         matches!(self, WrappedKey::Sealed { .. } | WrappedKey::HybridSealed { .. })
     }
+
+    /// Whether this has the shape and size of a wrapped 256-bit key. A server
+    /// cannot open it, but it can refuse a "key" of megabytes.
+    pub fn is_well_formed(&self) -> bool {
+        let epk_ok = |epk: &str| epk.len() <= 64 && PublicKey::from_b64(epk).is_ok();
+        match self {
+            WrappedKey::Symmetric { ct } => small_ciphertext(ct),
+            WrappedKey::Sealed { epk, ct } => epk_ok(epk) && small_ciphertext(ct),
+            WrappedKey::HybridSealed { epk, kem_ct, ct } => {
+                epk_ok(epk)
+                    && kem_ct.len() <= 1500
+                    && unb64(kem_ct).is_ok_and(|k| k.len() == ML_KEM_CIPHERTEXT_LEN)
+                    && small_ciphertext(ct)
+            }
+        }
+    }
+}
+
+/// Size of an ML-KEM-768 ciphertext.
+const ML_KEM_CIPHERTEXT_LEN: usize = 1088;
+
+/// A ciphertext of a key or a few bytes (padded), never of user data.
+fn small_ciphertext(ct: &EncString) -> bool {
+    ct.len() <= 512 && EncString::parse(ct.as_str()).is_ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -919,6 +955,32 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_key_sized_wrapped_keys_and_keysets_are_well_formed() {
+        let alice = Keyset::generate();
+        let key = SymmetricKey::generate();
+        let symmetric = WrappedKey::wrap_symmetric(&alice.account_key, &key, b"aad");
+        let sealed = WrappedKey::wrap_sealed(&alice.public_key(), &key, b"aad");
+        let hybrid = WrappedKey::wrap_for(&alice.public_keys(), &key, b"aad").unwrap();
+        for k in [&symmetric, &sealed, &hybrid] {
+            assert!(k.is_well_formed(), "{k:?}");
+        }
+        // A "key" of a megabyte, a wrong ephemeral key, a wrong KEM ciphertext.
+        let big = encrypt(&key, &vec![0u8; 1_000_000], b"aad");
+        assert!(!WrappedKey::Symmetric { ct: big.clone() }.is_well_formed());
+        let WrappedKey::HybridSealed { epk, kem_ct, ct } = hybrid else { panic!("not hybrid") };
+        assert!(!WrappedKey::Sealed { epk: b64(&[1u8; 64]), ct: ct.clone() }.is_well_formed());
+        let short = WrappedKey::HybridSealed { epk: epk.clone(), kem_ct: b64(&[0u8; 100]), ct: ct.clone() };
+        assert!(!short.is_well_formed());
+        assert!(!WrappedKey::HybridSealed { epk, kem_ct, ct: big.clone() }.is_well_formed());
+
+        let master = SymmetricKey::generate();
+        let keyset = alice.encrypt(&master);
+        assert!(keyset.is_well_formed());
+        assert!(!EncryptedKeyset { private_key: big, ..keyset.clone() }.is_well_formed());
+        assert!(!EncryptedKeyset { public_key: "x".repeat(100), ..keyset }.is_well_formed());
+    }
 
     #[test]
     fn hybrid_sealed_box_roundtrip_and_tampering() {

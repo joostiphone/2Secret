@@ -18,7 +18,7 @@ use twosecret_core::util::{b64url, now};
 use crate::auth::Auth;
 use crate::client_ip::ClientIp;
 use crate::error::{ApiError, ApiResult};
-use crate::AppState;
+use crate::{db, AppState};
 
 /// Largest encrypted content: an item's fields and notes, no attachments.
 const MAX_DATA: usize = 512 * 1024;
@@ -98,6 +98,9 @@ async fn create(
     if req.max_views.is_some_and(|v| v == 0 || v > MAX_VIEWS) {
         return Err(ApiError::bad_request(format!("a link can be opened 1 to {MAX_VIEWS} times")));
     }
+    let quota = state.config.account_quota_bytes;
+    let proof = stored_proof(&req.proof);
+    let growth = (req.data.len() + req.label.len() + proof.len()) as i64 + db::ROW_BYTES;
     state
         .db
         .run(move |c| {
@@ -110,6 +113,7 @@ async fn create(
             if count >= MAX_SHARES {
                 return Err(ApiError::forbidden(format!("you can have {MAX_SHARES} links at a time")));
             }
+            crate::routes::check_quota(&tx, quota, &auth.account_id, growth)?;
             let inserted = tx.execute(
                 "INSERT OR IGNORE INTO shares (id, owner_id, label, data, proof, password, created_at, expires_at, views_left, wrong)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
@@ -118,7 +122,7 @@ async fn create(
                     auth.account_id,
                     req.label.as_str(),
                     req.data,
-                    stored_proof(&req.proof),
+                    proof,
                     req.password,
                     created,
                     req.expires_at,

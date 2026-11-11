@@ -206,10 +206,12 @@ async fn confirm_agent(
     }
     let at = now();
     let max_agents = state.config.max_agents_per_account as i64;
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |c| {
             let tx = c.transaction()?;
+            crate::routes::check_quota(&tx, quota, &auth.account_id, req.record.len() as i64)?;
             let confirmed: i64 = tx.query_row(
                 "SELECT COUNT(*) FROM agents WHERE account_id = ?1 AND record IS NOT NULL AND revoked_at = 0",
                 [&auth.account_id],
@@ -300,10 +302,13 @@ async fn settle(state: &AppState, auth: Auth, id: String, answer: Option<EncStri
     }
     let at = now();
     let request_id = id.clone();
+    let quota = state.config.account_quota_bytes;
     state
         .db
         .run(move |c| {
             let tx = c.transaction()?;
+            let growth = answer.as_ref().map_or(0, |a| a.len() as i64);
+            crate::routes::check_quota(&tx, quota, &auth.account_id, growth)?;
             let status = if answer.is_some() { "answered" } else { "denied" };
             let updated = tx.execute(
                 "UPDATE agent_requests SET answer = ?1, status = ?2
@@ -484,10 +489,13 @@ async fn post_request(
     let expires_at = at + REQUEST_SECONDS;
     let max_open = state.config.max_open_agent_requests as i64;
     let account_id = caller.account_id.clone();
+    let quota = state.config.account_quota_bytes;
+    let growth = request.len() as i64 + crate::db::ROW_BYTES;
     state
         .db
         .run(move |c| {
             let tx = c.transaction()?;
+            crate::routes::check_quota(&tx, quota, &caller.account_id, growth)?;
             let open: i64 = tx.query_row(
                 "SELECT COUNT(*) FROM agent_requests WHERE agent_id = ?1 AND status = 'open' AND expires_at > ?2",
                 params![caller.agent_id, at],

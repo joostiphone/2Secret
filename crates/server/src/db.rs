@@ -9,7 +9,7 @@ use twosecret_core::api::{ItemDto, VaultDto};
 use twosecret_core::crypto::{EncString, EncryptedKeyset, KdfParams, WrappedKey};
 use twosecret_core::profile::Role;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS agent_requests (
 );
 CREATE INDEX IF NOT EXISTS agent_requests_account ON agent_requests(account_id, status);
 CREATE INDEX IF NOT EXISTS agent_requests_expiry ON agent_requests(expires_at);
+CREATE INDEX IF NOT EXISTS vaults_owner ON vaults(owner_id);
 "#;
 
 /// Shared database handle.
@@ -232,7 +233,10 @@ impl Db {
     {
         let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
-            let mut guard = conn.lock().map_err(|_| ApiError::internal("database lock poisoned"))?;
+            // A request that panicked while holding the connection rolled
+            // its transaction back when it unwound: the connection is fine,
+            // so the server keeps working instead of failing every request.
+            let mut guard = conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             f(&mut guard)
         })
         .await?
@@ -314,16 +318,49 @@ pub fn count_accounts(conn: &Connection) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get(0))
 }
 
-/// Bytes taken by the vaults an account owns (items and vault metadata).
+/// What a stored row costs besides its data (ids, revision, timestamps), so
+/// many small or empty rows (deleted items) count too.
+pub const ROW_BYTES: i64 = 128;
+
+/// Bytes stored on the server because of an account: the vaults it owns with
+/// their items (deleted ones too), metadata and members' keys (shared vaults
+/// count for their owner), its share links, the keys it left for emergency
+/// contacts, its agents elsewhere and their open requests, and its profile
+/// photo. Everything an account can make the server keep is in here, so the
+/// storage limit cannot be gone around.
 pub fn storage_used(conn: &Connection, account_id: &str) -> rusqlite::Result<u64> {
     let used: i64 = conn.query_row(
-        "SELECT COALESCE((SELECT SUM(LENGTH(i.data)) FROM items i JOIN vaults v ON v.id = i.vault_id
-                          WHERE v.owner_id = ?1), 0)
-              + COALESCE((SELECT SUM(LENGTH(meta)) FROM vaults WHERE owner_id = ?1), 0)",
-        [account_id],
+        "SELECT COALESCE((SELECT SUM(LENGTH(meta) + ?2) FROM vaults WHERE owner_id = ?1), 0)
+              + COALESCE((SELECT SUM(COALESCE(LENGTH(i.data), 0) + ?2) FROM items i
+                          JOIN vaults v ON v.id = i.vault_id WHERE v.owner_id = ?1), 0)
+              + COALESCE((SELECT SUM(LENGTH(m.wrapped_key) + ?2) FROM vault_members m
+                          JOIN vaults v ON v.id = m.vault_id WHERE v.owner_id = ?1), 0)
+              + COALESCE((SELECT SUM(LENGTH(data) + LENGTH(label) + LENGTH(proof) + ?2) FROM shares
+                          WHERE owner_id = ?1), 0)
+              + COALESCE((SELECT SUM(LENGTH(k.wrapped_key) + ?2) FROM emergency_keys k
+                          JOIN emergency_contacts c ON c.id = k.contact_id WHERE c.grantor_id = ?1), 0)
+              + COALESCE((SELECT SUM(COALESCE(LENGTH(record), 0) + ?2) FROM agents WHERE account_id = ?1), 0)
+              + COALESCE((SELECT SUM(LENGTH(request) + COALESCE(LENGTH(answer), 0) + ?2) FROM agent_requests
+                          WHERE account_id = ?1), 0)
+              + COALESCE((SELECT LENGTH(avatar) FROM accounts WHERE id = ?1), 0)",
+        params![account_id, ROW_BYTES],
         |r| r.get(0),
     )?;
     Ok(used.max(0) as u64)
+}
+
+/// Sessions (signed-in devices) one account may have; signing in once more
+/// signs out the device that was used longest ago.
+pub const MAX_SESSIONS: i64 = 100;
+
+/// Sign out the least recently used devices beyond [`MAX_SESSIONS`].
+pub fn trim_sessions(conn: &Connection, account_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM sessions WHERE account_id = ?1 AND id NOT IN
+           (SELECT id FROM sessions WHERE account_id = ?1 ORDER BY last_used_at DESC LIMIT ?2)",
+        params![account_id, MAX_SESSIONS],
+    )?;
+    Ok(())
 }
 
 pub fn owned_vaults(conn: &Connection, account_id: &str) -> rusqlite::Result<u64> {
