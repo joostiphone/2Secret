@@ -1,14 +1,16 @@
-2Secret 1.14.2
+2Secret 1.15.0
 
 WAT IS ER NIEUW
-- Automatisch invullen in Safari en andere apps stopt niet meer bij "keychain error -25308". Het 2Secret-paneel vroeg om Face ID of Touch ID voordat het op het scherm stond, en dat weigert iOS. Het wacht nu tot het paneel zichtbaar is, vraagt zo nodig zelf nog één keer, en toont anders "Face ID of Touch ID kon zojuist niet worden gevraagd" met de knop Probeer opnieuw.
-- Nog steeds nieuw sinds 1.14.1: Face ID en Touch ID vragen betrouwbaar bij het openen van de app. Sinds 1.14.0: kluizen in iCloud Drive of in een map op je iPhone.
+- Een kluis die iemand met je deelt, komt nu binnen als uitnodiging op Home: je ziet de naam van de kluis, wie hem deelt en de vingerafdruk van diens sleutels, en kiest Accepteren of Weigeren. Er wordt niets van de kluis getoond of ingevuld voordat je accepteert. Accepteren op één apparaat is genoeg: je andere apparaten voegen hem vanzelf toe.
+- Instellingen → Apparaten: "Alle andere apparaten afmelden".
+- Een nieuw hoofdwachtwoord meldt nu ook AI-agents elders af.
+- Achter de schermen: de syncserver is strenger beschermd tegen misbruik (opslaglimiet, limieten bij inloggen, grootte van één sync).
 
 TEST ALSJEBLIEFT
-1. Open in Safari een site waarvoor je een login hebt (bijvoorbeeld google.com), tik op het veld voor de gebruikersnaam en kies 2Secret boven het toetsenbord of via het sleutelicoon. Face ID of Touch ID moet vragen, en de login moet worden ingevuld.
-2. Doe dit een paar keer, ook direct na het openen van Safari en na het ontgrendelen van de telefoon.
-3. Verschijnt er een melding in het 2Secret-paneel: maak een schermafbeelding, tik op Probeer opnieuw, en vertel of het daarna lukte.
-4. Vul een passkey en een verificatiecode in als je die gebruikt.
-5. Zoals altijd: de app openen met Face ID of Touch ID, synchroniseren met je andere apparaten.
+1. Vraag iemand (of gebruik een tweede account) om een kluis met je te delen. Binnen een minuut hoort er een uitnodiging op Home te staan. Vergelijk de vingerafdruk met de ander en tik op Accepteren: de kluis en de items horen te verschijnen.
+2. Op een ander apparaat van je: de kluis hoort vanzelf te verschijnen, zonder tweede uitnodiging.
+3. Laat een tweede kluis met je delen en tik op Weigeren: hij hoort te verdwijnen en niet terug te komen.
+4. Instellingen → Apparaten → Tonen → Alle andere apparaten afmelden: je andere apparaten horen te vragen om opnieuw in te loggen.
+5. Zoals altijd: automatisch invullen in Safari met Face ID of Touch ID, de app openen, synchroniseren met je andere apparaten.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

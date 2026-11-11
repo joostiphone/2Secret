@@ -1,12 +1,49 @@
 # Changelog
 
-## Unreleased
+## 1.15.0
 
-- Server: SQLite 3.54.1 (rusqlite 0.41). Older SQLite could return stale
-  memory when it opened a database together with a crafted `-wal` file
-  (RUSTSEC-2026-0459, CVE-2026-119375). The server only opens its own
-  database, which no one else writes, so it was not exposed; the update
-  keeps it that way. Building 2Secret now needs Rust 1.89 or newer.
+Security: a review of the sync server, and everything it found fixed.
+
+- Shared vaults are invitations. A vault someone shares with you waits on
+  Home (`2secret vault invitations` on the command line) with its name, who
+  shares it and the fingerprint of their keys, until you accept or decline
+  it; nothing of it is shown or filled in before. Anyone can seal a key to
+  your public key, and a server could make up a "shared" vault, so this is
+  what keeps strangers' vaults out of your autofill. Accepting on one device
+  is enough: it stores the key wrapped with your account key, and your other
+  devices add the vault by themselves. Opening emergency access counts as
+  accepting the vaults it gives.
+- The storage limit counts everything the server keeps for an account: its
+  vaults with every item (deleted ones too), members' keys, share links,
+  keys for emergency contacts, agents elsewhere and the profile photo. A
+  "vault key" must have the size of one. The 2Secret server allows 20 MB per
+  account.
+- One sync request makes at most 1000 changes, so nobody can hold the
+  server's database for seconds; the apps send 500 at a time and keep going,
+  so large imports still sync at once.
+- Sign-ins count against the per-address limit before the password hash
+  runs, at most two hashes run at once per address, and IPv6 also counts per
+  /48. Calls with a wrong agent signature count against the caller, not the
+  agent.
+- Looking up an e-mail address to share with is limited to 30 an hour and
+  sent in the request body (no address in URLs or proxy logs); so is the
+  pairing code of an agent elsewhere. docs/SECURITY.md now says which
+  requests reveal whether an address has an account.
+- Sessions end after 365 days however often they are used
+  (`--session-max-days`); Settings → Devices can sign out all other devices;
+  a new master password also signs out agents elsewhere.
+- Server: SQLite 3.54.1 (RUSTSEC-2026-0459; the server only opens its own
+  database, so it was not exposed). The server warns when it seems to run
+  behind a proxy without `--client-ip-header`, and a request that panicked
+  no longer leaves the database unusable.
+- Public server installer (deploy/proxmox/install.sh): automatic security
+  updates of the system and cloudflared, its own updates come signed with
+  the release, no more installing from unsigned checksums, and a tighter
+  systemd sandbox. docker-compose and the self-hosting examples pass the
+  client's address from the proxy, so one person cannot block sign-ins for
+  everyone behind it.
+- Every GitHub Action in the build is pinned to a commit.
+- Building 2Secret needs Rust 1.89 or newer.
 
 ## 1.14.2
 

@@ -1,14 +1,16 @@
-2Secret 1.14.2
+2Secret 1.15.0
 
 WHAT'S NEW
-- AutoFill in Safari and other apps no longer stops at "keychain error -25308". The 2Secret panel asked for Face ID or Touch ID before it was on screen, which iOS refuses. It now waits until the panel is shown, asks once more by itself if needed, and otherwise shows "Face ID or Touch ID could not be asked just now" with a Try again button.
-- Still new since 1.14.1: Face ID and Touch ID in the app ask reliably when it opens. Since 1.14.0: vaults in iCloud Drive or in a folder on your iPhone.
+- A vault someone shares with you now arrives as an invitation on Home: you see the vault's name, who shares it and the fingerprint of their keys, and choose Accept or Decline. Nothing of the vault is shown or filled in before you accept. Accepting on one device is enough: your other devices add it by themselves.
+- Settings → Devices: "Sign out all other devices".
+- A new master password now also signs out AI agents elsewhere.
+- Behind the scenes: the sync server is more strictly protected against misuse (storage limit, sign-in limits, size of one sync).
 
 PLEASE TEST
-1. In Safari, open a site where you have a login (for example google.com), tap the username field and choose 2Secret above the keyboard or from the key icon. Face ID or Touch ID should ask, and the login should fill in.
-2. Do this several times, also right after opening Safari and after unlocking the phone.
-3. If a message appears in the 2Secret panel: take a screenshot, tap Try again, and tell us whether it then worked.
-4. Fill a passkey and a verification code if you use them.
-5. As always: opening the app with Face ID or Touch ID, syncing with your other devices.
+1. Ask someone (or use a second account) to share a vault with you. Within a minute an invitation should appear on Home. Compare the fingerprint with the other person, then tap Accept: the vault and its items should appear.
+2. On another device of yours: the vault should appear by itself, without a second invitation.
+3. Have a second vault shared with you and tap Decline: it should disappear and not come back.
+4. Settings → Devices → Show → Sign out all other devices: your other devices should ask you to sign in again.
+5. As always: AutoFill in Safari with Face ID or Touch ID, opening the app, syncing with your other devices.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.
