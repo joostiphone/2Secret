@@ -906,7 +906,7 @@ async fn add_member(
                     |r| r.get(0),
                 )
                 .optional()?;
-            check_quota(c, quota, &m.owner_id, key_len - old.map_or(-db::ROW_BYTES, |o| o))?;
+            check_quota(c, quota, &m.owner_id, key_len - old.unwrap_or(-db::ROW_BYTES))?;
             c.execute(
                 "INSERT INTO vault_members (vault_id, account_id, role, wrapped_key, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
