@@ -12,6 +12,11 @@ services:
       # open | invite | closed
       TWOSECRET_SIGNUPS: invite
       TWOSECRET_INVITE_CODES: change-me-to-something-secret
+      # The client's address, which Caddy puts in X-Forwarded-For. Without it
+      # every client counts as Caddy, and one person's failed sign-ins block
+      # sign-ins for everyone. Believed only from the network below.
+      TWOSECRET_CLIENT_IP_HEADER: X-Forwarded-For
+      TWOSECRET_TRUSTED_PROXIES: 172.31.87.0/24
     volumes:
       - 2secret-data:/data
 
@@ -27,6 +32,15 @@ services:
       - caddy-config:/config
     depends_on:
       - 2secret
+
+# Only these two containers are on this network, so Caddy's address is in it.
+# Choose another subnet if this one is in use on your machine, and change
+# TWOSECRET_TRUSTED_PROXIES with it.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.87.0/24
 
 volumes:
   2secret-data:

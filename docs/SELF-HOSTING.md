@@ -32,6 +32,12 @@ Caddy obtains a Let's Encrypt certificate automatically. Open
 `https://vault.example.com` for the web vault, or enter that address in the
 desktop/mobile apps, the extension or the CLI.
 
+The compose file gives its network a fixed subnet, so that 2Secret can
+believe the client address from Caddy (see [below](#tls--reverse-proxy)).
+If you set it up with an older compose file, run `docker compose down` once
+before `docker compose up -d`, so the network is made again with that subnet
+(the data volume stays).
+
 ## Option 2: Docker only
 
 ```sh
@@ -42,7 +48,12 @@ docker run -d --name 2secret -p 127.0.0.1:8743:8743 -v 2secret-data:/data \
 
 To build the image yourself instead: `docker build -t 2secret .`
 
-Put a TLS-terminating reverse proxy in front of it (see below).
+Put a TLS-terminating reverse proxy in front of it (see below). The proxy's
+requests reach the container from Docker's bridge, not from this machine's
+loopback address, so also add `-e TWOSECRET_CLIENT_IP_HEADER=X-Forwarded-For
+-e TWOSECRET_TRUSTED_PROXIES=172.17.0.1` (the bridge's gateway, see `docker
+network inspect bridge`). Publish the port on `127.0.0.1` only, as above:
+then only this machine reaches 2Secret through the gateway.
 
 ## Option 3: Binary + systemd
 
@@ -70,8 +81,9 @@ Every option can be given as a command line flag or environment variable.
 | `--signups` | `TWOSECRET_SIGNUPS` | `open` | `open`, `invite` or `closed` |
 | `--invite-codes` | `TWOSECRET_INVITE_CODES` | – | Comma separated invite codes (for `invite`); the placeholders of the examples (`change-me…`) never work |
 | `--session-days` | `TWOSECRET_SESSION_DAYS` | `30` | Sign out devices after this many idle days |
+| `--session-max-days` | `TWOSECRET_SESSION_MAX_DAYS` | `365` | Sign out devices after this many days, however often they are used |
 | `--cors-origins` | `TWOSECRET_CORS_ORIGINS` | – | Extra origins allowed to call the API from a browser (`*` for any) |
-| `--account-storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | – | Storage per account for the vaults it owns; what does not fit stays on the device |
+| `--account-storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | – | Storage per account for everything the server keeps for it: the vaults it owns (shared vaults count for their owner, deleted items too), share links, keys for emergency contacts, agents elsewhere and the profile photo; what does not fit stays on the device |
 | `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | – | New accounts per client address per day (IPv6: per /64) |
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | – | Accept no new accounts beyond this number |
 | `--client-ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | – | Header with the client's address from a proxy on the same machine or a trusted one: `X-Forwarded-For` (Caddy, nginx), `CF-Connecting-IP` (Cloudflare Tunnel) |
@@ -86,9 +98,17 @@ code, or `--signups closed` once everyone has an account.
 
 ## TLS / reverse proxy
 
-Always use HTTPS. Example configurations:
+Always use HTTPS. Behind a proxy every request comes from the proxy's
+address, so set `TWOSECRET_CLIENT_IP_HEADER=X-Forwarded-For`
+(`deploy/2secret-server.service` and `deploy/docker-compose.yml` do).
+Without it all clients share the limits per address, and one person's
+failed sign-ins block sign-ins for everyone. 2Secret believes the header
+only from a proxy on the same machine or in `TWOSECRET_TRUSTED_PROXIES`, and
+takes its last address: the one the proxy added.
 
-**Caddy**
+Example configurations:
+
+**Caddy** (sets `X-Forwarded-For` itself)
 
 ```
 vault.example.com {
@@ -108,6 +128,7 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8743;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
     }
 }

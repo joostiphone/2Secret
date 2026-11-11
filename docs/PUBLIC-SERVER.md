@@ -76,7 +76,7 @@ both containers a fixed address (`--ip`, or a DHCP reservation). Without
 | Option | In server.env | Default here | Meaning |
 |---|---|---|---|
 | `--signups` | `TWOSECRET_SIGNUPS` | `open` | `open`, `invite` (with `--invite-codes`) or `closed` |
-| `--storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | `100` | Storage per account for the vaults it owns (shared vaults count for their owner); `0` = no limit |
+| `--storage-mb` | `TWOSECRET_ACCOUNT_STORAGE_MB` | `20` | Storage per account for everything the server keeps for it (its vaults, shared vaults count for their owner, deleted items, share links, emergency keys, agents, profile photo); `0` = no limit |
 | `--signups-per-ip` | `TWOSECRET_SIGNUPS_PER_IP` | `5` | New accounts per address per day (IPv6 per /64) |
 | `--max-accounts` | `TWOSECRET_MAX_ACCOUNTS` | none | No new accounts beyond this number |
 | `--ip-header` | `TWOSECRET_CLIENT_IP_HEADER` | `CF-Connecting-IP` with a Cloudflare Tunnel, else none | Where the client's address comes from; only believed from a proxy on the machine itself or a `--trusted-proxy` |
@@ -117,9 +117,8 @@ Backup & export*), so they keep their data even if a server disappears.
 Every night `2secret-install --update` looks for a newer release. It
 installs it only when the release's `update.json` carries 2Secret's Ed25519
 signature (the same check as the apps, see [UPDATES.md](UPDATES.md)) and the
-download matches it; it makes a database backup first. Releases up to 1.3
-did not list the server in `update.json` yet; for those the checksums from
-`SHA256SUMS` are used.
+download matches it; it makes a database backup first. A release whose
+`update.json` does not list the server (up to 1.3) is not installed.
 
 Check with `systemctl list-timers '2secret-*'` and `journalctl -u
 2secret-update`. Turn automatic updates off with `--no-auto-update`. To
@@ -133,8 +132,16 @@ curl -s https://sync.2secret.app/api/v1/health   # shows the new version
 Type the full path: a shell from `pct enter` may not have `/usr/local/sbin`
 in its `PATH`, and then `2secret-install` alone gives *command not found*.
 
-Keep Debian itself up to date as well: `apt update && apt upgrade`, or
-`unattended-upgrades`.
+Security updates of Debian or Ubuntu, and of cloudflared from Cloudflare's
+repository, install themselves every day, without automatic reboots:
+install.sh sets up `unattended-upgrades`
+(`/etc/apt/apt.conf.d/52-2secret-security-updates`), and every nightly
+update sets it up again when it is missing. The nightly update runs
+`/usr/local/sbin/2secret-install`, the install.sh the server was set up
+with; on a server set up with an older one, put the new one there once:
+`install -m 0755 install.sh /usr/local/sbin/2secret-install`. Other updates
+are up to you: `apt update && apt upgrade`. Keep the Proxmox host up to date
+as well; the container runs on its kernel.
 
 ## 6. Monitoring
 

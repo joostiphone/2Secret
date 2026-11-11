@@ -9,7 +9,7 @@
 #   --version vX.Y.Z      Install this version instead of the newest
 #   --signups MODE        open (default), invite or closed
 #   --invite-codes CODES  Comma separated invite codes (with --signups invite)
-#   --storage-mb N        Storage per account in MB (default 100, 0 = no limit)
+#   --storage-mb N        Storage per account in MB (default 20, 0 = no limit)
 #   --signups-per-ip N    New accounts per address per day (default 5, 0 = no limit)
 #   --max-accounts N      Accept no new accounts after N (default: no limit)
 #   --ip-header NAME      Header with the client's address, set by the proxy
@@ -27,7 +27,8 @@
 # Sets up: the server as a systemd service (127.0.0.1:8743) with its data in
 # /var/lib/2secret, its settings in /etc/2secret/server.env, a database backup
 # every night in /var/backups/2secret (kept 14 days), signed automatic updates
-# every night, logs kept 14 days, and optionally cloudflared.
+# every night, security updates of the system every day (unattended-upgrades,
+# no reboots), logs kept 14 days, and optionally cloudflared.
 set -euo pipefail
 
 REPO=joostiphone/2Secret
@@ -40,8 +41,9 @@ DATA=/var/lib/2secret
 CONF=/etc/2secret/server.env
 BACKUPS=/var/backups/2secret
 SELF=/usr/local/sbin/2secret-install
+APT_CONF=/etc/apt/apt.conf.d/52-2secret-security-updates
 
-tunnel_token="" version=latest signups=open invite_codes="" storage_mb=100 signups_per_ip=5
+tunnel_token="" version=latest signups=open invite_codes="" storage_mb=20 signups_per_ip=5
 max_accounts="" ip_header="" web=1 auto_update=1 mode=install download_dir=""
 listen=127.0.0.1:8743 trusted_proxies=""
 
@@ -105,9 +107,8 @@ verify_signature() {
   die "update.json is not signed with 2Secret's key: not installing"
 }
 
-# Download the server and web vault of a release into $1 and check them:
-# against the signed update.json, or (releases up to 1.3) SHA256SUMS.
-# Sets $release_version.
+# Download the server and web vault of a release into $1 and check them
+# against the signed update.json. Sets $release_version.
 fetch_release() {
   local dir="$1" base prefix target url sha size file
   if [ "$version" = latest ]; then
@@ -123,24 +124,17 @@ fetch_release() {
   prefix="https://github.com/$REPO/releases/download/v$release_version/"
   for target in server-linux-x64 web; do
     [ "$target" = web ] && [ "$web" = 0 ] && continue
-    if jq -e --arg t "$target" '.files[$t]' "$dir/update.json" > /dev/null; then
-      url="$(jq -er --arg t "$target" '.files[$t].url' "$dir/update.json")"
-      sha="$(jq -er --arg t "$target" '.files[$t].sha256' "$dir/update.json")"
-      size="$(jq -er --arg t "$target" '.files[$t].size' "$dir/update.json")"
-      [[ "$url" == "$prefix"* ]] || die "$target does not come from the v$release_version release"
-    else
-      # Not in update.json yet: the release's (unsigned) checksums.
-      [ -f "$dir/SHA256SUMS" ] || download "$base/SHA256SUMS" "$dir/SHA256SUMS"
-      if [ "$target" = web ]; then file="2secret-web-v$release_version.tar.gz"; else file="2secret-v$release_version-x86_64-unknown-linux-gnu.tar.gz"; fi
-      url="$prefix$file"
-      sha="$(awk -v f="$file" '$2 == f { print $1 }' "$dir/SHA256SUMS")"
-      size=""
-      [ -n "$sha" ] || die "$file is not in SHA256SUMS"
-      echo "note: $target is checked against SHA256SUMS, not the signature (release $release_version)"
-    fi
+    # Only what the signature covers; releases up to 1.3 did not list the
+    # server in update.json.
+    jq -e --arg t "$target" '.files[$t]' "$dir/update.json" > /dev/null ||
+      die "the signed update.json of $release_version has no $target: not installing (choose a newer --version)"
+    url="$(jq -er --arg t "$target" '.files[$t].url' "$dir/update.json")"
+    sha="$(jq -er --arg t "$target" '.files[$t].sha256' "$dir/update.json")"
+    size="$(jq -er --arg t "$target" '.files[$t].size' "$dir/update.json")"
+    [[ "$url" == "$prefix"* ]] || die "$target does not come from the v$release_version release"
     file="$dir/${url##*/}"
     download "$url" "$file"
-    [ -z "$size" ] || [ "$(stat -c %s "$file")" = "$size" ] || die "$file has the wrong size"
+    [ "$(stat -c %s "$file")" = "$size" ] || die "$file has the wrong size"
     echo "$sha  $file" | sha256sum -c --status || die "$file does not match its checksum"
     if [ "$target" = web ]; then web_archive="$file"; else server_archive="$file"; fi
   done
@@ -153,12 +147,23 @@ installed_version() {
 
 # Put the downloaded release in place (the service is restarted by the caller).
 install_release() {
-  local tmp="$1" dir
+  local tmp="$1" dir script
   mkdir -p "$tmp/server"
   tar --no-same-owner -xzf "$server_archive" -C "$tmp/server"
   dir="$(find "$tmp/server" -name 2secret-server -type f -print -quit)"
   [ -n "$dir" ] || die "no 2secret-server in the archive"
   install -m 0755 "$dir" "$BIN.new" && mv -f "$BIN.new" "$BIN"
+  # The nightly update runs $SELF, so a fixed install.sh only reaches this
+  # server through a release that has it. A new file, not the old one
+  # rewritten: bash goes on reading the running script from the old one.
+  script="$(find "$tmp/server" -name install.sh -type f -print -quit)"
+  if [ -n "$script" ]; then
+    if bash -n "$script"; then
+      install -m 0755 "$script" "$SELF.new" && mv -f "$SELF.new" "$SELF"
+    else
+      echo "warning: install.sh of the release does not parse; keeping $SELF" >&2
+    fi
+  fi
   if [ "$web" = 1 ] && [ -n "${web_archive:-}" ]; then
     rm -rf "$WEB.new" && mkdir -p "$WEB.new"
     # Owned by root, not by whoever built the archive.
@@ -170,6 +175,37 @@ install_release() {
 
 backup_now() {
   [ -f "$DATA/2secret.db" ] && /usr/local/sbin/2secret-backup || true
+}
+
+# Security updates of Debian or Ubuntu every day (unattended-upgrades), and
+# of cloudflared when it comes from Cloudflare's repository. No reboots.
+# Returns non-zero when apt fails.
+os_updates() {
+  if [ "$(dpkg-query -W -f '${Status}' unattended-upgrades 2> /dev/null)" != "install ok installed" ]; then
+    apt-get update -qq || return 1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends unattended-upgrades > /dev/null || return 1
+  fi
+  # unattended-upgrades fills in ${distro_codename}.
+  cat > "$APT_CONF" << 'EOF' || return 1
+// Written by 2secret-install (deploy/proxmox/install.sh) at every install
+// and update: security updates every day, without reboots.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Origins-Pattern {
+  "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+  "origin=Ubuntu,archive=${distro_codename}-security";
+};
+EOF
+  if grep -rqs 'pkg\.cloudflare\.com/cloudflared' /etc/apt/sources.list /etc/apt/sources.list.d; then
+    # Origin and Label are those of pkg.cloudflare.com/cloudflared/dists/any/Release.
+    # The package does not restart cloudflared: restart it once its program
+    # has been replaced.
+    cat >> "$APT_CONF" << 'EOF' || return 1
+Unattended-Upgrade::Origins-Pattern { "origin=cloudflared,label=cloudflared"; };
+DPkg::Post-Invoke { "pid=$(systemctl show -p MainPID --value cloudflared 2> /dev/null); if [ ${pid:-0} -gt 0 ] && readlink /proc/$pid/exe | grep -q deleted; then systemctl restart cloudflared; fi; true"; };
+EOF
+  fi
 }
 
 tmp="$(mktemp -d)"
@@ -187,6 +223,9 @@ fi
 if [ "$mode" = update ]; then
   [ -x "$BIN" ] || die "2Secret is not installed; run without --update"
   [ -d "$WEB" ] || web=0
+  # Also for servers installed before install.sh did this. Without apt the
+  # update of 2Secret still goes on.
+  os_updates || echo "warning: could not set up security updates of the system (apt); trying again next time" >&2
   fetch_release "$tmp"
   current="$(installed_version)"
   newest="$(printf '%s\n%s\n' "$current" "$release_version" | sort -V | tail -1)"
@@ -213,7 +252,9 @@ install -d -m 0700 "$BACKUPS"
 install -d -m 0750 -g 2secret /etc/2secret
 [ ! -x "$BIN" ] || backup_now
 install_release "$tmp"
-install -m 0755 "$0" "$SELF"
+# This script rather than the release's, until the next update. Run as $SELF
+# it is there already (install refuses to copy a file onto itself).
+[ "$0" -ef "$SELF" ] || { install -m 0755 "$0" "$SELF.new" && mv -f "$SELF.new" "$SELF"; }
 
 say "Writing $CONF"
 {
@@ -253,12 +294,30 @@ EnvironmentFile=$CONF
 ExecStart=$BIN
 Restart=always
 RestartSec=3
+# The server listens on a port above 1024 and writes only to $DATA: it needs
+# no capabilities, devices or kernel settings.
+UMask=0077
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
 ReadWritePaths=$DATA
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
@@ -347,6 +406,9 @@ if [ -n "$tunnel_token" ]; then
   fi
 fi
 
+say "Turning on security updates of the system"
+os_updates || echo "warning: could not set up security updates of the system (apt)" >&2
+
 say "Checking the server"
 # Where this machine reaches the server: 0.0.0.0 and [::] listen on every
 # address, loopback included.
@@ -361,6 +423,7 @@ for _ in $(seq 30); do
     echo "  Data:      $DATA"
     echo "  Backups:   $BACKUPS (every night, 14 days; copy them elsewhere too)"
     [ "$auto_update" = 1 ] && echo "  Updates:   every night, signed releases only (systemctl list-timers 2secret-*)"
+    [ -f "$APT_CONF" ] && echo "  System:    security updates every day, no reboots ($APT_CONF)"
     echo "  Logs:      journalctl -u 2secret-server"
     exit 0
   fi
