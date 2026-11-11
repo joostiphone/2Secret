@@ -21,6 +21,10 @@ use crate::session::Session;
 use crate::util::now;
 use crate::Result;
 
+/// Item changes the apps send in one sync request; more go in the next
+/// round. The server takes up to 1000.
+pub const SYNC_BATCH: usize = 500;
+
 /// Outcome of applying a sync response.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncReport {
@@ -116,7 +120,10 @@ impl Session {
     /// revision N" for every synced vault. Vaults in a storage folder that
     /// left a placeholder on the server are asked for too, with the removal
     /// of what is still on it (see [`VaultRecord::leftovers`]).
+    /// The next sync request: changes to vaults on the server, at most
+    /// [`SYNC_BATCH`] at a time (the rest go in the next round).
     pub fn sync_request(&self) -> SyncRequest {
+        let budget = std::cell::Cell::new(SYNC_BATCH);
         let placeholders =
             self.profile().vaults.iter().filter(|v| v.location.is_folder() && v.on_server).map(|v| VaultSyncRequest {
                 vault_id: v.id.clone(),
@@ -142,6 +149,11 @@ impl Session {
                     .items
                     .iter()
                     .filter(|i| i.vault_id == v.id && i.dirty && v.role.can_write())
+                    .take_while(|_| {
+                        let left = budget.get();
+                        budget.set(left.saturating_sub(1));
+                        left > 0
+                    })
                     .map(|i| ItemChange { id: i.id.clone(), base_revision: i.revision, data: i.data.clone() })
                     .collect(),
                 key_rev: Some(v.key_rev),

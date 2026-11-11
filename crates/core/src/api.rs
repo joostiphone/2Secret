@@ -123,6 +123,12 @@ pub struct DeviceInfo {
     pub current: bool,
 }
 
+/// Look up someone to share with (POST, so the address is not in the URL).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LookupUserRequest {
+    pub email: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PublicKeyResponse {
     pub account_id: String,
@@ -464,6 +470,12 @@ pub struct CreatePairingResponse {
 
 /// What an agent with a valid token learns before it pairs: the account's
 /// public keys to seal its proof to (it checks them against the code).
+/// `POST /agent/pairing`: the one-time code in the body, not in the URL.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PairingInfoRequest {
+    pub token: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PairingInfo {
     pub x25519: String,

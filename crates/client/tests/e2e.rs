@@ -411,7 +411,8 @@ async fn the_storage_limit_cannot_be_gone_around() {
 
     // Deleted items keep a row on the server: they count too, so creating
     // and deleting small items cannot fill the disk for free.
-    let items: Vec<String> = (0..20).map(|n| s.add_item(&vault, Item::new(Category::Login, &format!("Tiny {n}"))).unwrap()).collect();
+    let items: Vec<String> =
+        (0..20).map(|n| s.add_item(&vault, Item::new(Category::Login, &format!("Tiny {n}"))).unwrap()).collect();
     client::sync(&mut s).await.unwrap();
     for id in &items {
         s.delete_item(id).unwrap();
@@ -439,7 +440,8 @@ async fn the_storage_limit_cannot_be_gone_around() {
     let key = WrappedKey::wrap_symmetric(&SymmetricKey::generate(), &SymmetricKey::generate(), b"x");
     let mut created = 0;
     let err = loop {
-        let req = CreateVaultRequest { id: twosecret_core::util::new_id(), meta: meta.clone(), wrapped_key: key.clone() };
+        let req =
+            CreateVaultRequest { id: twosecret_core::util::new_id(), meta: meta.clone(), wrapped_key: key.clone() };
         match api.create_vault(&req).await {
             Ok(_) => created += 1,
             Err(e) => break e,
@@ -489,6 +491,74 @@ async fn login_rate_limiting() {
     }
     let e = client::signin(&url, "f@example.com", PW, &sk, "x").await.unwrap_err();
     assert_eq!(e.status(), Some(429));
+}
+
+#[tokio::test]
+async fn large_imports_sync_in_batches_and_one_request_stays_small() {
+    use twosecret_core::api::{ItemChange, SyncRequest, VaultSyncRequest};
+    let url = start_server(Config::default()).await;
+    let (mut s, sk) = client::signup(&url, "I", "i@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let vault = s.default_vault_id().unwrap();
+    for n in 0..1200 {
+        s.add_item(&vault, Item::new(Category::Login, &format!("Login {n}"))).unwrap();
+    }
+    let report = client::sync(&mut s).await.unwrap();
+    assert_eq!(report.uploaded, 1200, "every batch went through in one sync");
+    let phone = client::signin(&url, "i@example.com", PW, &sk, "y").await.unwrap();
+    assert_eq!(phone.profile().items.len(), 1200);
+
+    // The server looks at no more than 1000 changes of one request; the rest
+    // are neither accepted nor refused, so a device sends them again.
+    let api = client::client_for(&s).unwrap();
+    let data = s.profile().items[0].data.clone();
+    let changes = (0..1500)
+        .map(|_| ItemChange { id: twosecret_core::util::new_id(), base_revision: 0, data: data.clone() })
+        .collect();
+    let resp = api
+        .sync(&SyncRequest {
+            vaults: vec![VaultSyncRequest { vault_id: vault.clone(), since: 0, changes, key_rev: Some(0) }],
+        })
+        .await
+        .unwrap();
+    let result = resp.results.iter().find(|r| r.vault_id == vault).unwrap();
+    assert_eq!(result.accepted.len(), 1000);
+    assert!(result.rejected.is_empty() && result.conflicts.is_empty());
+}
+
+#[tokio::test]
+async fn looking_up_accounts_is_limited_and_devices_can_be_signed_out() {
+    let url = start_server(Config { session_max_days: 365, ..Config::default() }).await;
+    let (a, sk) = client::signup(&url, "A", "a@example.com", PW, None, "a", "P", kdf()).await.unwrap();
+    client::signup(&url, "B", "b@example.com", PW, None, "b", "P", kdf()).await.unwrap();
+    let api = client::client_for(&a).unwrap();
+    assert_eq!(api.lookup_user("b@example.com").await.unwrap().email, "b@example.com");
+    for n in 0..29 {
+        let e = api.lookup_user(&format!("nobody{n}@example.com")).await.unwrap_err();
+        assert_eq!(e.status(), Some(404));
+    }
+    let e = api.lookup_user("b@example.com").await.unwrap_err();
+    assert_eq!(e.status(), Some(429), "30 lookups an hour");
+
+    // Signing up with a taken address says so, but only a few times.
+    let e = client::signup(&url, "B", "b@example.com", PW, None, "b", "P", kdf()).await.unwrap_err();
+    assert_eq!(e.status(), Some(409));
+
+    // Sign out everywhere else.
+    let phone = client::signin(&url, "a@example.com", PW, &sk, "phone").await.unwrap();
+    let phone_api = client::client_for(&phone).unwrap();
+    assert_eq!(phone_api.devices().await.unwrap().len(), 2);
+    api.revoke_other_devices().await.unwrap();
+    assert_eq!(phone_api.devices().await.unwrap_err().status(), Some(401));
+    assert_eq!(api.devices().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_device_is_signed_out_after_the_longest_session() {
+    let url = start_server(Config { session_max_days: 0, ..Config::default() }).await;
+    let (s, _) = client::signup(&url, "S", "s@example.com", PW, None, "x", "P", kdf()).await.unwrap();
+    let api = client::client_for(&s).unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    assert_eq!(api.devices().await.unwrap_err().status(), Some(401));
 }
 
 #[tokio::test]

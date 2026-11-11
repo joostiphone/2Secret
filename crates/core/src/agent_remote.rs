@@ -770,7 +770,9 @@ impl HttpSignature {
         if agent_id(key.as_bytes()) != self.agent_id {
             return Err(Error::PermissionDenied("the signature names another agent".into()));
         }
-        if (now - self.ts).abs() > HTTP_SKEW_SECONDS {
+        // abs_diff: the time comes from the caller, and a subtraction of
+        // i64::MIN would overflow.
+        if now.abs_diff(self.ts) > HTTP_SKEW_SECONDS.unsigned_abs() {
             return Err(Error::PermissionDenied("the agent's clock is off by more than five minutes".into()));
         }
         let signature: [u8; 64] =

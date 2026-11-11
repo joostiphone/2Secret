@@ -59,9 +59,62 @@ impl RateLimiter {
     }
 }
 
+/// Work running at the same time per key (client address): one address
+/// cannot take every password-hash slot of the server.
+pub struct Inflight {
+    running: Mutex<HashMap<String, u32>>,
+    max: u32,
+}
+
+/// One unit of work in [`Inflight`]; done when dropped.
+pub struct InflightGuard<'a> {
+    inflight: &'a Inflight,
+    key: String,
+}
+
+impl Inflight {
+    pub fn new(max: u32) -> Self {
+        Self { running: Mutex::new(HashMap::new()), max }
+    }
+
+    /// Start one more for `key`, unless `max` are running already.
+    pub fn enter(&self, key: &str) -> Option<InflightGuard<'_>> {
+        let mut map = self.running.lock().unwrap_or_else(|p| p.into_inner());
+        let n = map.entry(key.to_string()).or_insert(0);
+        if *n >= self.max {
+            return None;
+        }
+        *n += 1;
+        Some(InflightGuard { inflight: self, key: key.to_string() })
+    }
+}
+
+impl Drop for InflightGuard<'_> {
+    fn drop(&mut self) {
+        let mut map = self.inflight.running.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(n) = map.get_mut(&self.key) {
+            *n -= 1;
+            if *n == 0 {
+                map.remove(&self.key);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inflight_limits_per_key() {
+        let inflight = Inflight::new(2);
+        let a = inflight.enter("a").unwrap();
+        let _b = inflight.enter("a").unwrap();
+        assert!(inflight.enter("a").is_none());
+        assert!(inflight.enter("b").is_some());
+        drop(a);
+        assert!(inflight.enter("a").is_some());
+    }
 
     #[test]
     fn prune_forgets_expired_keys() {

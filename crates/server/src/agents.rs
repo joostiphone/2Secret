@@ -26,8 +26,8 @@ use twosecret_core::agent_remote::{
 };
 use twosecret_core::api::{
     AgentAnswerRequest, AgentDto, AgentRequestDto, AgentRequestState, AgentRequestStatus, ConfirmAgentRequest,
-    CreatePairingRequest, CreatePairingResponse, PairAgentRequest, PairAgentResponse, PairingInfo, PostAgentRequest,
-    PostAgentRequestResponse,
+    CreatePairingRequest, CreatePairingResponse, PairAgentRequest, PairAgentResponse, PairingInfo, PairingInfoRequest,
+    PostAgentRequest, PostAgentRequestResponse,
 };
 use twosecret_core::crypto::{EncString, EncryptedKeyset, HybridSealedBox};
 use twosecret_core::util::now;
@@ -67,6 +67,9 @@ pub fn api() -> Router<AppState> {
         .route("/agents/requests/{id}/answer", post(answer_request))
         .route("/agents/requests/{id}/deny", post(deny_request))
         .route("/agents/{id}", put(confirm_agent).delete(revoke_agent))
+        // POST keeps the one-time code out of URLs (and proxy logs); GET is
+        // for agents before 1.15.
+        .route("/agent/pairing", post(pairing_info_post).layer(agent_body()))
         .route("/agent/pairing/{token}", get(pairing_info).layer(agent_body()))
         .route("/agent/pair", post(pair).layer(agent_body()))
         .route("/agent/requests", post(post_request).layer(agent_body()))
@@ -388,6 +391,14 @@ fn pair_limit(state: &AppState, client: &ClientIp) -> ApiResult<()> {
     Ok(())
 }
 
+async fn pairing_info_post(
+    State(state): State<AppState>,
+    client: ClientIp,
+    Json(req): Json<PairingInfoRequest>,
+) -> ApiResult<Json<PairingInfo>> {
+    pairing_info(State(state), client, Path(req.token)).await
+}
+
 async fn pairing_info(
     State(state): State<AppState>,
     client: ClientIp,
@@ -474,12 +485,13 @@ async fn pair(
 
 async fn post_request(
     State(state): State<AppState>,
+    client: ClientIp,
     method: Method,
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<(StatusCode, Json<PostAgentRequestResponse>)> {
-    let caller: AgentCaller = agent_auth::verify(&state, &headers, &method, &uri, &body).await?;
+    let caller: AgentCaller = agent_auth::verify(&state, &client, &headers, &method, &uri, &body).await?;
     let req: PostAgentRequest = parse_body(&body)?;
     if !valid_request_id(&req.id) {
         return Err(ApiError::bad_request("invalid request id"));
@@ -546,8 +558,11 @@ fn take_status(conn: &Connection, id: &str, agent_id: &str, at: i64) -> ApiResul
     Ok(Some(status))
 }
 
+// Each argument is an axum extractor.
+#[allow(clippy::too_many_arguments)]
 async fn request_status(
     State(state): State<AppState>,
+    client: ClientIp,
     method: Method,
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
@@ -555,7 +570,7 @@ async fn request_status(
     Query(q): Query<WaitQuery>,
     body: Bytes,
 ) -> ApiResult<Json<AgentRequestStatus>> {
-    let caller = agent_auth::verify(&state, &headers, &method, &uri, &body).await?;
+    let caller = agent_auth::verify(&state, &client, &headers, &method, &uri, &body).await?;
     if !valid_request_id(&id) {
         return Err(ApiError::not_found("request not found"));
     }

@@ -65,6 +65,15 @@ fn unmap(ip: IpAddr) -> IpAddr {
 pub struct ClientIp(pub String);
 
 impl ClientIp {
+    /// The wider network for a second, looser limit: an IPv6 /48, which a
+    /// single customer often gets, so changing /64 between attempts does not
+    /// get around the limits. `None` for IPv4.
+    pub fn wide(&self) -> Option<String> {
+        let net = self.0.strip_suffix("::/64")?;
+        let parts: Vec<&str> = net.split(':').take(3).collect();
+        (parts.len() == 3).then(|| format!("{}::/48", parts.join(":")))
+    }
+
     pub fn from_parts(peer: Option<IpAddr>, header: Option<&str>, trusted: &[TrustedProxy]) -> Self {
         // A header is only believed when a proxy on this machine (Caddy,
         // cloudflared) or a trusted one sent the request; otherwise anyone
@@ -100,13 +109,45 @@ impl FromRequestParts<AppState> for ClientIp {
             // the client's puts it last.
             .and_then(|name| parts.headers.get_all(name).iter().next_back())
             .and_then(|v| v.to_str().ok());
+        if state.config.client_ip_header.is_none() {
+            warn_if_behind_proxy(peer);
+        }
         Ok(ClientIp::from_parts(peer, header, &state.config.trusted_proxies))
+    }
+}
+
+/// Requests from this machine or a private network while no client address
+/// header is set: probably a reverse proxy, and then every client shares one
+/// limit, so one person can block sign-ins for everyone. Said once.
+fn warn_if_behind_proxy(peer: Option<IpAddr>) {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let private = match peer.map(unmap) {
+        Some(IpAddr::V4(v4)) => v4.is_loopback() || v4.is_private(),
+        Some(IpAddr::V6(v6)) => v6.is_loopback() || v6.is_unique_local(),
+        None => false,
+    };
+    if private && !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        tracing::warn!(
+            "requests come from {}: if that is a reverse proxy, set --client-ip-header (X-Forwarded-For for \
+             Caddy and nginx, CF-Connecting-IP for a Cloudflare Tunnel) and --trusted-proxies, or every client \
+             shares one limit for sign-ins",
+            peer.map(|p| p.to_string()).unwrap_or_default()
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wide_networks_for_ipv6_only() {
+        let v6 = ClientIp::from_parts(Some("2001:db8:1:2:3:4:5:6".parse().unwrap()), None, &[]);
+        assert_eq!(v6.0, "2001:db8:1:2::/64");
+        assert_eq!(v6.wide().as_deref(), Some("2001:db8:1::/48"));
+        let v4 = ClientIp::from_parts(Some("192.0.2.7".parse().unwrap()), None, &[]);
+        assert_eq!(v4.wide(), None);
+    }
 
     fn ip(s: &str) -> Option<IpAddr> {
         Some(s.parse().unwrap())

@@ -297,8 +297,11 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     }
 
     let mut total = SyncReport::default();
-    for _ in 0..5 {
+    let mut rounds = 0;
+    loop {
+        rounds += 1;
         let req = access.with_session(|s| s.sync_request())?;
+        let sent: usize = req.vaults.iter().map(|v| v.changes.len()).sum();
         let resp = client.sync(&req).await?;
         let (report, dirty) = access.with_session(|s| -> Result<(SyncReport, bool)> {
             let report = s.apply_sync_response_for(Some(&req), resp)?;
@@ -308,9 +311,12 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
             Ok((report, dirty))
         })??;
         total.merge(&report);
+        // A full batch went through: more changes are waiting (an import).
+        let more = dirty && sent >= twosecret_core::sync::SYNC_BATCH && report.uploaded > 0 && report.over_quota == 0;
         // Changes over the server's storage limit stay waiting; another
         // round now would not help.
-        if !report.needs_another_round && (!dirty || report.over_quota > 0) && report.vaults_added == 0 {
+        let settled = !report.needs_another_round && (!dirty || report.over_quota > 0) && report.vaults_added == 0;
+        if (!more && (settled || rounds >= 5)) || rounds >= 200 {
             break;
         }
     }

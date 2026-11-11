@@ -33,6 +33,10 @@ struct Args {
     #[arg(long, env = "TWOSECRET_SESSION_DAYS", default_value_t = 30)]
     session_days: i64,
 
+    /// Days after which a device is signed out however often it is used.
+    #[arg(long, env = "TWOSECRET_SESSION_MAX_DAYS", default_value_t = 365)]
+    session_max_days: i64,
+
     /// Allowed CORS origins for web clients hosted elsewhere (comma separated, `*` for any).
     #[arg(long, env = "TWOSECRET_CORS_ORIGINS", value_delimiter = ',')]
     cors_origins: Vec<String>,
@@ -97,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
         signups: args.signups,
         invite_codes,
         session_days: args.session_days.max(1),
+        session_max_days: args.session_max_days.max(1),
         web_dir: args.web_dir.clone(),
         cors_origins: args.cors_origins,
         max_accounts: args.max_accounts,

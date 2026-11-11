@@ -102,12 +102,15 @@ impl FromRequestParts<AppState> for Auth {
         }
         let hash = token_hash(&token);
         let session_days = state.config.session_days;
+        let max_age = state.config.session_max_days * 86_400;
         state
             .db
             .run(move |conn| {
                 let session = db::session_by_token(conn, &hash)?.ok_or_else(ApiError::unauthorized)?;
                 let ts = now();
-                if session.expires_at < ts {
+                // Unused for `session_days`, or older than `session_max_days`
+                // however often it was used: sign in again.
+                if session.expires_at < ts || ts - session.created_at > max_age {
                     conn.execute("DELETE FROM sessions WHERE id = ?1", [&session.id])?;
                     return Err(ApiError::unauthorized());
                 }

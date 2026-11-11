@@ -269,7 +269,22 @@ impl Client {
         self.empty(Method::DELETE, &format!("/devices/{id}"), None::<&()>).await
     }
 
+    /// Sign out every other device of this account.
+    pub async fn revoke_other_devices(&self) -> Result<()> {
+        self.empty(Method::DELETE, "/devices", None::<&()>).await
+    }
+
+    /// Someone to share with. The address goes in the body, so it is not in
+    /// any URL or proxy log; servers before 1.15 only know the GET form.
     pub async fn lookup_user(&self, email: &str) -> Result<PublicKeyResponse> {
+        let req = LookupUserRequest { email: email.trim().to_string() };
+        match self.json(Method::POST, "/users/lookup", Some(&req)).await {
+            Err(e) if e.status() == Some(405) => self.lookup_user_query(email).await,
+            other => other,
+        }
+    }
+
+    async fn lookup_user_query(&self, email: &str) -> Result<PublicKeyResponse> {
         let q: String = email
             .trim()
             .bytes()
@@ -439,7 +454,15 @@ impl Client {
     /// The account keys behind a pairing token (no sign-in; the agent calls
     /// this before it pairs).
     pub async fn agent_pairing_info(&self, token: &str) -> Result<PairingInfo> {
-        self.json(Method::GET, &format!("/agent/pairing/{token}"), None::<&()>).await
+        // The code in the body, not in a URL; servers before 1.15 only know
+        // it in the path (and answer 404 without the code's own error).
+        let req = PairingInfoRequest { token: token.to_string() };
+        match self.json(Method::POST, "/agent/pairing", Some(&req)).await {
+            Err(Error::Api { status: 404 | 405, code, .. }) if code != "pairing_invalid" => {
+                self.json(Method::GET, &format!("/agent/pairing/{token}"), None::<&()>).await
+            }
+            other => other,
+        }
     }
 }
 

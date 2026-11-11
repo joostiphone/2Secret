@@ -25,6 +25,14 @@ use crate::{AppState, SignupMode};
 /// cost parsing before any limit applies.
 pub const PUBLIC_BODY_BYTES: usize = 64 * 1024;
 
+/// Item changes one sync request may make. The database is held for the
+/// whole request, so one huge sync would make everyone else wait; the apps
+/// send at most [`twosecret_core::sync::SYNC_BATCH`] at a time, and changes
+/// beyond this stay on the device for the next request.
+pub const MAX_SYNC_CHANGES: usize = 1000;
+/// Vaults one sync request may name.
+const MAX_SYNC_VAULTS: usize = 2000;
+
 pub fn api_router() -> Router<AppState> {
     let small = || DefaultBodyLimit::max(PUBLIC_BODY_BYTES);
     Router::new()
@@ -37,9 +45,11 @@ pub fn api_router() -> Router<AppState> {
         .route("/account/password", post(change_password))
         .route("/account/pq-key", put(set_pq_key))
         .route("/account/avatar", put(set_avatar))
-        .route("/devices", get(list_devices))
+        .route("/devices", get(list_devices).delete(revoke_other_devices))
         .route("/devices/{id}", delete(revoke_device))
-        .route("/users/lookup", get(lookup_user))
+        // POST keeps the e-mail address out of URLs (and proxy logs); GET is
+        // for apps before 1.15.
+        .route("/users/lookup", get(lookup_user_query).post(lookup_user))
         .route("/vaults", get(list_vaults).post(create_vault))
         .route("/vaults/{id}", put(update_vault).delete(delete_vault))
         .route("/vaults/{id}/key", put(set_own_vault_key))
@@ -232,7 +242,11 @@ async fn register(
 ) -> ApiResult<Json<SessionResponse>> {
     let limiter_key = format!("signup:{}", client.0);
     let attempt_key = format!("attempt:{}", client.0);
-    if !state.signup_limiter.allowed(&limiter_key, now()) || !state.attempt_limiter.allowed(&attempt_key, now()) {
+    let probe_key = format!("probe:{}", client.0);
+    if !state.signup_limiter.allowed(&limiter_key, now())
+        || !state.attempt_limiter.allowed(&attempt_key, now())
+        || !state.probe_limiter.allowed(&probe_key, now())
+    {
         return Err(ApiError::too_many_requests());
     }
     match state.config.signups {
@@ -279,7 +293,15 @@ async fn register(
             Ok(())
         })
         .await
-        .inspect_err(|_| state.attempt_limiter.record_failure(&attempt_key, now()))?;
+        .inspect_err(|e| {
+            state.attempt_limiter.record_failure(&attempt_key, now());
+            // A taken address tells that it has an account: few such
+            // answers per hour (see docs/SECURITY.md, Unknown accounts).
+            if e.status == StatusCode::CONFLICT && e.message.contains("e-mail") {
+                state.probe_limiter.record_failure(&probe_key, now());
+            }
+        })?;
+    let _hashing = state.hash_inflight.enter(&client.0).ok_or_else(ApiError::too_many_requests)?;
     let auth_hash = hash_job(&state, move || hash_auth_key(&auth_key)).await??;
     let account = AccountRow {
         id: req.account_id.clone(),
@@ -340,10 +362,21 @@ async fn login(
     // guess, so these limits only keep the effort down.
     let limiter_key = format!("login:{email}:{}", client.0);
     let attempt_key = format!("attempt:{}", client.0);
+    let wide_key = client.wide().map(|w| format!("attempt:{w}"));
     let ts = now();
-    if !state.login_limiter.allowed(&limiter_key, ts) || !state.attempt_limiter.allowed(&attempt_key, ts) {
+    if !state.login_limiter.allowed(&limiter_key, ts)
+        || !state.attempt_limiter.allowed(&attempt_key, ts)
+        || wide_key.as_ref().is_some_and(|w| !state.wide_attempt_limiter.allowed(w, ts))
+    {
         return Err(ApiError::too_many_requests());
     }
+    // Counted before the costly hash, so requests sent at the same time
+    // cannot all pass the check above; at most two hash at once per address.
+    state.attempt_limiter.record_failure(&attempt_key, ts);
+    if let Some(w) = &wide_key {
+        state.wide_attempt_limiter.record_failure(w, ts);
+    }
+    let _hashing = state.hash_inflight.enter(&client.0).ok_or_else(ApiError::too_many_requests)?;
     let lookup = email.clone();
     let account = state.db.run(move |c| Ok(db::account_by_email(c, &lookup)?)).await?;
     let verified = {
@@ -359,7 +392,6 @@ async fn login(
     };
     let Some(account) = account.filter(|_| verified) else {
         state.login_limiter.record_failure(&limiter_key, ts);
-        state.attempt_limiter.record_failure(&attempt_key, ts);
         return Err(ApiError::invalid_credentials());
     };
     state.login_limiter.reset(&limiter_key);
@@ -498,11 +530,18 @@ async fn change_password(
                 "UPDATE accounts SET salt = ?1, kdf = ?2, auth_hash = ?3, keyset = ?4, updated_at = ?5 WHERE id = ?6",
                 params![req.salt, kdf, auth_hash, keyset, now(), auth.account_id],
             )?;
-            // Sign out every other device.
+            // Sign out every other device, and the agents elsewhere: a new
+            // password is also what someone does who fears the old one leaked.
             tx.execute(
                 "DELETE FROM sessions WHERE account_id = ?1 AND id != ?2",
                 params![auth.account_id, auth.session_id],
             )?;
+            tx.execute(
+                "UPDATE agents SET revoked_at = ?1, record = NULL, proof = NULL, token_hash = NULL
+                 WHERE account_id = ?2 AND revoked_at = 0",
+                params![now(), auth.account_id],
+            )?;
+            tx.execute("DELETE FROM agent_pairings WHERE account_id = ?1", [&auth.account_id])?;
             tx.commit()?;
             Ok(())
         })
@@ -561,17 +600,51 @@ async fn revoke_device(State(state): State<AppState>, auth: Auth, Path(id): Path
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Sign out every device but this one.
+async fn revoke_other_devices(State(state): State<AppState>, auth: Auth) -> ApiResult<StatusCode> {
+    state
+        .db
+        .run(move |c| {
+            c.execute(
+                "DELETE FROM sessions WHERE account_id = ?1 AND id != ?2",
+                params![auth.account_id, auth.session_id],
+            )?;
+            Ok(())
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Deserialize)]
 struct LookupQuery {
     email: String,
 }
 
-async fn lookup_user(
+async fn lookup_user_query(
     State(state): State<AppState>,
-    _auth: Auth,
+    auth: Auth,
     Query(q): Query<LookupQuery>,
 ) -> ApiResult<Json<PublicKeyResponse>> {
-    let email = valid_email(&q.email)?;
+    find_user(&state, &auth, &q.email).await
+}
+
+async fn lookup_user(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<LookupUserRequest>,
+) -> ApiResult<Json<PublicKeyResponse>> {
+    find_user(&state, &auth, &req.email).await
+}
+
+/// Someone to share with, by e-mail address. It tells whether the address
+/// has an account here, so each account may look up 30 an hour.
+async fn find_user(state: &AppState, auth: &Auth, email: &str) -> ApiResult<Json<PublicKeyResponse>> {
+    let probe_key = format!("lookup:{}", auth.account_id);
+    if !state.probe_limiter.allowed(&probe_key, now()) {
+        return Err(ApiError::too_many_requests());
+    }
+    state.probe_limiter.record_failure(&probe_key, now());
+    let email = valid_email(email)?;
     let account = state
         .db
         .run(move |c| {
@@ -1039,6 +1112,9 @@ async fn sync(
 ) -> ApiResult<Json<SyncResponse>> {
     let max_item = state.config.max_item_bytes;
     let quota = state.config.account_quota_bytes;
+    if req.vaults.len() > MAX_SYNC_VAULTS {
+        return Err(ApiError::bad_request("too many vaults in one sync"));
+    }
     let response = state
         .db
         .run(move |conn| {
@@ -1047,8 +1123,13 @@ async fn sync(
             let mut results = Vec::new();
             // Storage per vault owner, counted as changes are applied.
             let mut used: HashMap<String, u64> = HashMap::new();
+            let mut requests: HashMap<&str, &VaultSyncRequest> = HashMap::new();
+            for r in &req.vaults {
+                requests.entry(r.vault_id.as_str()).or_insert(r);
+            }
+            let mut budget = MAX_SYNC_CHANGES;
             for vault in &accessible {
-                let request = req.vaults.iter().find(|v| v.vault_id == vault.id);
+                let request = requests.get(vault.id.as_str()).copied();
                 let since = request.map(|r| r.since).unwrap_or(0);
                 let mut revision = vault.revision;
                 let mut accepted = Vec::new();
@@ -1063,6 +1144,11 @@ async fn sync(
                         if !seen.insert(change.id.clone()) {
                             continue;
                         }
+                        // Not looked at: the device sends it again.
+                        if budget == 0 {
+                            break;
+                        }
+                        budget -= 1;
                         if valid_id(&change.id).is_err()
                             || !vault.role.can_write()
                             || change.data.as_ref().is_some_and(|d| d.len() > max_item || !valid_enc(d))

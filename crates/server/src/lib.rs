@@ -49,6 +49,8 @@ pub struct Config {
     pub signups: SignupMode,
     pub invite_codes: Vec<String>,
     pub session_days: i64,
+    /// Days after which a device is signed out, however often it is used.
+    pub session_max_days: i64,
     pub web_dir: Option<PathBuf>,
     pub cors_origins: Vec<String>,
     pub max_item_bytes: usize,
@@ -80,6 +82,7 @@ impl Default for Config {
             signups: SignupMode::Open,
             invite_codes: vec![],
             session_days: 30,
+            session_max_days: 365,
             web_dir: None,
             cors_origins: vec![],
             max_item_bytes: 16 * 1024 * 1024,
@@ -108,8 +111,17 @@ pub struct AppState {
     pub signup_limiter: Arc<ratelimit::RateLimiter>,
     /// Counts attempts to open share links per client address.
     pub share_limiter: Arc<ratelimit::RateLimiter>,
-    /// Counts failed sign-ins and wrong invite codes per client address.
+    /// Counts sign-ins and wrong invite codes per client address.
     pub attempt_limiter: Arc<ratelimit::RateLimiter>,
+    /// The same per IPv6 /48, for someone who changes /64 between attempts.
+    pub wide_attempt_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts what tells whether an e-mail address has an account: looking
+    /// one up (per account) and signing up with a taken one (per address).
+    pub probe_limiter: Arc<ratelimit::RateLimiter>,
+    /// Counts calls with a wrong agent signature per client address.
+    pub agent_bad_limiter: Arc<ratelimit::RateLimiter>,
+    /// Password hashes running for each client address.
+    pub hash_inflight: Arc<ratelimit::Inflight>,
     /// Password hashes (Argon2id, memory-hard) running at the same time: one
     /// per processor, so a flood of sign-ins cannot exhaust the server.
     pub hash_slots: Arc<tokio::sync::Semaphore>,
@@ -134,6 +146,10 @@ impl AppState {
             signup_limiter: Arc::new(ratelimit::RateLimiter::new(signups_per_ip, 24 * 3600)),
             share_limiter: Arc::new(ratelimit::RateLimiter::new(60, 15 * 60)),
             attempt_limiter: Arc::new(ratelimit::RateLimiter::new(30, 15 * 60)),
+            wide_attempt_limiter: Arc::new(ratelimit::RateLimiter::new(120, 15 * 60)),
+            probe_limiter: Arc::new(ratelimit::RateLimiter::new(30, 3600)),
+            agent_bad_limiter: Arc::new(ratelimit::RateLimiter::new(60, 15 * 60)),
+            hash_inflight: Arc::new(ratelimit::Inflight::new(2)),
             hash_slots: Arc::new(tokio::sync::Semaphore::new(
                 std::thread::available_parallelism().map_or(2, |n| n.get()).max(2),
             )),
@@ -234,6 +250,9 @@ pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> anyhow
         state.signup_limiter.clone(),
         state.share_limiter.clone(),
         state.attempt_limiter.clone(),
+        state.wide_attempt_limiter.clone(),
+        state.probe_limiter.clone(),
+        state.agent_bad_limiter.clone(),
         state.agent_limiter.clone(),
         state.pair_limiter.clone(),
     ];

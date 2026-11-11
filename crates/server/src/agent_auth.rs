@@ -17,6 +17,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use twosecret_core::agent_remote::{HttpSignature, HTTP_HEADER, HTTP_SKEW_SECONDS};
 use twosecret_core::util::now;
 
+use crate::client_ip::ClientIp;
 use crate::error::{ApiError, ApiResult};
 use crate::AppState;
 
@@ -107,31 +108,42 @@ pub fn verify_with_key(
 }
 
 /// Check a header against the agent's stored key, and that the agent may
-/// call: confirmed by the owner and not revoked. Counts every call against
-/// the per-agent limit.
+/// call: confirmed by the owner and not revoked. Every signed call counts
+/// against the agent's limit; calls with a wrong signature count against the
+/// caller's address instead, so a stranger who knows an agent's id cannot use
+/// up its limit.
 pub async fn verify(
     state: &AppState,
+    client: &ClientIp,
     headers: &HeaderMap,
     method: &Method,
     uri: &Uri,
     body: &Bytes,
 ) -> ApiResult<AgentCaller> {
-    let sig = signature(headers)?;
     let at = now();
+    let bad_key = format!("agent-bad:{}", client.0);
+    if !state.agent_bad_limiter.allowed(&bad_key, at) {
+        return Err(ApiError::too_many_requests());
+    }
+    let refuse = |e: ApiError| {
+        state.agent_bad_limiter.record_failure(&bad_key, at);
+        e
+    };
+    let sig = signature(headers).map_err(refuse)?;
+    let id = sig.agent_id.clone();
+    let row = state.db.run(move |c| Ok(agent_row(c, &id)?)).await?;
+    // An unknown agent gets the same answer as a wrong signature: nothing to
+    // learn from the difference.
+    let row = row.ok_or_else(bad_signature).map_err(refuse)?;
+    sig.verify(&row.ed25519, method.as_str(), &signed_path(uri), body, at).map_err(|_| refuse(bad_signature()))?;
+    if !state.agent_nonces.first_time(&sig.agent_id, &sig.nonce, at) {
+        return Err(refuse(bad_signature()));
+    }
     let limiter_key = format!("agent:{}", sig.agent_id);
     if !state.agent_limiter.allowed(&limiter_key, at) {
         return Err(ApiError::too_many_requests());
     }
     state.agent_limiter.record_failure(&limiter_key, at);
-    let id = sig.agent_id.clone();
-    let row = state.db.run(move |c| Ok(agent_row(c, &id)?)).await?;
-    // An unknown agent gets the same answer as a wrong signature: nothing to
-    // learn from the difference.
-    let row = row.ok_or_else(bad_signature)?;
-    sig.verify(&row.ed25519, method.as_str(), &signed_path(uri), body, at).map_err(|_| bad_signature())?;
-    if !state.agent_nonces.first_time(&sig.agent_id, &sig.nonce, at) {
-        return Err(bad_signature());
-    }
     if row.revoked {
         return Err(ApiError::new(
             axum::http::StatusCode::FORBIDDEN,
