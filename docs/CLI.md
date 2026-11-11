@@ -78,6 +78,16 @@ of an id. Categories: `login`, `password`, `secure_note`, `credit_card`,
 2secret vault delete Familie        # owners delete, members leave
 ```
 
+A vault someone shares with you waits as an invitation until you accept it:
+nothing of it is shown or filled in before. Compare the fingerprint with the
+person first. Accepting on one device is enough; your other devices follow.
+
+```sh
+2secret vault invitations           # name, who shares it, role, fingerprint
+2secret vault accept Familie
+2secret vault decline Familie       # you leave the vault
+```
+
 ### Where vaults are kept
 
 A vault is kept with the account (on its server), only on this device, or in

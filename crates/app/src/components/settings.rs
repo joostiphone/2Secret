@@ -354,6 +354,27 @@ fn SyncSection() -> Element {
                             }
                             button { class: "btn small", onclick: load_devices, {t("common.show")} }
                         }
+                        if devices().is_some_and(|l| l.len() > 1) {
+                            div { class: "settings-row",
+                                div { class: "k" }
+                                button { class: "btn small danger",
+                                    onclick: move |_| {
+                                        let client = SESSION.peek().as_ref().and_then(|s| twosecret_client::client_for(s).ok());
+                                        let Some(client) = client else { return };
+                                        spawn(async move {
+                                            match client.revoke_other_devices().await {
+                                                Ok(()) => {
+                                                    devices.with_mut(|l| if let Some(l) = l { l.retain(|x| x.current) });
+                                                    toast(t("toast.signed_out_others"));
+                                                }
+                                                Err(e) => toast_err(&client_error(&e)),
+                                            }
+                                        });
+                                    },
+                                    {t("settings.sign_out_others")}
+                                }
+                            }
+                        }
                         if let Some(list) = devices() {
                             for d in list {
                                 div { class: "settings-row", key: "{d.id}",

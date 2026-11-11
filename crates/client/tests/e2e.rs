@@ -27,6 +27,14 @@ fn kdf() -> KdfParams {
 
 const PW: &str = "correct horse battery staple";
 
+/// Sync, and accept every vault shared with this account.
+async fn accept_shared(s: &mut Session) {
+    client::sync(s).await.unwrap();
+    for invitation in s.invitations() {
+        client::accept_invitation(s, &invitation.vault_id).await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn signup_signin_sync_between_devices() {
     let url = start_server(Config::default()).await;
@@ -165,9 +173,23 @@ async fn vault_sharing_and_permissions() {
     };
     assert!(matches!(wrapped_for_bob().await, WrappedKey::HybridSealed { .. }));
 
+    // Bob sees an invitation, with the name and who shares it; nothing of
+    // the vault is used before he accepts.
     let r = client::sync(&mut bob).await.unwrap();
-    assert_eq!(r.vaults_added, 1);
-    // After Bob's sync the server keeps only a wrapping with Bob's own account key.
+    assert_eq!((r.vaults_added, r.invitations_new), (0, 1));
+    assert!(bob.vault(&family).is_none() && bob.item(&netflix).is_none());
+    let invitation = bob.invitations().pop().unwrap();
+    assert_eq!((invitation.name.as_str(), invitation.role), ("Family", Role::Viewer));
+    let owner = client::invitation_owner(&bob, &family).await.unwrap().unwrap();
+    assert_eq!(owner.email, "alice@example.com");
+    assert!(matches!(wrapped_for_bob().await, WrappedKey::HybridSealed { .. }));
+    assert_eq!(client::sync(&mut bob).await.unwrap().invitations_new, 0, "told once");
+
+    let r = client::accept_invitation(&mut bob, &family).await.unwrap();
+    assert_eq!(r.vaults_added, 0);
+    assert!(bob.invitations().is_empty());
+    // After accepting the server keeps only a wrapping with Bob's own account
+    // key, which tells Bob's other devices that he said yes.
     assert!(matches!(wrapped_for_bob().await, WrappedKey::Symmetric { .. }));
     client::sync(&mut bob).await.unwrap();
     assert!(bob.vault_keys_to_rewrap().is_empty());
@@ -206,6 +228,51 @@ async fn vault_sharing_and_permissions() {
 }
 
 #[tokio::test]
+async fn shared_vaults_wait_as_invitations() {
+    use twosecret_core::api::CreateVaultRequest;
+    use twosecret_core::crypto::SymmetricKey;
+    let url = start_server(Config::default()).await;
+    let (mut alice, _) = client::signup(&url, "A", "a@example.com", PW, None, "a", "Personal", kdf()).await.unwrap();
+    let (mut bob, bob_sk) = client::signup(&url, "B", "b@example.com", PW, None, "b", "Personal", kdf()).await.unwrap();
+    let mut phone = client::signin(&url, "b@example.com", PW, &bob_sk, "phone").await.unwrap();
+
+    // Declined: Bob leaves the vault, and the invitation is gone for good.
+    let spam = alice.create_vault("Totally your bank", "").unwrap();
+    client::share_vault(&mut alice, &spam, "b@example.com", Role::Editor).await.unwrap();
+    client::sync(&mut bob).await.unwrap();
+    assert_eq!(bob.invitations().len(), 1);
+    client::decline_invitation(&mut bob, &spam).await.unwrap();
+    assert!(bob.invitations().is_empty());
+    assert_eq!(client::vault_members(&alice, &spam).await.unwrap().len(), 1);
+    client::sync(&mut bob).await.unwrap();
+    assert!(bob.invitations().is_empty() && bob.vault(&spam).is_none());
+
+    // Accepted on one device: the account's other devices add it directly.
+    let family = alice.create_vault("Family", "").unwrap();
+    let item = alice.add_item(&family, Item::login("Netflix", "family", "popcorn", None)).unwrap();
+    client::share_vault(&mut alice, &family, "b@example.com", Role::Viewer).await.unwrap();
+    client::sync(&mut phone).await.unwrap();
+    assert_eq!(phone.invitations().len(), 1);
+    client::sync(&mut bob).await.unwrap();
+    client::accept_invitation(&mut bob, &family).await.unwrap();
+    assert_eq!(bob.item(&item).unwrap().password(), Some("popcorn"));
+    let r = client::sync(&mut phone).await.unwrap();
+    assert_eq!(r.vaults_added, 1);
+    assert!(phone.invitations().is_empty());
+    assert_eq!(phone.item(&item).unwrap().password(), Some("popcorn"));
+
+    // A vault "of Bob's own" with a key sealed to him (what a server could
+    // make up) is neither added nor offered.
+    let api = client::client_for(&bob).unwrap();
+    let meta = api.vaults().await.unwrap()[0].meta.clone();
+    let key = WrappedKey::wrap_for(&bob.public_keys(), &SymmetricKey::generate(), b"x").unwrap();
+    let forged = twosecret_core::util::new_id();
+    api.create_vault(&CreateVaultRequest { id: forged.clone(), meta, wrapped_key: key }).await.unwrap();
+    client::sync(&mut bob).await.unwrap();
+    assert!(bob.vault(&forged).is_none() && bob.invitations().is_empty());
+}
+
+#[tokio::test]
 async fn removing_a_member_replaces_the_vault_key() {
     use twosecret_core::api::{ItemChange, SyncRequest, VaultSyncRequest};
     use twosecret_core::crypto::decrypt_json;
@@ -223,8 +290,8 @@ async fn removing_a_member_replaces_the_vault_key() {
     let wifi = alice.add_item(&team, Item::login("Wi-Fi", "office", "old-secret", None)).unwrap();
     client::share_vault(&mut alice, &team, "bob@example.com", Role::Editor).await.unwrap();
     client::share_vault(&mut alice, &team, "carol@example.com", Role::Viewer).await.unwrap();
-    client::sync(&mut bob).await.unwrap();
-    client::sync(&mut carol).await.unwrap();
+    accept_shared(&mut bob).await;
+    accept_shared(&mut carol).await;
     let old_key = alice.vault_key(&team).unwrap().clone();
     assert_eq!(carol.vault_key(&team), Some(&old_key));
 
@@ -570,7 +637,7 @@ async fn server_enforces_read_only_access() {
     let shared = alice.create_vault("Shared", "").unwrap();
     let id = alice.add_item(&shared, Item::login("X", "x", "secret", None)).unwrap();
     client::share_vault(&mut alice, &shared, "b@example.com", Role::Viewer).await.unwrap();
-    client::sync(&mut bob).await.unwrap();
+    accept_shared(&mut bob).await;
 
     // Bob bypasses his client's checks and talks to the API directly.
     let api = client::client_for(&bob).unwrap();

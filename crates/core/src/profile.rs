@@ -74,6 +74,15 @@ pub struct Profile {
     /// [`KnownAccount`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub known_accounts: Vec<KnownAccount>,
+    /// Vaults others shared with this account that it has not accepted yet,
+    /// as the server listed them (see [`crate::session::Session::invitations`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invitations: Vec<crate::api::VaultDto>,
+    /// Accounts whose emergency access this account opened (on this device):
+    /// their vaults are added without an invitation, also ones they create
+    /// later. Forgotten when the access ends.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emergency_opened: Vec<String>,
     /// This device's name in storage folders: the files it writes there end
     /// in `~<tag>` (see [`crate::folder`]). Made when first needed.
     #[serde(default, skip_serializing_if = "Option::is_none")]

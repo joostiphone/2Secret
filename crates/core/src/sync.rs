@@ -60,9 +60,33 @@ pub struct SyncReport {
     /// [`Session::recipient`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub untrusted_contacts: Vec<KeyChange>,
+    /// Vaults someone shared that this device had not seen as invitations
+    /// before (see [`Session::invitations`]).
+    #[serde(default)]
+    pub invitations_new: usize,
     /// Emergency access as the server sees it (none: not supported there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emergency: Option<crate::api::EmergencyOverview>,
+}
+
+/// A vault from the server's list as this device keeps it.
+pub(crate) fn vault_record(dto: &VaultDto, account_id: &str) -> VaultRecord {
+    VaultRecord {
+        id: dto.id.clone(),
+        owner_id: dto.owner_id.clone(),
+        role: if dto.owner_id == account_id { dto.role.max(crate::profile::Role::Owner) } else { dto.role },
+        wrapped_key: dto.wrapped_key.clone(),
+        meta: dto.meta.clone(),
+        revision: 0,
+        sync_state: SyncState::Synced,
+        member_count: dto.member_count,
+        created_at: dto.created_at,
+        key_rev: dto.key_rev,
+        retired_keys: Vec::new(),
+        location: VaultLocation::Account,
+        leftovers: Vec::new(),
+        on_server: false,
+    }
 }
 
 /// Append the ids in `more` that `list` does not have yet.
@@ -91,6 +115,7 @@ impl SyncReport {
         self.untrusted_contacts.extend(other.untrusted_contacts.iter().cloned());
         self.needs_another_round = other.needs_another_round;
         self.avatar_changed |= other.avatar_changed;
+        self.invitations_new += other.invitations_new;
     }
 }
 
@@ -337,6 +362,7 @@ impl Session {
             }
         }
 
+        let mut invitations = Vec::new();
         for dto in vaults {
             match p.vault_mut(&dto.id) {
                 Some(local) => {
@@ -355,30 +381,25 @@ impl Session {
                     local.key_rev = dto.key_rev;
                 }
                 None => {
+                    // A key sealed to our public key can come from anyone,
+                    // the server too: such a vault waits as an invitation
+                    // until this account accepts it. Accepting stores the key
+                    // wrapped with the account key, which only this account's
+                    // devices can do; they add the vault directly. Our own
+                    // vaults are never sealed to us: not taken at all.
+                    if dto.wrapped_key.is_sealed() && !p.emergency_opened.contains(&dto.owner_id) {
+                        if dto.owner_id != account_id {
+                            invitations.push(dto.clone());
+                        }
+                        continue;
+                    }
                     report.vaults_added += 1;
-                    p.vaults.push(VaultRecord {
-                        id: dto.id.clone(),
-                        owner_id: dto.owner_id.clone(),
-                        role: if dto.owner_id == account_id {
-                            dto.role.max(crate::profile::Role::Owner)
-                        } else {
-                            dto.role
-                        },
-                        wrapped_key: dto.wrapped_key.clone(),
-                        meta: dto.meta.clone(),
-                        revision: 0,
-                        sync_state: SyncState::Synced,
-                        member_count: dto.member_count,
-                        created_at: dto.created_at,
-                        key_rev: dto.key_rev,
-                        retired_keys: Vec::new(),
-                        location: VaultLocation::Account,
-                        leftovers: Vec::new(),
-                        on_server: false,
-                    });
+                    p.vaults.push(vault_record(dto, &account_id));
                 }
             }
         }
+        report.invitations_new += invitations.iter().filter(|d| !p.invitations.iter().any(|o| o.id == d.id)).count();
+        p.invitations = invitations;
         self.reload()
     }
 

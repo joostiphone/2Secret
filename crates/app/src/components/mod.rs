@@ -2,6 +2,7 @@ pub mod actions;
 pub mod dashboard;
 pub mod emergency;
 pub mod generator;
+pub mod invitations;
 pub mod item_edit;
 pub mod item_view;
 pub mod location;

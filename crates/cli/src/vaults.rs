@@ -96,6 +96,12 @@ pub enum VaultCmd {
     },
     /// Show who has access to a vault.
     Members { vault: String },
+    /// Vaults others shared with you, waiting for you to accept or decline.
+    Invitations,
+    /// Accept a vault someone shared with you (by name or id).
+    Accept { vault: String },
+    /// Decline a vault someone shared with you: you leave it.
+    Decline { vault: String },
     /// Change the role of a member.
     SetRole { vault: String, email: String, role: String },
     /// Remove someone's access to a vault (the vault gets a new key).
@@ -118,6 +124,20 @@ fn location(session: &Session, v: &VaultInfo) -> String {
         VaultLocation::Device => "this device only".into(),
         VaultLocation::Folder { service, .. } => service.name().into(),
         VaultLocation::WebDav { url, .. } => format!("WebDAV ({})", twosecret_core::profile::webdav_host(url)),
+    }
+}
+
+/// An invitation by vault name or id.
+fn find_invitation(session: &Session, query: &str) -> Result<twosecret_core::session::Invitation> {
+    let all = session.invitations();
+    if let Some(inv) = all.iter().find(|i| i.vault_id == query) {
+        return Ok(inv.clone());
+    }
+    let named: Vec<_> = all.iter().filter(|i| i.name.eq_ignore_ascii_case(query)).collect();
+    match named.as_slice() {
+        [one] => Ok((*one).clone()),
+        [] => Err(anyhow!("no invitation for '{query}' (2secret vault invitations lists them)")),
+        _ => Err(anyhow!("several invitations are called '{query}': use the id")),
     }
 }
 
@@ -371,6 +391,60 @@ pub fn run(ctx: &Ctx, cmd: VaultCmd) -> Result<()> {
                 r.id(),
                 AccountPublicKeys::from_b64(&user.public_key, user.pq_public_key.as_deref())?.fingerprint()
             );
+            Ok(())
+        }
+        VaultCmd::Invitations => {
+            let mut session = ctx.unlock()?;
+            ctx.block_on(twosecret_client::sync(&mut session))?;
+            ctx.save(&session)?;
+            let mut rows = Vec::new();
+            let mut list = Vec::new();
+            for inv in session.invitations() {
+                let owner = ctx.block_on(twosecret_client::invitation_owner(&session, &inv.vault_id))?;
+                let (who, fingerprint) = owner
+                    .map(|m| {
+                        let fp = AccountPublicKeys::from_b64(&m.public_key, m.pq_public_key.as_deref())
+                            .map(|k| k.fingerprint())
+                            .unwrap_or_default();
+                        (format!("{} <{}>", m.name, m.email), fp)
+                    })
+                    .unwrap_or_default();
+                rows.push(vec![
+                    inv.name.clone(),
+                    who.clone(),
+                    inv.role.id().to_string(),
+                    fingerprint.clone(),
+                    inv.vault_id.clone(),
+                ]);
+                list.push(serde_json::json!({
+                    "vault_id": inv.vault_id, "name": inv.name, "role": inv.role.id(),
+                    "from": who, "fingerprint": fingerprint,
+                }));
+            }
+            if ctx.json {
+                print_json(&list);
+            } else if rows.is_empty() {
+                eprintln!("No invitations.");
+            } else {
+                table(&["vault", "from", "role", "fingerprint", "id"], &rows);
+                eprintln!("Compare the fingerprint with the person before you accept: 2secret vault accept <vault>");
+            }
+            Ok(())
+        }
+        VaultCmd::Accept { vault } => {
+            let mut session = ctx.unlock()?;
+            let inv = find_invitation(&session, &vault)?;
+            ctx.block_on(twosecret_client::accept_invitation(&mut session, &inv.vault_id))?;
+            ctx.save(&session)?;
+            eprintln!("Accepted '{}'.", inv.name);
+            Ok(())
+        }
+        VaultCmd::Decline { vault } => {
+            let mut session = ctx.unlock()?;
+            let inv = find_invitation(&session, &vault)?;
+            ctx.block_on(twosecret_client::decline_invitation(&mut session, &inv.vault_id))?;
+            ctx.save(&session)?;
+            eprintln!("Declined '{}'.", inv.name);
             Ok(())
         }
         VaultCmd::Members { vault } => {

@@ -146,18 +146,35 @@ item's ciphertext, fails to decrypt. The decrypted item id is also checked.
 
 **Unknown accounts:** the pre-login endpoint answers unknown e-mail addresses
 with stable fake salts (derived from a per-installation server secret), and
-failed logins for unknown addresses take as long as real ones, so the server
-does not reveal whether an address has an account.
+failed logins for unknown addresses take as long as real ones, so signing in
+does not reveal whether an address has an account. Two things do, as with
+most services: signing up with an address that is taken, and looking up an
+address to share a vault with (signed in). Both are limited: 30 look-ups an
+hour per account, and 30 taken addresses an hour per client address. The
+address goes in the request body, not the URL, so it is in no proxy log.
+
+**Storage limit:** a server can limit the storage per account
+(`--account-storage-mb`, 20 MB on the 2Secret server). It counts everything
+the server keeps for the account: the vaults it owns (shared vaults count for
+their owner) with every item row, deleted ones too, the members' wrapped
+keys, its share links, the keys it left for emergency contacts, its agents
+elsewhere and their open requests, and its profile photo. A wrapped key must
+have the size of one, and one sync request makes at most 1000 changes, so
+nobody can fill the server's disk or hold its database for long.
 
 ## Authentication and sessions
 
 Signing in sends the 32-byte authentication key over TLS. The server stores
 `Argon2id(auth key, random salt)` and compares in constant time. A successful
 login returns a random 256-bit bearer token; the server stores only its
-SHA-256. Tokens expire after 30 days of inactivity (configurable) and can be
-revoked per device. Changing the master password signs out all other devices.
-Failed logins are rate limited per e-mail address and client address (10 per
-15 minutes) and per client address (30 per 15 minutes).
+SHA-256. Tokens expire after 30 days of inactivity and after 365 days
+however often they are used (both configurable); they can be revoked per
+device, or all but the current one at once. Changing the master password
+signs out all other devices and the agents elsewhere, and cancels open
+pairing codes. Failed logins are rate limited per e-mail address and client
+address (10 per 15 minutes); every login counts per client address (30 per
+15 minutes, IPv6 per /64, and 120 per /48), before the password hash runs,
+and at most two hashes run at once per client address.
 
 On the device the token is stored encrypted with the account key, so a copied
 profile file cannot be used to talk to the server either.
@@ -168,6 +185,18 @@ To share a vault, the sharer fetches the recipient's public keys from the
 server, wraps the vault key to them and uploads the wrapped key together with
 a role (`viewer`, `editor`, `manager`). The server enforces roles for every
 write.
+
+**Invitations.** Anyone can seal a key to an account's public key, and a
+server can make up a "shared" vault too. So a vault shared with an account
+waits as an **invitation** until the account accepts it: its apps show the
+vault's name, whose vault it is and the fingerprint of their keys, and use
+nothing of it (no items, no autofill) before. The server does not even send
+its items. Accepting stores the vault key wrapped with the recipient's own
+account key, which only the recipient's devices can make: the account's other
+devices then add the vault without asking again, while a vault whose key is
+still sealed stays an invitation. Declining leaves the vault. A vault said to
+be the account's own but sealed to it is ignored. Opening emergency access is
+itself the consent for the vaults it gives (see *Emergency access*).
 
 ### Quantum-resistant sharing
 
@@ -306,7 +335,9 @@ An account can trust up to ten other accounts on the same server as
   can approve it at once or deny it. Without either, the server grants it when
   the waiting period has passed. Then the contact can open the vaults: the
   server makes them a **viewer** of each vault whose current key it holds,
-  and they read it like a shared vault (they cannot change anything).
+  and they read it like a shared vault (they cannot change anything). The
+  device that opened it adds those vaults, and ones the owner creates later,
+  without an invitation, until the access ends.
 - Denying a request after access was given, ending the access or removing the
   contact takes the contact out of those vaults, and the owner's device gives
   them new keys (see *Revocation and key rotation*). Vaults that were shared
@@ -638,9 +669,12 @@ the apps warn about this.
   (and Cloudflare, which it is reached through), sees the metadata above and
   IP addresses, never vault contents. Encrypted backups (*Settings → Backup
   & export*) keep your data independent of any server.
-- The web vault is only as trustworthy as the server that serves its code. If
-  you do not trust the server operator, use the desktop/mobile apps or the
-  extension, whose code does not come from the server.
+- The web vault is only as trustworthy as the server that serves its code,
+  and what stands in front of it (the 2Secret server is reached through
+  Cloudflare). If you do not trust those, use the desktop/mobile apps or the
+  extension, whose code does not come from the server. Its Content Security
+  Policy allows inline styles (the interface sets them); scripts only from
+  the server itself.
 - Agent Access treats an AI tool like any other program of the user: an
   agent that also controls the computer can click *Allow* itself (the
   optional biometric question helps, but a Windows Hello PIN or a Linux

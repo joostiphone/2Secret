@@ -1130,6 +1130,11 @@ async fn sync(
             let mut budget = MAX_SYNC_CHANGES;
             for vault in &accessible {
                 let request = requests.get(vault.id.as_str()).copied();
+                // Shared with this account but not accepted (its key is still
+                // sealed): the items come when a device asks for the vault.
+                if request.is_none() && vault.wrapped_key.is_sealed() {
+                    continue;
+                }
                 let since = request.map(|r| r.since).unwrap_or(0);
                 let mut revision = vault.revision;
                 let mut accepted = Vec::new();

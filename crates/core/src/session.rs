@@ -68,6 +68,21 @@ struct OpenVault {
     meta: VaultMeta,
 }
 
+/// A vault someone shared with this account, not accepted yet (see
+/// [`Session::invitations`]).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Invitation {
+    pub vault_id: String,
+    /// Whose vault it is; who they are comes from the server's member list.
+    pub owner_id: String,
+    pub role: Role,
+    pub member_count: u32,
+    /// The vault's name, if its key and metadata open.
+    pub name: String,
+    /// Whether the key opens with this account's keys at all.
+    pub opens: bool,
+}
+
 /// A vault key that was shared with us, wrapped again with our own account
 /// key (see [`Session::vault_keys_to_rewrap`]).
 #[derive(Clone, Debug, PartialEq)]
@@ -209,6 +224,8 @@ impl Session {
             items: Vec::new(),
             default_vault: None,
             known_accounts: Vec::new(),
+            invitations: Vec::new(),
+            emergency_opened: Vec::new(),
             device_tag: None,
         };
         let mut session = Session::from_parts(profile, keyset)?;
@@ -230,6 +247,8 @@ impl Session {
             items: Vec::new(),
             default_vault: None,
             known_accounts: Vec::new(),
+            invitations: Vec::new(),
+            emergency_opened: Vec::new(),
             device_tag: None,
         };
         Session::open(profile, keys)
@@ -364,6 +383,70 @@ impl Session {
         if let Some(link) = &mut self.profile.server {
             link.pq_key_published = true;
         }
+    }
+
+    /// Vaults someone shared with this account that it has not accepted yet.
+    /// Their key is sealed to our public key, which anyone can do (a server
+    /// too), so nothing of such a vault is shown or filled in before the
+    /// account says yes. Accepting on one device is enough: it stores the key
+    /// wrapped with the account key, and the other devices then add the vault.
+    pub fn invitations(&self) -> Vec<Invitation> {
+        self.profile
+            .invitations
+            .iter()
+            .map(|dto| {
+                let meta = dto
+                    .wrapped_key
+                    .unwrap(&self.keyset, &aad::vault_key(&dto.id))
+                    .and_then(|key| decrypt_json::<VaultMeta>(&key, &dto.meta, &aad::vault_meta(&dto.id)));
+                Invitation {
+                    vault_id: dto.id.clone(),
+                    owner_id: dto.owner_id.clone(),
+                    role: dto.role,
+                    member_count: dto.member_count,
+                    name: meta.as_ref().map(|m| m.name.clone()).unwrap_or_default(),
+                    opens: meta.is_ok(),
+                }
+            })
+            .collect()
+    }
+
+    /// Accept an invitation: the vault is added like any other. The next sync
+    /// fetches its items and stores its key wrapped with the account key.
+    pub fn accept_invitation(&mut self, vault_id: &str) -> Result<()> {
+        let pos = self
+            .profile
+            .invitations
+            .iter()
+            .position(|d| d.id == vault_id)
+            .ok_or_else(|| Error::not_found(format!("invitation {vault_id}")))?;
+        let dto = self.profile.invitations.remove(pos);
+        if self.profile.vault(&dto.id).is_none() {
+            let record = crate::sync::vault_record(&dto, &self.profile.account.id);
+            self.open_vault_record(&record)?;
+            self.profile.vaults.push(record);
+        }
+        self.reload()
+    }
+
+    /// Forget an invitation (after declining it on the server).
+    pub fn forget_invitation(&mut self, vault_id: &str) {
+        self.profile.invitations.retain(|d| d.id != vault_id);
+    }
+
+    /// This account opens the emergency access `grantor` gave it: their
+    /// vaults come without an invitation.
+    pub fn consent_emergency(&mut self, grantor: &str) {
+        if !self.profile.emergency_opened.iter().any(|a| a == grantor) {
+            self.profile.emergency_opened.push(grantor.to_string());
+        }
+    }
+
+    /// Forget the consent for emergency access that is no longer open.
+    pub fn keep_emergency_consent(&mut self, overview: &crate::api::EmergencyOverview) {
+        self.profile
+            .emergency_opened
+            .retain(|a| overview.trusted_by.iter().any(|c| &c.account_id == a && (c.opened || c.granted)));
     }
 
     /// Vault keys that others shared with us by public-key encryption, wrapped

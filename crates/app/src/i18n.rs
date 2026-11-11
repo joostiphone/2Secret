@@ -663,6 +663,17 @@ static TABLE: &[Entry] = &[
     ("emergency.banner_given", "{name} gave you emergency access", "{name} heeft je noodtoegang gegeven"),
     ("emergency.banner_given_desc", "You can read the vaults they own.", "Je kunt de kluizen lezen die van hen zijn."),
 
+    // Invitations to shared vaults
+    ("invite.title", "{name} shares “{vault}” with you", "{name} deelt “{vault}” met je"),
+    ("invite.desc", "As {role}. Nothing of it is used until you accept. Compare this fingerprint with them first:", "Als {role}. Er wordt niets van gebruikt tot je accepteert. Vergelijk eerst deze vingerafdruk met die persoon:"),
+    ("invite.someone", "Someone", "Iemand"),
+    ("invite.unreadable", "a vault your keys cannot open", "een kluis die je sleutels niet kunnen openen"),
+    ("invite.accept", "Accept", "Accepteren"),
+    ("invite.decline", "Decline", "Weigeren"),
+    ("invite.accepted", "Vault added", "Kluis toegevoegd"),
+    ("invite.declined", "Invitation declined", "Uitnodiging geweigerd"),
+    ("sync.invited", "Someone shared a vault with you: see Home to accept or decline it.", "Iemand heeft een kluis met je gedeeld: op Home kun je hem accepteren of weigeren."),
+
     // Generator
     ("gen.random", "Random", "Willekeurig"),
     ("gen.memorable", "Memorable", "Makkelijk te onthouden"),
@@ -731,7 +742,7 @@ static TABLE: &[Entry] = &[
     ("settings.emergency_kit_desc", "A printable sheet with your sign-in details and Secret Key.", "Een printbaar overzicht met je inloggegevens en geheime sleutel."),
     ("settings.change_password", "Change master password", "Hoofdwachtwoord wijzigen"),
     ("settings.change_password_desc", "Your data stays encrypted; other devices need the new password.", "Je gegevens blijven versleuteld; andere apparaten hebben het nieuwe wachtwoord nodig."),
-    ("settings.change_password_info", "After the change, other devices are signed out and need the new master password.", "Na de wijziging worden andere apparaten uitgelogd en hebben ze het nieuwe hoofdwachtwoord nodig."),
+    ("settings.change_password_info", "After the change, other devices and AI agents elsewhere are signed out; devices need the new master password, agents a new pairing.", "Na de wijziging worden andere apparaten en AI-agents elders afgemeld; apparaten hebben het nieuwe hoofdwachtwoord nodig, agents een nieuwe koppeling."),
     ("settings.current_password", "Current master password", "Huidig hoofdwachtwoord"),
     ("settings.new_password", "New master password", "Nieuw hoofdwachtwoord"),
     ("settings.fingerprint", "Public key fingerprint", "Vingerafdruk publieke sleutel"),
@@ -743,6 +754,8 @@ static TABLE: &[Entry] = &[
     ("settings.sign_in_again", "Sign in again", "Opnieuw inloggen"),
     ("settings.devices", "Devices", "Apparaten"),
     ("settings.devices_desc", "Devices signed in to your account.", "Apparaten die op je account zijn ingelogd."),
+    ("settings.sign_out_others", "Sign out all other devices", "Alle andere apparaten afmelden"),
+    ("toast.signed_out_others", "Your other devices are signed out", "Je andere apparaten zijn afgemeld"),
     ("settings.this_device", "this device", "dit apparaat"),
     ("settings.last_used", "Last used", "Laatst gebruikt"),
     ("settings.sign_out_device", "Sign out", "Uitloggen"),

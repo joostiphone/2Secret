@@ -342,6 +342,9 @@ pub async fn sync_with<A: SessionAccess>(access: &mut A) -> Result<SyncReport> {
     post_quantum_upkeep(&client, access).await?;
     total.avatar_changed = avatar_upkeep(&client, access).await?;
     let emergency = emergency_upkeep(&client, access, &mut total).await?;
+    if let Some(overview) = &emergency {
+        access.with_session(|s| s.keep_emergency_consent(overview))?;
+    }
     total.emergency = emergency;
     Ok(total)
 }
@@ -507,10 +510,44 @@ pub async fn reject_emergency_access(session: &mut Session, id: &str) -> Result<
 }
 
 /// Take the access granted to this account: the vaults appear as shared
-/// vaults (read-only).
+/// vaults (read-only). Asking for them is the consent, so they are accepted
+/// right away instead of waiting as invitations.
 pub async fn open_emergency_access(session: &mut Session, id: &str) -> Result<()> {
-    client_for(session)?.open_emergency_access(id).await?;
+    let client = client_for(session)?;
+    let grantor = client.emergency().await?.trusted_by.into_iter().find(|c| c.id == id).map(|c| c.account_id);
+    client.open_emergency_access(id).await?;
+    if let Some(grantor) = grantor {
+        session.consent_emergency(&grantor);
+    }
     sync(session).await.map(|_| ())
+}
+
+/// Accept a vault someone shared (see [`Session::invitations`]): it is added
+/// and its items are fetched; its key is then stored wrapped with the
+/// account key, so this account's other devices add it too.
+pub async fn accept_invitation(session: &mut Session, vault_id: &str) -> Result<SyncReport> {
+    session.accept_invitation(vault_id)?;
+    sync(session).await
+}
+
+/// Decline a vault someone shared: this account leaves it on the server.
+pub async fn decline_invitation(session: &mut Session, vault_id: &str) -> Result<()> {
+    match client_for(session)?.delete_vault(vault_id).await {
+        Ok(()) => {}
+        Err(e) if e.is_not_found() => {}
+        Err(e) => return Err(e),
+    }
+    session.forget_invitation(vault_id);
+    Ok(())
+}
+
+/// Who shared an invited vault: its owner as the server lists the members,
+/// with the fingerprint of their keys to compare with them.
+pub async fn invitation_owner(session: &Session, vault_id: &str) -> Result<Option<MemberDto>> {
+    let owner = session.invitations().into_iter().find(|i| i.vault_id == vault_id).map(|i| i.owner_id);
+    let Some(owner) = owner else { return Ok(None) };
+    let members = client_for(session)?.members(vault_id).await?;
+    Ok(members.into_iter().find(|m| m.account_id == owner))
 }
 
 /// End an emergency access arrangement, from either side. Vaults the contact

@@ -1246,6 +1246,8 @@ async fn run_server_sync(show_result: bool) {
                 toast_err(&t("sync.key_refused").replace("{vaults}", &names(&report.keys_refused_in)));
             } else if !report.keys_replaced.is_empty() {
                 toast(&t("sync.key_replaced").replace("{vaults}", &names(&report.keys_replaced)));
+            } else if report.invitations_new > 0 {
+                toast(t("sync.invited"));
             }
         }
         Err(twosecret_client::Error::Protocol(m)) if m == "locked" => {}
