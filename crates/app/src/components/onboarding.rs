@@ -75,6 +75,7 @@ pub fn CreateAccount() -> Element {
             return;
         }
         error.set(None);
+        terms_shown();
         let srv = choice().url(&server());
         let inv = if choice() == ServerChoice::Custom { invite() } else { String::new() };
         spawn(async move {
@@ -155,6 +156,7 @@ pub fn CreateAccount() -> Element {
                     }
                 }
                 button { class: "btn primary block", onclick: submit, {t("create.submit")} }
+                TermsNote { lead: t("terms.by_creating") }
                 div { class: "center", style: "margin-top:14px",
                     button { class: "btn ghost", onclick: move |_| *PHASE.write() = Phase::Welcome,
                         Icon { name: "chevron-left", size: 16 }
@@ -190,6 +192,7 @@ pub fn SignIn() -> Element {
             }
         };
         error.set(None);
+        terms_shown();
         spawn(async move {
             busy(t("busy.signing_in"));
             let pre = match twosecret_client::prelogin(&srv, &mail).await {
@@ -253,6 +256,7 @@ pub fn SignIn() -> Element {
                     PasswordInput { value: password(), oninput: move |v| password.set(v), onenter: move |_| submit() }
                 }
                 button { class: "btn primary block", onclick: move |_| submit(), {t("signin.submit")} }
+                TermsNote { lead: t("terms.by_signing_in") }
                 div { class: "center", style: "margin-top:14px",
                     button { class: "btn ghost", onclick: move |_| *PHASE.write() = Phase::Welcome,
                         Icon { name: "chevron-left", size: 16 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Terms of Use. Using 2Secret means accepting the
+  [Terms of Use](https://2secret.app/terms) (in English): 2Secret comes as
+  is, and as far as the law allows, the developer is not liable for damage,
+  also not from leaked, stolen or lost data. The apps say so under *Create
+  account* and *Sign in*, once on Home (for devices that were signed in
+  already) and under *Settings → About*, next to the privacy policy;
+  `2secret account create` and `signin` and `2secret --help` say so too.
+
 ## 1.15.0
 
 Security: a review of the sync server, and everything it found fixed.

@@ -1000,6 +1000,16 @@ static TABLE: &[Entry] = &[
     ("update.gone", "The downloaded update is missing or damaged; check again.", "De gedownloade update ontbreekt of is beschadigd; controleer opnieuw."),
     ("update.interrupted", "The update could not be installed. Download the new version from the website instead.", "De update kon niet worden geïnstalleerd. Download de nieuwe versie via de website."),
     ("about.text", "2Secret is free and open-source. Your data is encrypted on your device with XChaCha20-Poly1305; keys are derived from your master password (Argon2id) combined with your Secret Key. The sync server only ever sees encrypted data.", "2Secret is gratis en open source. Je gegevens worden op je apparaat versleuteld met XChaCha20-Poly1305; sleutels worden afgeleid van je hoofdwachtwoord (Argon2id) gecombineerd met je geheime sleutel. De synchronisatieserver ziet alleen versleutelde gegevens."),
+    ("about.terms", "Terms of Use", "Gebruiksvoorwaarden"),
+    ("about.privacy", "Privacy policy", "Privacybeleid"),
+    ("terms.by_creating", "By creating an account, you agree to the", "Door een account aan te maken, ga je akkoord met de"),
+    ("terms.by_signing_in", "By signing in, you agree to the", "Door in te loggen, ga je akkoord met de"),
+    ("terms.link", "Terms of Use", "gebruiksvoorwaarden"),
+    ("terms.after", ".", " (in het Engels)."),
+    ("terms.banner_title", "Terms of Use", "Gebruiksvoorwaarden"),
+    ("terms.banner_desc", "2Secret has Terms of Use. By using 2Secret, you agree to them. They also say what we are not liable for.", "2Secret heeft gebruiksvoorwaarden, in het Engels. Door 2Secret te gebruiken, ga je ermee akkoord. Er staat ook in waarvoor we niet aansprakelijk zijn."),
+    ("terms.read", "Read", "Lezen"),
+    ("terms.ok", "OK", "Oké"),
 
     // Browser extension
     ("ext.fill", "Fill", "Invullen"),

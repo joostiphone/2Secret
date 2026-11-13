@@ -312,6 +312,19 @@ pub fn LangSwitch() -> Element {
     }
 }
 
+/// "By creating an account / signing in, you agree to the Terms of Use",
+/// under the button that does it.
+#[component]
+pub fn TermsNote(lead: String) -> Element {
+    rsx! {
+        p { class: "small muted center", style: "margin:12px 0 0;line-height:1.5",
+            "{lead} "
+            a { href: "#", onclick: move |e: MouseEvent| { e.prevent_default(); platform::open_url(&legal_url("terms")); }, {t("terms.link")} }
+            {t("terms.after")}
+        }
+    }
+}
+
 /// The 2Secret logo + name block.
 #[component]
 pub fn Brand(#[props(default)] subtitle: String) -> Element {

@@ -76,6 +76,9 @@ pub enum AccountCmd {
     },
 }
 
+/// Using 2Secret means accepting its Terms of Use (in English).
+pub const TERMS_URL: &str = "https://2secret.app/terms";
+
 fn new_password() -> Result<String> {
     loop {
         let pw = prompt_secret("Choose a master password: ")?;
@@ -123,6 +126,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
             let name = value_or_prompt(name, "Your name")?;
             let email = value_or_prompt(email, "E-mail address")?;
             let password = new_password()?;
+            eprintln!("By creating an account, you agree to the Terms of Use: {TERMS_URL}");
             eprintln!("Creating your account…");
             let (session, sk) = match server {
                 Some(url) => ctx.block_on(twosecret_client::signup(
@@ -157,6 +161,7 @@ pub fn run(ctx: &Ctx, cmd: AccountCmd) -> Result<()> {
             };
             let sk = SecretKey::parse(&sk_text)?;
             let password = ctx.master_password("Master password: ")?;
+            eprintln!("By signing in, you agree to the Terms of Use: {TERMS_URL}");
             eprintln!("Signing in…");
             let session = ctx.block_on(twosecret_client::signin(&server, &email, &password, &sk, &device_name()))?;
             ctx.save_new(&session, &sk)?;

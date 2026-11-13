@@ -1355,6 +1355,11 @@ fn AboutSection() -> Element {
                     a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url("https://github.com/joostiphone/2Secret"); }, "github.com/joostiphone/2Secret" }
                     " · MIT / Apache-2.0"
                 }
+                p { class: "small",
+                    a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&legal_url("terms")); }, {t("about.terms")} }
+                    " · "
+                    a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&legal_url("privacy")); }, {t("about.privacy")} }
+                }
             }
         }
     }

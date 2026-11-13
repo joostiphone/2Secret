@@ -266,6 +266,9 @@ pub struct Prefs {
     /// "vaults", "tags"); never the names in them, which are not stored
     /// unencrypted.
     pub folded: Vec<String>,
+    /// The version of the Terms of Use ([`TERMS_VERSION`]) this device
+    /// showed: on the sign-up or sign-in screen, or once on Home.
+    pub terms_seen: u32,
 }
 
 impl Default for Prefs {
@@ -292,6 +295,7 @@ impl Default for Prefs {
             extension_ids: Vec::new(),
             // Tags can be many: folded until opened.
             folded: vec!["tags".to_string()],
+            terms_seen: 0,
         }
     }
 }
@@ -541,6 +545,27 @@ pub fn remember_unlock() {
 
 thread_local! {
     static LAST_REMEMBER: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+}
+
+/// The Terms of Use: using 2Secret means accepting them. Raise the version
+/// when they change in a way users should hear about; Home then says so once.
+pub const TERMS_VERSION: u32 = 1;
+
+/// The Terms of Use and the privacy policy on 2secret.app, in the language
+/// of the app (the terms themselves are in English).
+pub fn legal_url(page: &str) -> String {
+    match *crate::i18n::LANG.read() {
+        crate::i18n::Lang::Nl => format!("https://2secret.app/nl/{page}"),
+        crate::i18n::Lang::En => format!("https://2secret.app/{page}"),
+    }
+}
+
+/// This device has shown the current Terms of Use.
+pub fn terms_shown() {
+    if PREFS.peek().terms_seen < TERMS_VERSION {
+        PREFS.write().terms_seen = TERMS_VERSION;
+        save_prefs();
+    }
 }
 
 pub fn save_prefs() {

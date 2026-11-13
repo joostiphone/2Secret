@@ -64,6 +64,10 @@ Then fill in:
   the user, not used for tracking. Vault contents are end-to-end encrypted:
   the operator cannot access them, so they are not *collected* in Apple's
   sense. This matches the privacy manifest and the privacy policy.
+- **License Agreement** (*App Information*): Apple's standard EULA. The
+  [Terms of Use](https://2secret.app/terms) come on top of it and contain
+  the parts Apple asks of an app's own terms (section 8), so they can also
+  be set as a custom EULA there. Put the link in the description too.
 - **Age Rating**: no in-app controls or capabilities (no web browser,
   user-generated content, chat or ads) and *None* for every content
   descriptor: 4+.

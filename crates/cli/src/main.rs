@@ -18,6 +18,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 ///
 /// Secrets are encrypted on your device with your master password and Secret
 /// Key. Run `2secret account create` to get started.
+///
+/// By using 2Secret, you agree to the Terms of Use:
+/// https://2secret.app/terms
 #[derive(Parser)]
 #[command(name = "2secret", version, about, long_about, propagate_version = true)]
 struct Cli {

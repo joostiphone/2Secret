@@ -102,6 +102,29 @@ pub fn BackupReminder() -> Element {
     }
 }
 
+/// Once on Home for a device that has not shown the current Terms of Use,
+/// such as one signed in before there were any: using 2Secret means
+/// accepting them.
+#[component]
+pub fn TermsBanner() -> Element {
+    if PREFS.read().terms_seen >= TERMS_VERSION {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "banner",
+            Icon { name: "book", size: 18 }
+            div { class: "grow",
+                div { class: "t", {t("terms.banner_title")} }
+                div { class: "d", {t("terms.banner_desc")} }
+            }
+            div { class: "row",
+                button { class: "btn small", onclick: move |_| platform::open_url(&legal_url("terms")), {t("terms.read")} }
+                button { class: "btn small primary", onclick: move |_| terms_shown(), {t("terms.ok")} }
+            }
+        }
+    }
+}
+
 #[component]
 pub fn Shell() -> Element {
     use_background_tasks();

@@ -8,7 +8,7 @@ use twosecret_core::item::{Category, ItemSummary};
 use twosecret_core::session::ItemFilter;
 use twosecret_core::watchtower::{analyze, IssueKind};
 
-use crate::components::shell::{go, relative_time, sync_summary, BackupReminder};
+use crate::components::shell::{go, relative_time, sync_summary, BackupReminder, TermsBanner};
 use crate::components::watchtower::rating;
 use crate::i18n::{category_name, issue_title, t};
 use crate::icons::{category_icon, either, vault_icon, AccountAvatar, Icon, ItemAvatar};
@@ -121,6 +121,7 @@ pub fn DashboardPage() -> Element {
                 crate::components::invitations::InvitationBanner {}
                 crate::components::emergency::EmergencyBanner {}
                 BackupReminder {}
+                TermsBanner {}
                 if let Some(results) = results {
                     div { class: "section",
                         if results.is_empty() {

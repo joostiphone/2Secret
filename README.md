@@ -207,6 +207,12 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 is the [EFF large wordlist](https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases)
 (CC BY 3.0 US); icons are from [Feather](https://feathericons.com) (MIT).
 
+Using the 2Secret apps, the 2Secret server or the website means accepting
+the [Terms of Use](https://2secret.app/terms). They say, among other things,
+that 2Secret comes as is, and that as far as the law allows we are not liable
+for damage, including from leaked or lost data. The apps link to them where
+an account is made or signed in to, once on Home and under *Settings → About*.
+
 ---
 
 ## 🇳🇱 Nederlands
@@ -304,3 +310,5 @@ beveiligingsaudit.
 ### Licentie
 
 Gratis en open source onder de MIT- of Apache-2.0-licentie (naar keuze).
+Wie de apps, de 2Secret-server of de website gebruikt, gaat akkoord met de
+[gebruiksvoorwaarden](https://2secret.app/nl/terms) (in het Engels).
