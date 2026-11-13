@@ -12,5 +12,6 @@ Nieuw sinds versie 1.12.1:
 - Automatisch invullen stopt niet meer bij "keychain error -25308". Kan Face ID of Touch ID even niet worden gevraagd, tik dan op Probeer opnieuw.
 - Een kluis die iemand met je deelt, komt binnen als uitnodiging, met wie hem deelt en de vingerafdruk van diens sleutels; er wordt niets van gebruikt tot je accepteert.
 - "Kan de server niet bereiken" zegt nu waarom.
+- Gebruiksvoorwaarden: wie 2Secret gebruikt, gaat ermee akkoord; Instellingen → Over linkt ernaar en naar het privacybeleid.
 
 De apps van Dropbox, Google Drive en OneDrive laten andere apps op iPhone en iPad geen map kiezen; een directe koppeling met die diensten staat op de planning.

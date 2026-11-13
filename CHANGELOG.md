@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.15.1
 
 - Terms of Use. Using 2Secret means accepting the
   [Terms of Use](https://2secret.app/terms) (in English): 2Secret comes as
