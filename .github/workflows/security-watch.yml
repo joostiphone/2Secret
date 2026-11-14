@@ -1,0 +1,46 @@
+name: Security watch
+
+# Every day, also without a push: the RustSec advisories for Cargo.lock, as
+# the CI job "Security advisories" checks them (deny.toml lists the ones that
+# don't apply, with the reason). A new advisory opens an issue, once, so
+# GitHub notifies the owner; a daily Claude check reads the wider sources
+# (SQLite, WebKitGTK, WebView2, Debian, cloudflared, the toolchain).
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  advisories:
+    name: RustSec advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: deny
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories
+      - name: Open an issue
+        if: steps.deny.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Security watch: a dependency has a new advisory"
+          open="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq 'length')"
+          if [ "$open" = "0" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$(printf '%s\n' \
+              "The daily \`cargo deny check advisories\` found a RustSec advisory for a crate in Cargo.lock that deny.toml does not list." \
+              "" \
+              "Details: $RUN" \
+              "" \
+              "Update the crate, or add the advisory to deny.toml with the reason it does not affect 2Secret. Close this issue once the check passes again.")"
+          fi
+          exit 1
