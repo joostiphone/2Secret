@@ -3,10 +3,12 @@
 # the fixed version is in.
 [advisories]
 ignore = [
-    # rsa: Marvin timing side channel; no fixed version yet. Only the desktop
-    # SSH agent signs with RSA keys, over a local socket, each signature
-    # after consent. Ed25519 keys are not affected.
-    { id = "RUSTSEC-2023-0071", reason = "no fix upstream; local SSH agent only" },
+    # rsa: Marvin timing side channel. Fixed in rsa 0.10, which only ssh-key
+    # 0.7 uses, and that is still a release candidate (move together with
+    # p256 0.14, below). Only the desktop SSH agent signs with RSA keys, over
+    # a local socket, each signature after consent. Ed25519 keys are not
+    # affected.
+    { id = "RUSTSEC-2023-0071", reason = "fix needs ssh-key 0.7 (release candidate); local SSH agent only" },
     # crypto-bigint 0.5 (through p256/p384 0.13 and ssh-key 0.6): timing
     # variability in big-integer arithmetic. Fixed in crypto-bigint 0.7, which
     # p256 0.14 uses, but ssh-key 0.7 is still a release candidate. P-256 is
