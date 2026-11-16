@@ -474,6 +474,8 @@ fn App() -> Element {
     #[cfg(all(target_os = "ios", feature = "mobile"))]
     use_hook(ios_view::hide_scroll_edges);
     #[cfg(all(target_os = "ios", feature = "mobile"))]
+    use_hook(ios_view::restart_when_web_content_ends);
+    #[cfg(all(target_os = "ios", feature = "mobile"))]
     use_effect(|| ios_view::follow_theme(PREFS.read().theme.id()));
     let theme = PREFS.read().theme.id();
     let phase = PHASE.read().clone();

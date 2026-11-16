@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.15.2
+
+- iPhone and iPad: no more black or white screen after the app was in the
+  background for a while. iOS ends the process that draws the app's page
+  when it needs memory, and the page stayed empty until the app was closed
+  by hand. 2Secret now notices and ends too, so it starts again the next
+  time it is opened, on the lock screen. Because iOS often tells only when
+  the app comes back, it can close once as you open it; tap it again.
+- rustix 1.1.6 (RUSTSEC-2026-0486, in a function 2Secret does not use).
+
 ## 1.15.1
 
 - Terms of Use. Using 2Secret means accepting the

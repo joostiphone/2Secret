@@ -13,5 +13,6 @@ New since version 1.12.1:
 - A vault someone shares with you arrives as an invitation, with who shares it and their key fingerprint; nothing of it is used until you accept.
 - "Could not reach the server" now says why.
 - Terms of Use: using 2Secret means accepting them; Settings → About links to them and to the privacy policy.
+- No more black or white screen after the app was in the background for a while.
 
 The Dropbox, Google Drive and OneDrive apps do not let other apps choose a folder on iPhone and iPad; a direct connection to those services is planned.

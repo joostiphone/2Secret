@@ -1,13 +1,11 @@
-2Secret 1.15.1
+2Secret 1.15.2
 
 WHAT'S NEW
-- Terms of Use. Using 2Secret means accepting the Terms of Use (2secret.app/terms, in English). The app says so under Create account and Sign in, and once on Home on devices that were already signed in.
-- Settings → About now links to the Terms of Use and the privacy policy.
+- No more black or white screen after the app was in the background for a while. iOS sometimes ends the part of the app that draws the screen when it needs memory; until now the screen then stayed empty until you closed the app by hand. 2Secret now notices and starts again by itself, on the lock screen. Because iOS often tells the app only when you come back, it can close once as you open it: just tap it again.
 
 PLEASE TEST
-1. Open the app on a device that was already signed in: Home should show a "Terms of Use" message once. "Read" should open the terms in the browser; after "OK" the message should not come back, also not after closing and opening the app.
-2. Settings → About: "Terms of Use" and "Privacy policy" should each open the right page.
-3. Signing in on a new device (or in a new profile): under the Sign in button it should say that signing in means agreeing to the Terms of Use, with a working link. Home should then not show the message.
-4. As always: AutoFill in Safari with Face ID or Touch ID, opening the app, syncing with your other devices, and shared-vault invitations.
+1. Open 2Secret and go to the Home Screen. Then open a few heavy apps (the camera, a game, Safari with many tabs) and use them for a few minutes. Go back to 2Secret: you should see the app, or it closes once and opens normally on the lock screen when you tap it again. You should no longer get a black or white screen.
+2. Normal switching for a moment (copy a code, come back) should work as before, without a restart.
+3. As always: AutoFill in Safari with Face ID or Touch ID, opening the app, syncing with your other devices, and shared-vault invitations.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

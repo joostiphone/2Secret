@@ -1,13 +1,11 @@
-2Secret 1.15.1
+2Secret 1.15.2
 
 WAT IS ER NIEUW
-- Gebruiksvoorwaarden. Wie 2Secret gebruikt, gaat akkoord met de gebruiksvoorwaarden (2secret.app/nl/terms, in het Engels). De app zegt dat onder Account aanmaken en Inloggen, en één keer op Home op apparaten die al ingelogd waren.
-- Instellingen → Over linkt nu naar de gebruiksvoorwaarden en het privacybeleid.
+- Geen zwart of wit scherm meer nadat de app een tijd op de achtergrond stond. iOS beëindigt soms het deel van de app dat het scherm tekent als het geheugen nodig heeft; tot nu toe bleef het scherm dan leeg tot je de app zelf afsloot. 2Secret merkt dat nu en start vanzelf opnieuw, op het vergrendelscherm. Omdat iOS dat vaak pas doorgeeft als je terugkomt, kan de app één keer sluiten als je hem opent: tik hem dan gewoon nog een keer aan.
 
 TEST ALSJEBLIEFT
-1. Open de app op een apparaat dat al ingelogd was: op Home hoort één keer een melding "Gebruiksvoorwaarden" te staan. "Lezen" hoort de voorwaarden in de browser te openen; na "Oké" hoort de melding niet terug te komen, ook niet na de app sluiten en weer openen.
-2. Instellingen → Over: "Gebruiksvoorwaarden" en "Privacybeleid" horen elk de juiste pagina te openen.
-3. Inloggen op een nieuw apparaat (of in een nieuw profiel): onder de knop Inloggen hoort te staan dat je met inloggen akkoord gaat met de gebruiksvoorwaarden, met een werkende link. Op Home hoort de melding dan niet te verschijnen.
-4. Zoals altijd: automatisch invullen in Safari met Face ID of Touch ID, de app openen, synchroniseren met je andere apparaten, en uitnodigingen voor gedeelde kluizen.
+1. Open 2Secret en ga naar het beginscherm. Open daarna een paar zware apps (de camera, een spel, Safari met veel tabbladen) en gebruik die een paar minuten. Ga terug naar 2Secret: je hoort de app te zien, of hij sluit één keer en opent normaal op het vergrendelscherm als je hem opnieuw aantikt. Een zwart of wit scherm hoort niet meer voor te komen.
+2. Even wisselen (een code kopiëren en terugkomen) hoort te werken zoals altijd, zonder herstart.
+3. Zoals altijd: automatisch invullen in Safari met Face ID of Touch ID, de app openen, synchroniseren met je andere apparaten, en uitnodigingen voor gedeelde kluizen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

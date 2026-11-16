@@ -31,6 +31,39 @@ pub fn hide_scroll_edges() {
     }
 }
 
+/// iOS ends the process that draws a WKWebView when it needs the memory,
+/// mostly while the app is in the background, and the webview stays empty
+/// (black or white, the page's background) until the app restarts: Dioxus
+/// 0.7 sets no handler for it in wry, and a reloaded page would not get the
+/// templates Dioxus already sent. So 2Secret ends too, quietly, and the next
+/// time it opens it starts as after a restart, on the lock screen. iOS often
+/// tells only when the app comes back, so it may close once as it opens.
+pub fn restart_when_web_content_ends() {
+    let webview = dioxus::mobile::window().webview.webview();
+    unsafe {
+        let delegate: *mut AnyObject = msg_send![&*webview, navigationDelegate];
+        if delegate.is_null() {
+            return;
+        }
+        // wry's own navigation delegate, which answers this selector with a
+        // handler Dioxus leaves unset.
+        let class = objc2::ffi::object_getClass(delegate) as *mut objc2::runtime::AnyClass;
+        if class.is_null() {
+            return;
+        }
+        let imp = std::mem::transmute::<DidTerminate, objc2::runtime::Imp>(web_content_ended);
+        objc2::ffi::class_replaceMethod(class, sel!(webViewWebContentProcessDidTerminate:), imp, c"v@:@".as_ptr());
+    }
+}
+
+/// `webViewWebContentProcessDidTerminate:`: self, the selector, the webview.
+type DidTerminate = unsafe extern "C-unwind" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject);
+
+unsafe extern "C-unwind" fn web_content_ended(_: *mut AnyObject, _: objc2::runtime::Sel, _: *mut AnyObject) {
+    eprintln!("2Secret: iOS ended the web content process; restarting on the next launch");
+    std::process::exit(0);
+}
+
 /// The status bar text, the keyboard and the system's dialogs light or dark
 /// like the app's theme (Settings → Appearance), also when the phone's own
 /// setting differs, so the status bar stays readable on the app's colours.
