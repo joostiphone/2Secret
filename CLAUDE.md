@@ -16,4 +16,9 @@ Follow CONTRIBUTING.md, *Releasing*. Every version needs
 `ios/AppStore/testflight/en-US.txt` and `nl-NL.txt`: what is new in the build
 and what testers should test. The Release workflow refuses a version without
 them and puts them in TestFlight. When you prepare a release, also give the
-owner the Dutch text (`nl-NL.txt`).
+owner both texts, Dutch (`nl-NL.txt`) and English (`en-US.txt`).
+
+## Texts for the owner
+
+Whenever you give the owner a text to use (TestFlight, App Store, news, a
+post, an e-mail), give it in Dutch and in English.
