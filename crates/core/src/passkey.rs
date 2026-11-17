@@ -173,18 +173,105 @@ fn client_data_json(kind: &str, challenge: &str, origin: &str) -> Result<Vec<u8>
     Ok(serde_json::to_vec(&ClientData { kind, challenge: b64url(&challenge), origin, cross_origin: false })?)
 }
 
-/// Create a passkey for a page on `origin`.
-pub fn create(origin: &str, options: &CreationOptions) -> Result<(Passkey, Registration)> {
-    let rp_id = rp_id_for(origin, options.rp_id.as_deref())?;
-    if !options.algorithms.is_empty() && !options.algorithms.contains(&ES256) {
-        return Err(Error::Unsupported("this website does not accept ES256 passkeys".into()));
-    }
-    let user_handle = decode(&options.user_handle)?;
-    if user_handle.is_empty() || user_handle.len() > 64 {
-        return Err(Error::invalid("invalid user handle"));
-    }
-    let client_data = client_data_json("webauthn.create", &options.challenge, origin)?;
+/// A passkey request that the operating system passed on: Windows' plugin
+/// authenticator API (`authenticatorMakeCredential` in CTAP terms). The
+/// system, not 2Secret, checked which website or app may use `rp_id` and
+/// hashed the client data, which 2Secret never sees.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemCreation {
+    pub rp_id: String,
+    pub rp_name: String,
+    pub user_handle: Vec<u8>,
+    pub user_name: String,
+    pub user_display_name: String,
+    pub client_data_hash: Vec<u8>,
+    /// COSE algorithms in order of preference; empty means any.
+    pub algorithms: Vec<i64>,
+    /// Passkeys the account already has (credential ids).
+    pub exclude_credentials: Vec<Vec<u8>>,
+}
 
+/// A sign-in that the operating system passed on (`authenticatorGetAssertion`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemSignIn {
+    pub rp_id: String,
+    pub client_data_hash: Vec<u8>,
+    /// Credential ids the website accepts; empty means any for `rp_id`.
+    pub allow_credentials: Vec<Vec<u8>>,
+}
+
+/// A request from the operating system, waiting for the user.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SystemRequest {
+    Create(SystemCreation),
+    SignIn(SystemSignIn),
+}
+
+impl SystemRequest {
+    pub fn rp_id(&self) -> &str {
+        match self {
+            SystemRequest::Create(c) => &c.rp_id,
+            SystemRequest::SignIn(s) => &s.rp_id,
+        }
+    }
+}
+
+/// What the system encodes into its `authenticatorGetAssertion` response.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemAssertion {
+    pub credential_id: Vec<u8>,
+    pub authenticator_data: Vec<u8>,
+    /// DER-encoded ECDSA signature over the authenticator data and the
+    /// client data hash.
+    pub signature: Vec<u8>,
+    pub user_handle: Vec<u8>,
+}
+
+impl SystemSignIn {
+    /// Whether the website accepts this passkey.
+    pub fn allows(&self, passkey: &Passkey) -> bool {
+        self.allow_credentials.is_empty()
+            || self.allow_credentials.iter().any(|id| b64url(id) == passkey.credential_id.trim_end_matches('='))
+    }
+}
+
+impl SystemCreation {
+    /// Whether the account already has one of these passkeys.
+    pub fn excludes(&self, passkey: &Passkey) -> bool {
+        self.exclude_credentials.iter().any(|id| b64url(id) == passkey.credential_id.trim_end_matches('='))
+    }
+}
+
+/// A relying party ID as a system passes it on: the system checked it
+/// against the website or app, this only refuses what no domain looks like.
+fn check_system_rp_id(rp_id: &str) -> Result<()> {
+    let plausible = !rp_id.is_empty()
+        && rp_id.len() <= 253
+        && rp_id.chars().all(|c| !c.is_whitespace() && !c.is_control() && !"/\\@:?#".contains(c));
+    if plausible {
+        Ok(())
+    } else {
+        Err(Error::invalid("invalid relying party ID"))
+    }
+}
+
+fn check_client_data_hash(hash: &[u8]) -> Result<()> {
+    if hash.len() == 32 {
+        Ok(())
+    } else {
+        Err(Error::invalid("invalid client data hash"))
+    }
+}
+
+/// A new key pair: the passkey for the vault and the authenticator data
+/// with the attested credential (public key) for the website.
+fn new_credential(
+    rp_id: String,
+    rp_name: &str,
+    user_handle: &[u8],
+    user_name: &str,
+    user_display_name: &str,
+) -> Result<(Passkey, Vec<u8>, Vec<u8>)> {
     let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
     let verifying_key = *signing_key.verifying_key();
     let point = verifying_key.to_encoded_point(false);
@@ -211,6 +298,121 @@ pub fn create(origin: &str, options: &CreationOptions) -> Result<(Passkey, Regis
     auth_data.extend_from_slice(&credential_id);
     auth_data.extend_from_slice(&cose_key);
 
+    let private_key = signing_key.to_pkcs8_der().map_err(|_| Error::invalid("could not encode the passkey"))?;
+    let public_key = verifying_key.to_public_key_der().map_err(|_| Error::invalid("could not encode the passkey"))?;
+    let passkey = Passkey {
+        credential_id: b64url(&credential_id),
+        rp_id,
+        rp_name: rp_name.trim().to_string(),
+        user_handle: b64url(user_handle),
+        user_name: user_name.trim().to_string(),
+        user_display_name: user_display_name.trim().to_string(),
+        private_key: b64url(private_key.as_bytes()),
+        algorithm: ES256,
+        counter: 0,
+        created_at: now(),
+    };
+    Ok((passkey, auth_data, public_key.as_bytes().to_vec()))
+}
+
+/// Create a passkey for a request from the operating system. Returns the
+/// passkey for the vault and the new credential's authenticator data, which
+/// the system encodes into its answer to the website.
+pub fn create_for_system(request: &SystemCreation) -> Result<(Passkey, Vec<u8>)> {
+    check_system_rp_id(&request.rp_id)?;
+    check_client_data_hash(&request.client_data_hash)?;
+    if !request.algorithms.is_empty() && !request.algorithms.contains(&ES256) {
+        return Err(Error::Unsupported("this website does not accept ES256 passkeys".into()));
+    }
+    if request.user_handle.is_empty() || request.user_handle.len() > 64 {
+        return Err(Error::invalid("invalid user handle"));
+    }
+    let (passkey, auth_data, _) = new_credential(
+        request.rp_id.clone(),
+        &request.rp_name,
+        &request.user_handle,
+        &request.user_name,
+        &request.user_display_name,
+    )?;
+    Ok((passkey, auth_data))
+}
+
+/// Sign in with `passkey` for a request from the operating system.
+pub fn sign_for_system(passkey: &Passkey, request: &SystemSignIn) -> Result<SystemAssertion> {
+    check_client_data_hash(&request.client_data_hash)?;
+    if request.rp_id != passkey.rp_id {
+        return Err(Error::invalid(format!("this passkey is for {}, not {}", passkey.rp_id, request.rp_id)));
+    }
+    if !request.allows(passkey) {
+        return Err(Error::invalid("the website did not ask for this passkey"));
+    }
+    let flags = FLAG_USER_PRESENT | FLAG_USER_VERIFIED | FLAG_BACKUP_ELIGIBLE | FLAG_BACKED_UP;
+    let auth_data = authenticator_data(&request.rp_id, flags, passkey.counter);
+    let signature = sign(passkey, &auth_data, &request.client_data_hash)?;
+    Ok(SystemAssertion {
+        credential_id: decode(&passkey.credential_id)?,
+        authenticator_data: auth_data,
+        signature,
+        user_handle: decode(&passkey.user_handle)?,
+    })
+}
+
+/// The DER signature over `auth_data` and the client data hash.
+fn sign(passkey: &Passkey, auth_data: &[u8], client_data_hash: &[u8]) -> Result<Vec<u8>> {
+    let der = Zeroizing::new(decode(&passkey.private_key)?);
+    let signing_key = SigningKey::from_pkcs8_der(&der).map_err(|_| Error::invalid("damaged passkey"))?;
+    let mut message = auth_data.to_vec();
+    message.extend_from_slice(client_data_hash);
+    let signature: Signature = signing_key.sign(&message);
+    Ok(signature.to_der().as_bytes().to_vec())
+}
+
+/// What 2Secret can do as an authenticator, as CTAP's
+/// `authenticatorGetInfo` reply (CTAP 2.1, section 6.4): FIDO 2.0 and 2.1,
+/// [`AAGUID`], discoverable credentials, user presence and verification,
+/// and ES256. Windows reads it when 2Secret registers as a passkey provider.
+pub fn authenticator_info() -> Vec<u8> {
+    let mut out = Vec::with_capacity(96);
+    cbor::map(&mut out, 5);
+    cbor::int(&mut out, 0x01); // versions
+    cbor::array(&mut out, 2);
+    cbor::text(&mut out, "FIDO_2_0");
+    cbor::text(&mut out, "FIDO_2_1");
+    cbor::int(&mut out, 0x03); // aaguid
+    cbor::bytes(&mut out, &AAGUID);
+    cbor::int(&mut out, 0x04); // options, keys in CTAP's canonical order
+    cbor::map(&mut out, 3);
+    for option in ["rk", "up", "uv"] {
+        cbor::text(&mut out, option);
+        cbor::bool(&mut out, true);
+    }
+    cbor::int(&mut out, 0x09); // transports
+    cbor::array(&mut out, 1);
+    cbor::text(&mut out, "internal");
+    cbor::int(&mut out, 0x0a); // algorithms
+    cbor::array(&mut out, 1);
+    cbor::map(&mut out, 2);
+    cbor::text(&mut out, "alg");
+    cbor::int(&mut out, ES256);
+    cbor::text(&mut out, "type");
+    cbor::text(&mut out, "public-key");
+    out
+}
+
+/// Create a passkey for a page on `origin`.
+pub fn create(origin: &str, options: &CreationOptions) -> Result<(Passkey, Registration)> {
+    let rp_id = rp_id_for(origin, options.rp_id.as_deref())?;
+    if !options.algorithms.is_empty() && !options.algorithms.contains(&ES256) {
+        return Err(Error::Unsupported("this website does not accept ES256 passkeys".into()));
+    }
+    let user_handle = decode(&options.user_handle)?;
+    if user_handle.is_empty() || user_handle.len() > 64 {
+        return Err(Error::invalid("invalid user handle"));
+    }
+    let client_data = client_data_json("webauthn.create", &options.challenge, origin)?;
+    let (passkey, auth_data, public_key) =
+        new_credential(rp_id, &options.rp_name, &user_handle, &options.user_name, &options.user_display_name)?;
+
     let mut attestation = Vec::with_capacity(auth_data.len() + 32);
     cbor::map(&mut attestation, 3);
     cbor::text(&mut attestation, "fmt");
@@ -220,26 +422,12 @@ pub fn create(origin: &str, options: &CreationOptions) -> Result<(Passkey, Regis
     cbor::text(&mut attestation, "authData");
     cbor::bytes(&mut attestation, &auth_data);
 
-    let private_key = signing_key.to_pkcs8_der().map_err(|_| Error::invalid("could not encode the passkey"))?;
-    let public_key = verifying_key.to_public_key_der().map_err(|_| Error::invalid("could not encode the passkey"))?;
-    let passkey = Passkey {
-        credential_id: b64url(&credential_id),
-        rp_id,
-        rp_name: options.rp_name.trim().to_string(),
-        user_handle: b64url(&user_handle),
-        user_name: options.user_name.trim().to_string(),
-        user_display_name: options.user_display_name.trim().to_string(),
-        private_key: b64url(private_key.as_bytes()),
-        algorithm: ES256,
-        counter: 0,
-        created_at: now(),
-    };
     let registration = Registration {
         credential_id: passkey.credential_id.clone(),
         client_data_json: b64url(&client_data),
         attestation_object: b64url(&attestation),
         authenticator_data: b64url(&auth_data),
-        public_key: b64url(public_key.as_bytes()),
+        public_key: b64url(&public_key),
         algorithm: ES256,
     };
     Ok((passkey, registration))
@@ -259,18 +447,13 @@ pub fn assert(passkey: &Passkey, origin: &str, options: &RequestOptions) -> Resu
     let client_data = client_data_json("webauthn.get", &options.challenge, origin)?;
     let flags = FLAG_USER_PRESENT | FLAG_USER_VERIFIED | FLAG_BACKUP_ELIGIBLE | FLAG_BACKED_UP;
     let auth_data = authenticator_data(&rp_id, flags, passkey.counter);
-
-    let der = Zeroizing::new(decode(&passkey.private_key)?);
-    let signing_key = SigningKey::from_pkcs8_der(&der).map_err(|_| Error::invalid("damaged passkey"))?;
-    let mut message = auth_data.clone();
-    message.extend_from_slice(&Sha256::digest(&client_data));
-    let signature: Signature = signing_key.sign(&message);
+    let signature = sign(passkey, &auth_data, &Sha256::digest(&client_data))?;
 
     Ok(Assertion {
         credential_id: passkey.credential_id.clone(),
         client_data_json: b64url(&client_data),
         authenticator_data: b64url(&auth_data),
-        signature: b64url(signature.to_der().as_bytes()),
+        signature: b64url(&signature),
         user_handle: passkey.user_handle.clone(),
     })
 }
@@ -354,8 +537,16 @@ mod cbor {
         out.extend_from_slice(s.as_bytes());
     }
 
+    pub fn array(out: &mut Vec<u8>, items: u64) {
+        head(out, 4, items);
+    }
+
     pub fn map(out: &mut Vec<u8>, entries: u64) {
         head(out, 5, entries);
+    }
+
+    pub fn bool(out: &mut Vec<u8>, value: bool) {
+        out.push(if value { 0xf5 } else { 0xf4 });
     }
 }
 
@@ -446,6 +637,104 @@ mod tests {
             allow_credentials: vec![b64url(b"another credential")],
         };
         assert!(assert(&passkey, ORIGIN, &options).is_err());
+    }
+
+    fn system_creation() -> SystemCreation {
+        SystemCreation {
+            rp_id: "example.com".into(),
+            rp_name: "Example".into(),
+            user_handle: b"user-1234".to_vec(),
+            user_name: "alex@example.com".into(),
+            user_display_name: "Alex".into(),
+            client_data_hash: Sha256::digest(b"client data").to_vec(),
+            algorithms: vec![-8, ES256],
+            exclude_credentials: vec![],
+        }
+    }
+
+    #[test]
+    fn system_requests_create_and_sign_in() {
+        let (passkey, auth) = create_for_system(&system_creation()).unwrap();
+        assert_eq!(passkey.rp_id, "example.com");
+        assert_eq!(passkey.user_handle, b64url(b"user-1234"));
+        assert_eq!(&auth[..32], Sha256::digest(b"example.com").as_slice());
+        assert_eq!(auth[32], 0x5d, "UP, UV, BE, BS and AT");
+        assert_eq!(&auth[37..53], &AAGUID);
+        assert_eq!(b64url(&auth[55..71]), passkey.credential_id);
+        // The COSE key in the authenticator data verifies the sign-in.
+        let cose = &auth[71..];
+        assert_eq!(cose.len(), 77);
+        let mut point = vec![0x04];
+        point.extend_from_slice(&cose[10..42]);
+        point.extend_from_slice(&cose[45..77]);
+        let public = VerifyingKey::from_sec1_bytes(&point).unwrap();
+
+        let hash = Sha256::digest(b"other client data").to_vec();
+        let request =
+            SystemSignIn { rp_id: "example.com".into(), client_data_hash: hash.clone(), allow_credentials: vec![] };
+        let a = sign_for_system(&passkey, &request).unwrap();
+        assert_eq!(b64url(&a.credential_id), passkey.credential_id);
+        assert_eq!(a.user_handle, b"user-1234");
+        assert_eq!(a.authenticator_data[32], 0x1d, "UP, UV, BE and BS");
+        let mut message = a.authenticator_data.clone();
+        message.extend_from_slice(&hash);
+        public.verify(&message, &Signature::from_der(&a.signature).unwrap()).unwrap();
+
+        // Only for its own website, only when asked for and with a real hash.
+        let other = SystemSignIn { rp_id: "example.org".into(), ..request.clone() };
+        assert!(sign_for_system(&passkey, &other).is_err());
+        let not_asked = SystemSignIn { allow_credentials: vec![b"another".to_vec()], ..request.clone() };
+        assert!(!not_asked.allows(&passkey));
+        assert!(sign_for_system(&passkey, &not_asked).is_err());
+        let asked = SystemSignIn { allow_credentials: vec![a.credential_id.clone()], ..request.clone() };
+        assert!(asked.allows(&passkey));
+        let short = SystemSignIn { client_data_hash: vec![1; 16], ..request };
+        assert!(sign_for_system(&passkey, &short).is_err());
+
+        let mut excluding = system_creation();
+        excluding.exclude_credentials = vec![a.credential_id];
+        assert!(excluding.excludes(&passkey));
+    }
+
+    #[test]
+    fn system_requests_are_checked() {
+        let mut c = system_creation();
+        c.algorithms = vec![-257];
+        assert!(create_for_system(&c).is_err(), "RS256 only");
+        let mut c = system_creation();
+        c.user_handle = vec![];
+        assert!(create_for_system(&c).is_err());
+        let mut c = system_creation();
+        c.user_handle = vec![1; 65];
+        assert!(create_for_system(&c).is_err());
+        let mut c = system_creation();
+        c.client_data_hash = vec![];
+        assert!(create_for_system(&c).is_err());
+        for rp in ["", "example.com/path", "user@example.com", "exa mple.com"] {
+            let mut c = system_creation();
+            c.rp_id = rp.into();
+            assert!(create_for_system(&c).is_err(), "{rp}");
+        }
+    }
+
+    #[test]
+    fn authenticator_info_is_ctap_get_info() {
+        // {1: ["FIDO_2_0", "FIDO_2_1"], 3: AAGUID, 4: {"rk": true, "up": true,
+        // "uv": true}, 9: ["internal"], 10: [{"alg": -7, "type": "public-key"}]}
+        let mut expected = vec![0xa5, 0x01, 0x82, 0x68];
+        expected.extend_from_slice(b"FIDO_2_0");
+        expected.push(0x68);
+        expected.extend_from_slice(b"FIDO_2_1");
+        expected.extend_from_slice(&[0x03, 0x50]);
+        expected.extend_from_slice(&AAGUID);
+        expected
+            .extend_from_slice(&[0x04, 0xa3, 0x62, b'r', b'k', 0xf5, 0x62, b'u', b'p', 0xf5, 0x62, b'u', b'v', 0xf5]);
+        expected.extend_from_slice(&[0x09, 0x81, 0x68]);
+        expected.extend_from_slice(b"internal");
+        expected
+            .extend_from_slice(&[0x0a, 0x81, 0xa2, 0x63, b'a', b'l', b'g', 0x26, 0x64, b't', b'y', b'p', b'e', 0x6a]);
+        expected.extend_from_slice(b"public-key");
+        assert_eq!(authenticator_info(), expected);
     }
 
     #[test]
