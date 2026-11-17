@@ -6,6 +6,8 @@
 mod agent_access;
 #[cfg(target_os = "android")]
 mod android;
+#[cfg(target_os = "android")]
+mod android_autofill;
 #[cfg(all(target_os = "android", feature = "mobile"))]
 mod android_folders;
 #[cfg(feature = "desktop")]

@@ -50,6 +50,35 @@ gradle="$(find "$root/target/dx" -path '*/release/android/app/app/build.gradle.k
 project="$(dirname "$(dirname "$gradle")")"
 sed -i.bak "s/versionCode = 1\$/versionCode = $code/" "$gradle" && rm -f "$gradle.bak"
 grep -q "versionCode = $code" "$gradle"
+
+# dx takes only MainActivity.kt. The rest of crates/app/android (biometric
+# unlock, AutoFill) goes in here: Kotlin next to MainActivity.kt, the AutoFill
+# service's resource, the R8 rules for what Rust calls through JNI, and the
+# service and its screen in the manifest. Running this again changes nothing.
+src="$app/android"
+kotlin="$project/app/src/main/kotlin/dev/dioxus/main"
+manifest="$project/app/src/main/AndroidManifest.xml"
+[ -f "$kotlin/MainActivity.kt" ] || { echo "android.sh: no MainActivity.kt in $kotlin" >&2; exit 1; }
+[ -f "$manifest" ] || { echo "android.sh: no $manifest" >&2; exit 1; }
+for file in "$src"/*.kt; do
+  [ "$(basename "$file")" = MainActivity.kt ] || cp "$file" "$kotlin/"
+done
+mkdir -p "$project/app/src/main/res/xml"
+cp "$src/res/xml/autofill_service.xml" "$project/app/src/main/res/xml/"
+cp "$src/proguard-2secret.pro" "$project/app/"
+if ! grep -q '2Secret: AutoFill' "$manifest"; then
+  if [ "$(grep -c '</application>' "$manifest")" != 1 ]; then
+    echo "android.sh: expected one </application> in $manifest" >&2
+    exit 1
+  fi
+  awk -v extra="$src/AndroidManifest-application.xml" '
+    /<\/application>/ { while ((getline line < extra) > 0) print line; close(extra) }
+    { print }' "$manifest" > "$manifest.new"
+  mv "$manifest.new" "$manifest"
+fi
+for needed in 'android.permission.USE_BIOMETRIC' 'android.permission.BIND_AUTOFILL_SERVICE' 'dev.dioxus.main.AutofillUnlockActivity'; do
+  grep -q "$needed" "$manifest" || { echo "android.sh: $needed missing in $manifest" >&2; exit 1; }
+done
 if [ "$signed" = 1 ]; then
   (cd "$project" && ./gradlew --quiet assembleRelease bundleRelease)
 else

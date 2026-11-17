@@ -1,0 +1,21 @@
+        <!-- 2Secret: AutoFill (crates/app/android; scripts/android.sh puts this in <application>) -->
+        <service
+            android:name="dev.dioxus.main.TwoSecretAutofillService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service" />
+        </service>
+        <!-- Opened by AutoFill through 2Secret's own PendingIntent only: the
+             fingerprint or face check and the list of logins. -->
+        <activity
+            android:name="dev.dioxus.main.AutofillUnlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar" />

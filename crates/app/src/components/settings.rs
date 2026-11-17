@@ -652,7 +652,12 @@ fn PasskeysRow() -> Element {
     }
 }
 
-/// Turn unlocking with Touch ID / Face ID / Windows Hello on or off.
+/// Counts turning biometric unlock on or off here, for the rows that depend
+/// on it (AutoFill on Android).
+static BIOMETRIC_TOGGLED: GlobalSignal<u32> = Signal::global(|| 0);
+
+/// Turn unlocking with Touch ID / Face ID / Windows Hello / a fingerprint or
+/// face on or off.
 #[component]
 fn BiometricRow() -> Element {
     let kind = use_hook(biometric::available);
@@ -662,6 +667,7 @@ fn BiometricRow() -> Element {
         if enabled() {
             disable_biometric_unlock();
             enabled.set(false);
+            *BIOMETRIC_TOGGLED.write() += 1;
             toast(&with_kind(t("settings.biometric_off"), kind));
             return;
         }
@@ -678,6 +684,7 @@ fn BiometricRow() -> Element {
                     save_biometric_unlock(&BiometricUnlock::new(&account_id, &account_key, &device_key));
                     refresh_autofill();
                     enabled.set(true);
+                    *BIOMETRIC_TOGGLED.write() += 1;
                     toast(&with_kind(t("settings.biometric_on"), kind));
                 }
                 Err(biometric::Error::Cancelled) => {}
@@ -706,9 +713,13 @@ fn BiometricRow() -> Element {
 }
 
 /// Where to turn on AutoFill in Safari and other apps (iOS, and macOS builds
-/// that include the extension).
+/// that include the extension), or in other apps and browsers (Android).
 #[component]
 fn AutofillRow() -> Element {
+    #[cfg(target_os = "android")]
+    if crate::android_autofill::available() {
+        return rsx! { AndroidAutofillRow {} };
+    }
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     if crate::apple_autofill::available() {
         let desc =
@@ -723,6 +734,62 @@ fn AutofillRow() -> Element {
         };
     }
     rsx! {}
+}
+
+/// Android: whether 2Secret is the phone's AutoFill service, and a way to
+/// make it one (Android's own screen for it: apps cannot choose themselves).
+#[cfg(target_os = "android")]
+#[component]
+fn AndroidAutofillRow() -> Element {
+    // Asked on every render: it can change in Android's settings meanwhile.
+    let mut checked = use_signal(|| 0u32);
+    checked();
+    let active = crate::android_autofill::active();
+    let kind = use_hook(biometric::available).unwrap_or(biometric::Kind::AndroidBiometric);
+    use_hook(move || {
+        // Turned off in Android's settings: the store goes too.
+        if !active {
+            crate::android_autofill::clear();
+        }
+    });
+    let turn_on = move |_| {
+        if !crate::android_autofill::open_settings() {
+            toast_err(t("settings.autofill_android_failed"));
+            return;
+        }
+        // Android's screen says nothing back: look until 2Secret is chosen.
+        spawn(async move {
+            for _ in 0..240 {
+                platform::sleep_ms(500).await;
+                if crate::android_autofill::active() {
+                    checked += 1;
+                    refresh_autofill();
+                    return;
+                }
+            }
+        });
+    };
+    BIOMETRIC_TOGGLED(); // re-rendered when biometric unlock is turned on or off
+    let biometric_on = biometric_unlock().is_some();
+    rsx! {
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", {t("settings.autofill_android")} }
+                div { class: "d", {with_kind(t("settings.autofill_android_desc"), kind)} }
+                if !biometric_on {
+                    div { class: "d warn-text", {with_kind(t("settings.autofill_android_needs_biometric"), kind)} }
+                }
+                if active {
+                    div { class: "d", {t("settings.autofill_android_stop")} }
+                }
+            }
+            if active {
+                span { class: "muted", {t("settings.autofill_android_on")} }
+            } else {
+                button { class: "btn small primary", onclick: turn_on, {t("common.turn_on")} }
+            }
+        }
+    }
 }
 
 /// Windows, Linux and the BSDs: whether `otpauth://` setup links open 2Secret

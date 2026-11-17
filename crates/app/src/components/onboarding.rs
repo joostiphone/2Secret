@@ -337,9 +337,23 @@ pub fn offer_biometric_again() {
     BIOMETRIC_PROMPTED.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Wait until the app is in front and active (iPhone, iPad: at most a few
-/// seconds), so the system lets it show the Face ID or Touch ID prompt.
+/// Wait until the app is in front and active (iPhone, iPad, Android: at most
+/// a few seconds), so the system lets it show the Face ID, Touch ID or
+/// fingerprint prompt.
 async fn wait_until_in_front() {
+    #[cfg(target_os = "android")]
+    {
+        let focused = || {
+            crate::android::with_env(|env, activity| env.call_method(activity, "hasWindowFocus", "()Z", &[])?.z())
+                .unwrap_or(true)
+        };
+        for _ in 0..40 {
+            if focused() {
+                return;
+            }
+            platform::sleep_ms(100).await;
+        }
+    }
     #[cfg(all(target_os = "ios", feature = "mobile"))]
     {
         if crate::ios_view::app_active() {

@@ -10,6 +10,22 @@
 - *Settings → Appearance → Sidebar*: a light sidebar for the light theme, a
   soft grey panel with the open item as a white card. With the dark theme
   the sidebar stays dark.
+- **Android: unlock with your fingerprint or face** (Android 9 and newer),
+  under *Settings → Security*. The device key is kept with an Android
+  Keystore key that only works right after a strong fingerprint or face
+  check, and that Android voids when a fingerprint or face is added or all
+  are removed. The master password is still needed every 14 days.
+- **Android: AutoFill.** 2Secret fills user names and passwords in other
+  apps and browsers. Turn it on under *Settings → Security → AutoFill*
+  (with unlocking with fingerprint or face on); in Chrome, also choose
+  filling with another service in Chrome's settings. On a login screen pick
+  *Fill with 2Secret*, confirm with your fingerprint or face and choose the
+  login: the logins for the website or app come first, all others on
+  request. Nothing reaches Android or the other app before that check, the
+  logins it fills from are stored encrypted, and AutoFill stops after 14
+  days without the master password.
+- Android release builds keep the methods Rust calls in the app's activity
+  (the folder picker and the above) when R8 shrinks the app.
 
 ## 1.15.2
 
