@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.16.0
 
 - Windows 11: 2Secret can be a passkey provider for Windows (*Settings →
   Security → Passkeys in Windows*). Edge, Chrome and apps that use Windows'

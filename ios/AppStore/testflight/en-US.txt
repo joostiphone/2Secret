@@ -1,11 +1,14 @@
-2Secret 1.15.2
+2Secret 1.16.0
 
 WHAT'S NEW
-- No more black or white screen after the app was in the background for a while. iOS sometimes ends the part of the app that draws the screen when it needs memory; until now the screen then stayed empty until you closed the app by hand. 2Secret now notices and starts again by itself, on the lock screen. Because iOS often tells the app only when you come back, it can close once as you open it: just tap it again.
+- A light sidebar: Settings → Appearance → Sidebar → Light. It applies with the light theme: a soft grey panel with the open item as a white card. With the dark theme the sidebar stays dark.
+- On iPad in landscape and other wide screens, the sidebar is a card with rounded corners, and its items are softer.
+- Importing a 1Password export (.1pux) refuses a file whose contents don't match its own index.
+- New in the other apps of this version: unlock with fingerprint or face and AutoFill on Android, passkeys for Windows 11, and "Check for Updates…" in the desktop menu.
 
 PLEASE TEST
-1. Open 2Secret and go to the Home Screen. Then open a few heavy apps (the camera, a game, Safari with many tabs) and use them for a few minutes. Go back to 2Secret: you should see the app, or it closes once and opens normally on the lock screen when you tap it again. You should no longer get a black or white screen.
-2. Normal switching for a moment (copy a code, come back) should work as before, without a restart.
-3. As always: AutoFill in Safari with Face ID or Touch ID, opening the app, syncing with your other devices, and shared-vault invitations.
+1. Settings → Appearance → Sidebar: switch between Dark and Light, with the light and the dark theme. The sidebar and its open item should stay readable in every combination.
+2. On iPad in landscape: the sidebar should be a rounded card with some space around it; in portrait and on iPhone nothing should change.
+3. As always: AutoFill in Safari with Face ID or Touch ID, opening the app after it was in the background, syncing with your other devices, and shared-vault invitations.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.
