@@ -5,8 +5,9 @@ out_dir = "dist"
 asset_dir = "assets"
 # Android: the activity also hands Rust the folder chosen in the system's
 # folder picker (vaults in folders), the fingerprint or face check and the
-# AutoFill store. dx takes only this file; scripts/android.sh adds the rest
-# of crates/app/android (Kotlin, the AutoFill service, its manifest entries).
+# AutoFill service. dx takes and compiles only this one Kotlin file, so all
+# of the app's Kotlin is in it; scripts/android.sh adds the AutoFill
+# service's resource and manifest entries and the R8 rules.
 android_main_activity = "android/MainActivity.kt"
 
 [web.app]

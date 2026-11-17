@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 2Secret as Android's AutoFill service (TwoSecretAutofillService.kt);
+<!-- 2Secret as Android's AutoFill service (TwoSecretAutofillService in MainActivity.kt);
      scripts/android.sh copies it into the app. The gear next to 2Secret in
      Android's AutoFill settings opens the app. -->
 <autofill-service xmlns:android="http://schemas.android.com/apk/res/android"

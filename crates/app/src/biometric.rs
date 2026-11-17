@@ -18,7 +18,7 @@
 //!   strong (class 3) fingerprint or face check, for every use, and that
 //!   Android deletes for good when a fingerprint or face is added or all are
 //!   removed. The prompt is the system's `BiometricPrompt`, bound to that
-//!   key's cipher (crates/app/android/Biometric.kt).
+//!   key's cipher (Biometric in crates/app/android/MainActivity.kt).
 //!
 //! All functions block (they may show a system prompt): call them through
 //! `platform::run_heavy`.
@@ -382,7 +382,7 @@ mod imp {
     use super::{Error, Kind, Why};
     use crate::android::{string, with_env};
 
-    // The answers of crates/app/android/Biometric.kt.
+    // The answers of Biometric (crates/app/android/MainActivity.kt).
     const OK: i32 = 0;
     const CANCELLED: i32 = 1;
     const NOT_NOW: i32 = 2;
@@ -445,7 +445,7 @@ mod imp {
             Ok(())
         })
         .map_err(|e| Error::Failed(format!("Android: {e}")))?;
-        // Biometric.kt sets MainActivity.bioDone when the prompt has closed.
+        // Biometric (MainActivity.kt) sets MainActivity.bioDone when the prompt has closed.
         let started = Instant::now();
         loop {
             std::thread::sleep(Duration::from_millis(150));

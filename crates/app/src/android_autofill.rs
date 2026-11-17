@@ -8,7 +8,7 @@
 //! that key is encrypted (RSA-OAEP) with an Android Keystore key pair whose
 //! private key only works after a strong fingerprint or face check and is
 //! deleted for good when the enrolled fingerprints or faces change
-//! (crates/app/android/AutofillStore.kt). Encrypting needs no check, so the
+//! (AutofillStore in crates/app/android/MainActivity.kt). Encrypting needs no check, so the
 //! app can write without asking; reading needs one, so nothing of the file
 //! reaches the service before the person confirms.
 

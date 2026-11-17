@@ -51,18 +51,14 @@ project="$(dirname "$(dirname "$gradle")")"
 sed -i.bak "s/versionCode = 1\$/versionCode = $code/" "$gradle" && rm -f "$gradle.bak"
 grep -q "versionCode = $code" "$gradle"
 
-# dx takes only MainActivity.kt. The rest of crates/app/android (biometric
-# unlock, AutoFill) goes in here: Kotlin next to MainActivity.kt, the AutoFill
-# service's resource, the R8 rules for what Rust calls through JNI, and the
-# service and its screen in the manifest. Running this again changes nothing.
+# dx takes only MainActivity.kt, which holds all of the app's Kotlin (dx
+# compiles it before this script could add other files). The rest of
+# crates/app/android goes in here: the AutoFill service's resource, the R8
+# rules for what Rust calls through JNI, and the service and its screen in
+# the manifest. Running this again changes nothing.
 src="$app/android"
-kotlin="$project/app/src/main/kotlin/dev/dioxus/main"
 manifest="$project/app/src/main/AndroidManifest.xml"
-[ -f "$kotlin/MainActivity.kt" ] || { echo "android.sh: no MainActivity.kt in $kotlin" >&2; exit 1; }
 [ -f "$manifest" ] || { echo "android.sh: no $manifest" >&2; exit 1; }
-for file in "$src"/*.kt; do
-  [ "$(basename "$file")" = MainActivity.kt ] || cp "$file" "$kotlin/"
-done
 mkdir -p "$project/app/src/main/res/xml"
 cp "$src/res/xml/autofill_service.xml" "$project/app/src/main/res/xml/"
 cp "$src/proguard-2secret.pro" "$project/app/"

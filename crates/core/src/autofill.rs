@@ -180,7 +180,7 @@ pub fn android_package(url: &str) -> Option<String> {
 /// outside the trash, with their websites and apps. No passkeys, one-time
 /// password secrets or icons: the service fills user names and passwords
 /// only. The Android app encrypts it before it leaves Rust's memory
-/// (crates/app/android/AutofillStore.kt).
+/// (AutofillStore in crates/app/android/MainActivity.kt).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct AndroidAutofill {
     pub version: u32,
