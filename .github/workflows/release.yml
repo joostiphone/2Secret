@@ -146,6 +146,36 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cargo binstall -y --force --targets "$(rustc -vV | sed -n 's/^host: //p')" dioxus-cli@${{ env.DX_VERSION }}
+      # Passkeys in Windows 11 need a signed identity package (CONTRIBUTING.md,
+      # "Signing the Windows identity package"). With the certificate the
+      # setup includes the package, and the program gets the manifest that
+      # names it; without it the release is as before, and 2Secret says the
+      # feature is not available in this installation.
+      - name: Windows identity package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_IDENTITY_CERTIFICATE: ${{ secrets.WINDOWS_IDENTITY_CERTIFICATE }}
+          WINDOWS_IDENTITY_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_IDENTITY_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if (-not $env:WINDOWS_IDENTITY_CERTIFICATE) {
+            Write-Output "::warning::No WINDOWS_IDENTITY_CERTIFICATE secret: the release has no passkey provider for Windows"
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'identity.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_IDENTITY_CERTIFICATE))
+          try {
+            scripts/windows-identity-package.ps1 -Certificate $pfx -Password $env:WINDOWS_IDENTITY_CERTIFICATE_PASSWORD -TimestampUrl $env:WINDOWS_TIMESTAMP_URL
+          } finally {
+            Remove-Item -Force $pfx
+          }
+          # dx runs rc.exe in crates/app; backslashes doubled as in .rc strings.
+          $toml = 'crates/app/Dioxus.toml'
+          $line = "extra_rc = '1 24 `"windows\\2Secret.exe.manifest`"'"
+          $text = (Get-Content -Raw $toml) -replace '(?m)^(webview_install_mode = .*)$', ('$1' + "`n" + $line)
+          Set-Content -NoNewline -Path $toml -Value $text
+          Select-String -Path $toml -Pattern 'extra_rc'
       - name: Bundle
         if: runner.os != 'macOS'
         working-directory: crates/app

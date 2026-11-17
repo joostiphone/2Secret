@@ -39,6 +39,10 @@ minimum_system_version = "11.0"
 
 # Windows 10 and 11 ship WebView2; the installer only fetches it when missing,
 # instead of embedding the 180 MB offline runtime installer.
+# With a signing certificate, the release workflow adds
+# `extra_rc = '1 24 "windows\\2Secret.exe.manifest"'` below: the program's
+# manifest that connects it to its identity package (passkeys in Windows 11,
+# windows/identity/).
 [bundle.windows]
 webview_install_mode = { EmbedBootstrapper = { silent = true } }
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Windows 11: 2Secret can be a passkey provider for Windows (*Settings →
+  Security → Passkeys in Windows*). Edge, Chrome and apps that use Windows'
+  passkeys then save passkeys in 2Secret and sign in with them. 2Secret asks
+  every time, after unlocking or with Windows Hello, and gives Windows only
+  the websites and user names of the passkeys (to offer them), never the
+  keys. Needs Windows 11 24H2 or later with the updates of November 2025,
+  and a release with the signed Windows identity package; 2Secret restarts
+  once when it is turned on, and is then turned on in Windows Settings too.
 - Desktop: *Check for Updates…* in the menu bar (the 2Secret menu on macOS,
   *Help* on Windows and Linux) and in the menu of the icon in the menu bar
   or system tray, also before signing in and while 2Secret is locked. It

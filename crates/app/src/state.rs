@@ -292,6 +292,10 @@ pub struct Prefs {
     /// Desktop: ids of development builds of the extension that may connect
     /// (the store build is always allowed).
     pub extension_ids: Vec<String>,
+    /// Windows 11: 2Secret is a passkey provider for Windows
+    /// (`windows_passkeys`). Also set while 2Secret restarts to finish
+    /// turning it on.
+    pub windows_passkeys: bool,
     /// The sections of the menu that are folded away ("categories",
     /// "vaults", "tags"); never the names in them, which are not stored
     /// unencrypted.
@@ -324,6 +328,7 @@ impl Default for Prefs {
             agent_biometric: true,
             browser_host: false,
             extension_ids: Vec::new(),
+            windows_passkeys: false,
             // Tags can be many: folded until opened.
             folded: vec!["tags".to_string()],
             terms_seen: 0,
@@ -1080,6 +1085,7 @@ fn fill_kind(text: &str, label: &str) -> String {
 /// Remove the profile shown from this device; the other one, if any, stays.
 pub fn forget_device() {
     disable_biometric_unlock();
+    crate::windows_passkeys::forget();
     let _ = platform::storage().delete(&active_key(PROFILE_KEY));
     let _ = platform::storage().delete(&active_key(DEVICE_KEY));
     let _ = platform::storage().delete(&active_key(AGENTS_KEY));

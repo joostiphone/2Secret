@@ -367,6 +367,51 @@ back only to the page that asked, and only while it is still open. Passkey
 suggestions in the username field (conditional mediation) and iframes stay
 with the browser. *Settings → Passkeys in this browser* turns this off.
 
+On Windows 11 (version 24H2 or later, with the updates of November 2025),
+the desktop app can also be a passkey provider for Windows itself
+(*Settings → Security → Passkeys in Windows*): Edge, Chrome and apps that
+use Windows' passkey API (`webauthn.dll`) then save passkeys in 2Secret and
+sign in with them, through Windows' plugin authenticator API
+(`webauthnplugin.h` in github.com/microsoft/webauthn).
+
+- Windows only accepts a provider with package identity. Releases signed for
+  this include a small identity package (a package "with external location":
+  it holds no files, only the identity and the COM server, and points at the
+  folder of 2Secret). 2Secret registers it for the current user when the
+  feature is turned on and restarts once; until then it runs without
+  identity. Windows then lists 2Secret under *Settings → Accounts →
+  Passkeys → Advanced options*, where the person turns it on too (Windows
+  asks for Windows Hello). The package is a `win32App` package, so files and
+  the registry are not virtualized and 2Secret works as before.
+- Windows sends each request to 2Secret's COM server (`IPluginAuthenticator`)
+  and signs it with a key it made for 2Secret at registration. 2Secret checks
+  that signature (over the SHA-256 of the request, with the public key it
+  asks Windows for) before it reads the request, and refuses unsigned ones,
+  so another program cannot ask for a passkey by calling the COM server
+  itself.
+- A request names the website (relying party ID) and carries the hash of the
+  client data; the browser checked the website against the page. 2Secret
+  never sees the page and refuses relying party IDs that are no host name,
+  but it cannot check the website itself: as with Windows Hello's own
+  passkeys, a program that calls Windows' passkey API names the website.
+  2Secret shows the website and asks.
+- Nothing happens without the person's choice in 2Secret's own window. When
+  2Secret is locked, it asks to unlock first, which is the user
+  verification. When it was unlocked already, Windows Hello confirms the
+  person (`WebAuthNPluginPerformUserVerification`) before 2Secret answers.
+- The answer comes from the same software authenticator as above (ES256,
+  "none" attestation, the same flags), over the client data hash Windows
+  passed on, and Windows encodes it. A new passkey is saved in the vault
+  before Windows gets the answer.
+- So Windows can offer them (in its passkey list and in autofill), 2Secret
+  gives Windows the website, user name, display name, user handle and
+  credential id of each passkey in the vault, never a private key. Windows
+  keeps that list while 2Secret is locked; choosing a passkey from it asks to
+  unlock. Turning the feature off or removing the account from the device
+  removes the list.
+- Windows asks whether 2Secret is locked (`GetLockStatus`) and may cancel a
+  request (`CancelOperation`), which closes 2Secret's question.
+
 Passkeys can be imported from Bitwarden JSON exports. `2secret get --json`
 leaves passkey private keys out unless `--reveal` is given.
 

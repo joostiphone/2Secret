@@ -120,6 +120,53 @@ the disk image, then publishes them signed but not stapled; macOS finds the
 ticket online once Apple has accepted it, and until then asks to allow the
 app once under *Privacy & Security*.
 
+### Signing the Windows identity package
+
+2Secret can be a passkey provider for Windows 11 (*Settings → Security →
+Passkeys in Windows*, `crates/app/src/windows_passkeys.rs`). Windows only
+accepts a provider with package identity, which 2Secret gets from a small
+identity package next to the program (`crates/app/windows/identity/`). The
+package must be signed, and Windows installs it only when it trusts the
+certificate. Without the secrets below the release is built as before, and
+the app says the feature is not available in that installation.
+
+| Secret | Value |
+|---|---|
+| `WINDOWS_IDENTITY_CERTIFICATE` | The code signing certificate with its private key as `.pfx`, base64 encoded |
+| `WINDOWS_IDENTITY_CERTIFICATE_PASSWORD` | The password of the `.pfx` |
+
+With them, the release workflow runs `scripts/windows-identity-package.ps1`
+(MakeAppx and SignTool from the Windows SDK), the setup includes the package
+and its logos, and the program gets the manifest that names the package
+(`crates/app/windows/2Secret.exe.manifest`, added to `Dioxus.toml` as
+`extra_rc`). An optional repository variable `WINDOWS_TIMESTAMP_URL` (a
+timestamp server of the certificate's issuer) keeps the signature valid
+after the certificate expires.
+
+The certificate's subject must be exactly the `Publisher` in
+`crates/app/windows/identity/AppxManifest.xml`, which is `CN=2Secret`, and
+the `publisher` in `2Secret.exe.manifest`; the script refuses a certificate
+that does not match. For a certificate with another subject, change both.
+
+- **For everyone**: a code signing certificate from a certification authority
+  that Windows trusts, exported as `.pfx`. (Azure Trusted Signing and keys in
+  a hardware token sign through their own tools instead of a `.pfx`; the
+  signing step in the script would change accordingly.)
+- **For testing on your own PC**: on that PC, run
+  `scripts\windows-identity-package.ps1 -NewTestCertificate -Password <password>`
+  from a PowerShell in the repository (with the Windows SDK installed). It
+  makes a self-signed certificate with subject `CN=2Secret`, trusts it for
+  your Windows user only (*Trusted People*), and prints how to turn the `.pfx`
+  into the secret. Keep the `.pfx` private. On PCs that do not trust it,
+  turning the feature on says that Windows does not trust the package.
+
+To test: install the setup of such a release, open *Settings → Security →
+Passkeys in Windows* and turn it on. 2Secret registers the package and
+restarts, then registers with Windows and opens *Settings → Accounts →
+Passkeys → Advanced options*, where you turn 2Secret on. `Get-AppxPackage
+io.github.joostiphone.twosecret` shows the registered package; the
+uninstaller removes it.
+
 ### Signing the Android app
 
 Releases include the Android app only when a signing key is configured

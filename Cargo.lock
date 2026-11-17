@@ -6997,6 +6997,7 @@ dependencies = [
  "web-sys",
  "webbrowser",
  "windows",
+ "windows-core 0.61.2",
  "zeroize",
 ]
 

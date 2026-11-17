@@ -48,6 +48,7 @@ mod state;
 #[cfg(feature = "desktop")]
 mod tray;
 mod updater;
+mod windows_passkeys;
 
 use dioxus::prelude::*;
 
@@ -132,13 +133,22 @@ pub fn run() {
     // the one that runs.
     #[cfg(all(feature = "desktop", not(target_os = "macos")))]
     link_handler::start();
-    // A downloaded update is installed before the app starts (and restarts it).
-    updater::apply_at_start();
+    // Windows 11: answer Windows' passkey requests (before the window, as
+    // COM wants the class soon after starting 2Secret for a request).
+    #[cfg(feature = "desktop")]
+    windows_passkeys::start();
+    // A downloaded update is installed before the app starts (and restarts
+    // it), but not while Windows waits for a passkey.
+    if !windows_passkeys::started_by_windows() {
+        updater::apply_at_start();
+    }
     #[cfg(feature = "desktop")]
     {
         use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
         // Started at login: only the icon in the menu bar or system tray.
-        let hidden = autostart::started_hidden() && state::stored_prefs().tray && tray::supported();
+        // Started by Windows for a passkey: the request shows the window.
+        let hidden = autostart::started_hidden() && state::stored_prefs().tray && tray::supported()
+            || windows_passkeys::started_by_windows();
         std::thread::spawn(|| {
             autostart::refresh();
             native_host::refresh();
@@ -456,6 +466,8 @@ fn App() -> Element {
     quick::use_quick_access();
     #[cfg(feature = "desktop")]
     ssh_agent::use_ssh_agent();
+    #[cfg(feature = "desktop")]
+    windows_passkeys::use_windows_passkeys();
     #[cfg(any(feature = "desktop", feature = "mobile"))]
     agent_access::use_agent_access();
     #[cfg(any(feature = "desktop", feature = "mobile"))]

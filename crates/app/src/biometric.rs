@@ -104,6 +104,10 @@ pub fn delete_device_key(account_id: &str) {
     imp::delete_device_key(account_id)
 }
 
+/// Windows: bring the next Windows Hello prompt to the front.
+#[cfg(windows)]
+pub(crate) use imp::focus_prompt;
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod imp {
     use super::{Error, Kind, Why};
@@ -282,7 +286,7 @@ mod imp {
     /// Windows often opens the Windows Hello prompt of a desktop app behind
     /// its window. Bring it to the front once it shows (the app is in front,
     /// as it was just clicked, so Windows lets it hand over the focus).
-    fn focus_prompt() {
+    pub(crate) fn focus_prompt() {
         std::thread::spawn(|| {
             for _ in 0..20 {
                 std::thread::sleep(std::time::Duration::from_millis(150));

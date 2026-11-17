@@ -49,7 +49,7 @@ is free, open source, and you can host the sync server yourself.
 | 🔄 **Sync** | Offline-first; automatic sync with conflict resolution (no password is ever lost – the losing version goes into the password history). |
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. Connected to the desktop app it also signs you in for AI agents ([details](docs/EXTENSION.md)). |
 | 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
-| 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
+| 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. On Windows 11 (24H2 and later) 2Secret can be Windows' passkey provider, for Edge, Chrome and apps, in releases that include the signed Windows package. Import from Bitwarden. |
 | 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. Android 9 and newer: fill user names and passwords in other apps and browsers after your fingerprint or face. |
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. It can start there when you log in. |
@@ -137,7 +137,7 @@ Full reference: [docs/CLI.md](docs/CLI.md).
 Compared with 1Password, these are missing today – contributions welcome:
 
 - Biometric unlock on Linux and in the browser (the master password is required there).
-- Creating passkeys outside the browser extension; using them on Android and in the desktop apps.
+- Creating passkeys outside the browser extension and Windows 11; using them on Android, and in the Linux apps outside the browser.
 - Filling verification codes and saving new logins through AutoFill on Android (it fills user names and passwords).
 - An independent security audit.
 
@@ -249,6 +249,9 @@ Windows, Linux, BSD, iOS, het web en je browser.
   bruikbaar.
 - **Browserextensie** (Chrome, Edge, Brave, Firefox) die inloggegevens en
   eenmalige codes automatisch invult, en passkeys bewaart en gebruikt.
+- **Passkeys in Windows 11** (24H2 en nieuwer): Edge, Chrome en apps bewaren
+  passkeys via Windows in 2Secret en loggen ermee in, in releases met het
+  ondertekende Windows-pakket.
 - **Opdrachtregel (CLI)** voor ontwikkelaars, met `2s://`-verwijzingen naar
   geheimen.
 - **Importeren** uit 1Password, Bitwarden, LastPass, Chrome, Firefox, Safari,
@@ -289,8 +292,8 @@ Windows, Linux, BSD, iOS, het web en je browser.
 ### Nog niet aanwezig
 
 Biometrisch ontgrendelen op Linux en in de browser, passkeys aanmaken buiten
-de browserextensie, een Safari-extensie, verificatiecodes invullen en nieuwe
-logins bewaren via automatisch invullen op Android, en een onafhankelijke
+de browserextensie en Windows 11, een Safari-extensie, verificatiecodes invullen
+en nieuwe logins bewaren via automatisch invullen op Android, en een onafhankelijke
 beveiligingsaudit.
 
 ### Snel aan de slag
