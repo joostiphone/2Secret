@@ -438,9 +438,10 @@ unreadable one.
   (zeroized) when the app locks. Rust's memory safety rules out whole classes
   of bugs (buffer overflows, use-after-free) in the crypto and parsing code.
 - **Auto-lock** after inactivity (default 10 minutes).
-- **Biometric unlock** (optional; macOS, iOS, Windows): the account key is
-  stored encrypted with a random 256-bit device key that the operating
-  system releases only after Touch ID, Face ID or Windows Hello. On iOS and
+- **Biometric unlock** (optional; macOS, iOS, Windows, Android 9 and newer):
+  the account key is stored encrypted with a random 256-bit device key that
+  the operating system releases only after Touch ID, Face ID, Windows Hello
+  or a fingerprint or face on Android. On iOS and
   macOS the device key is a keychain item that the Secure Enclave opens only
   for the currently enrolled face or fingers, on this device, while a
   passcode (on a Mac: a login password) is set; on a Mac it is in the data
@@ -448,12 +449,18 @@ unreadable one.
   before 1.9.4 kept it there; the app moves it on the next unlock). On
   Windows the device key is derived (HKDF) from a Windows Hello signature
   over a fixed challenge: the private key stays in the TPM and the device
-  key is never stored. The master password is required again every 14 days
+  key is never stored. On Android the device key is stored encrypted
+  (AES-256-GCM) in the app's no-backup storage, with an Android Keystore key
+  (in the phone's secure hardware where it has one) that works only right
+  after a strong (class 3) fingerprint or face check, for every single use
+  (the system's `BiometricPrompt` with that key's cipher; not the PIN), and
+  that Android voids for good when a fingerprint or face is added or all
+  are removed. The master password is required again every 14 days
   (a reminder, not a cryptographic limit: the date is kept next to the
   encrypted key), and turning the feature off or removing the account
   deletes the device key. With biometric unlock on, the device key alone
-  opens the vault on that device: its protection rests on the Secure Enclave
-  or the TPM, not on the master password.
+  opens the vault on that device: its protection rests on the Secure Enclave,
+  the TPM or Android Keystore, not on the master password.
 - **AutoFill on iOS and macOS** (only while biometric unlock is on): the app
   shares the logins, passkeys, one-time password secrets and website icons
   AutoFill may fill and show with its extension through a file in the app
@@ -468,6 +475,27 @@ unreadable one.
   user names and passkey IDs for its suggestions, never passwords, keys or
   one-time password secrets. Details:
   [APP-STORE.md](APP-STORE.md#how-autofill-works).
+- **AutoFill on Android** (Android 9 and newer, only while biometric unlock
+  is on and 2Secret is the phone's AutoFill service): the app writes the
+  logins with a password (title, user name, password, the registrable
+  domains of their websites and the apps of their `androidapp://`
+  addresses; no passkeys, one-time password secrets or notes) to a file in
+  its no-backup storage. Every write encrypts it with AES-256-GCM under a
+  new random key, and that key with RSA-OAEP (SHA-256) to an Android
+  Keystore key pair: encrypting needs no check, so the app writes without
+  asking, but the private key decrypts only right after a strong (class 3)
+  fingerprint or face check, for every single use, and Android voids it when
+  a fingerprint or face is added or all are removed. On a login screen the
+  service offers only "Fill with 2Secret", which holds no login: Android
+  then opens 2Secret's own screen (not reachable for other apps), which asks
+  for the fingerprint or face, decrypts, and lists the logins whose domain
+  the page's host is or ends in (or whose app is the app asking; on a web
+  page the browser's package never counts); the others only on request.
+  Nothing is filled before the person taps a login, and Android gets only
+  that one. The service does not fill in 2Secret itself, stops after the
+  same 14 days, cannot change the vault and saves nothing. Turning biometric
+  unlock off, removing the account from the device or choosing another
+  AutoFill service removes the file and the key.
 - **Setup links** (`otpauth://`): a link that opens the app is only read; its
   secret is saved, encrypted like any field, once you choose a login for it.
   On Windows, Linux and the BSDs a link starts a second 2Secret process,
@@ -500,7 +528,8 @@ unreadable one.
   field, a one-time code, saving or changing an item) needs the user's
   consent in the app: once, for these items until 2Secret locks (kept in
   memory), or for these items for 8 hours (stored). Optionally the app asks
-  for Touch ID, Face ID or Windows Hello before it answers. The record of
+  for Touch ID, Face ID, Windows Hello or a fingerprint or face before it
+  answers. The record of
   agents, permissions and the log of every request is encrypted with the
   account key (`agents.json`) and dropped from memory at lock, when pending
   questions are refused. `run_command` gives a program the values of `2s://`
@@ -564,8 +593,8 @@ unreadable one.
   domain using the Public Suffix List (`alice.github.io` never matches
   `mallory.github.io`; an item for `github.io` itself only matches
   `github.io`), an `https` item is never filled into an `http` page, and an
-  item URL with a port only matches that port. AutoFill on iPhone, iPad and
-  Mac suggests logins by the same registrable domains.
+  item URL with a port only matches that port. AutoFill on iPhone, iPad,
+  Mac and Android suggests logins by the same registrable domains.
 
 ## Updates
 

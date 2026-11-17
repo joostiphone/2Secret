@@ -660,9 +660,11 @@ pub fn persist() {
 }
 
 /// iOS and macOS: give the AutoFill extension the current logins and
-/// passkeys. Only while biometric unlock is on: the extension opens them with
-/// Face ID or Touch ID, and stops after the same 14 days without the master
-/// password.
+/// passkeys. Android: give the AutoFill service the current logins, while
+/// 2Secret is the phone's AutoFill service (else the store goes). Only while
+/// biometric unlock is on: the extension and the service open them with
+/// Face ID, Touch ID or a fingerprint or face, and stop after the same 14
+/// days without the master password.
 pub fn refresh_autofill() {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
@@ -671,6 +673,18 @@ pub fn refresh_autofill() {
         if let Some(cache) = cache {
             crate::apple_autofill::write_theme(PREFS.peek().theme.id());
             crate::apple_autofill::write(&cache);
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        let Some(config) = biometric_unlock() else { return };
+        if !crate::android_autofill::active() {
+            crate::android_autofill::clear();
+            return;
+        }
+        let store = SESSION.peek().as_ref().map(|s| s.android_autofill(config.password_entered_at));
+        if let Some(store) = store {
+            crate::android_autofill::write(&store);
         }
     }
 }
@@ -1032,6 +1046,8 @@ pub fn disable_biometric_unlock() {
     let _ = platform::storage().delete(&active_key(BIOMETRIC_KEY));
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     crate::apple_autofill::clear();
+    #[cfg(target_os = "android")]
+    crate::android_autofill::clear();
 }
 
 /// The master password was just entered: biometric unlock keeps working for
@@ -1044,9 +1060,21 @@ pub fn password_entered() {
     }
 }
 
-/// "{kind}" in a translated text replaced by the biometric method's name.
+/// "{kind}" in a translated text replaced by the biometric method's name,
+/// with a capital when it starts the text (Android's "fingerprint or face").
 pub fn with_kind(text: &str, kind: biometric::Kind) -> String {
-    text.replace("{kind}", kind.label())
+    fill_kind(text, kind.label())
+}
+
+fn fill_kind(text: &str, label: &str) -> String {
+    match text.strip_prefix("{kind}") {
+        Some(rest) => {
+            let mut chars = label.chars();
+            let first: String = chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default();
+            format!("{first}{}", rest.replace("{kind}", label))
+        }
+        None => text.replace("{kind}", label),
+    }
 }
 
 /// Remove the profile shown from this device; the other one, if any, stays.
@@ -1404,6 +1432,20 @@ mod tests {
             assert!(json.contains(&format!("\"start_screen\":\"{}\"", start.id())));
             assert_eq!(serde_json::from_str::<Prefs>(&json).unwrap().start_screen, start);
         }
+    }
+
+    #[test]
+    fn biometric_names_in_texts() {
+        assert_eq!(fill_kind("Unlock with {kind}", "Face ID"), "Unlock with Face ID");
+        assert_eq!(fill_kind("{kind} is off", "Touch ID"), "Touch ID is off");
+        // Android's name is a description: a capital only where it starts a sentence.
+        let label = "fingerprint or face";
+        assert_eq!(
+            fill_kind("{kind} is locked; then {kind} works", label),
+            "Fingerprint or face is locked; then fingerprint or face works"
+        );
+        assert_eq!(fill_kind("Use {kind} instead", label), "Use fingerprint or face instead");
+        assert_eq!(fill_kind("{kind} staat aan", "vingerafdruk of gezicht"), "Vingerafdruk of gezicht staat aan");
     }
 
     #[test]

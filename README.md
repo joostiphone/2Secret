@@ -50,7 +50,7 @@ is free, open source, and you can host the sync server yourself.
 | 🧩 **Browser extension** | Chrome, Edge, Brave and Firefox: suggestions for the current site, one-click fill of username, password and one-time code. Connected to the desktop app it also signs you in for AI agents ([details](docs/EXTENSION.md)). |
 | 🖼️ **Website icons** | Logins show their website's icon, fetched by the apps straight from the website (no icon service in between) and synced end-to-end encrypted with the login. |
 | 🔑 **Passkeys** | Save passkeys in your vault and sign in with them from the browser extension and AutoFill on iPhone, iPad and Mac; end-to-end encrypted and synced. Import from Bitwarden. |
-| 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. |
+| 📲 **AutoFill** | iPhone, iPad and Mac: fill passwords, passkeys and verification codes in Safari and other apps after Face ID or Touch ID, without a browser extension. On the Mac this needs macOS 14 and a release signed with a Developer ID; verification codes need iOS 18 or macOS 15. Android 9 and newer: fill user names and passwords in other apps and browsers after your fingerprint or face. |
 | 👥 **Profiles** | Keep two accounts in the apps, for example a personal one and one for work on another server, and switch between them from the top of the sidebar. |
 | 🖥️ **Menu bar & system tray** | On the desktop 2Secret keeps an icon in the menu bar (macOS) or the system tray (Windows, Linux) to open it, lock it or quit; closing the window keeps it running there. It can start there when you log in. |
 | 🔐 **SSH agent** | `ssh` and `git` use the SSH keys in your vault (Ed25519, ECDSA, RSA) after you allow it in 2Secret; the private keys never leave it. |
@@ -59,7 +59,7 @@ is free, open source, and you can host the sync server yourself.
 | ⌨️ **Keyboard friendly** | `Ctrl/⌘+F` search, `Ctrl/⌘+N` new item, `Ctrl/⌘+L` lock, `Esc` closes dialogs. |
 | 💻 **CLI for developers** | `2secret read 2s://vault/item/field`, `2secret run -- cmd` and `2secret inject` keep secrets out of config files and CI. |
 | 📥 **Import / export** | Import from 1Password (`.1pux`, CSV), Bitwarden (JSON, CSV), LastPass, Chrome, Edge, Firefox, Safari, KeePass (XML), KeePassXC, Dashlane; export to encrypted backups, JSON or CSV. |
-| 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID or Windows Hello. |
+| 🔒 **Auto-lock & clipboard clearing** | Configurable lock timeout; copied secrets are wiped from the clipboard. Unlock with Touch ID, Face ID, Windows Hello or, on Android, your fingerprint or face. |
 | ⬆️ **Signed updates** | Opt-in: the desktop apps install new versions themselves, Android says when one is available. Only updates signed with 2Secret's key are installed ([details](docs/UPDATES.md)). |
 | 🌍 **English & Nederlands** | The apps follow your system language. |
 | 🏠 **Sync your way** | Per vault: the 2Secret server (`sync.2secret.app`), your own server – one small binary or Docker image that also serves the web vault –, only this device, a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or Syncthing (desktop apps and CLI; on phones iCloud Drive and folders on the device), or a WebDAV server such as Nextcloud or a NAS – always end-to-end encrypted. Move a vault from one to the other at any time. |
@@ -136,9 +136,9 @@ Full reference: [docs/CLI.md](docs/CLI.md).
 
 Compared with 1Password, these are missing today – contributions welcome:
 
-- Biometric unlock on Linux, Android and in the browser (the master password is required there).
+- Biometric unlock on Linux and in the browser (the master password is required there).
 - Creating passkeys outside the browser extension; using them on Android and in the desktop apps.
-- System autofill on Android. (Safari fills through AutoFill on iPhone, iPad and Mac.)
+- Filling verification codes and saving new logins through AutoFill on Android (it fills user names and passwords).
 - An independent security audit.
 
 ## Security
@@ -254,7 +254,11 @@ Windows, Linux, BSD, iOS, het web en je browser.
 - **Importeren** uit 1Password, Bitwarden, LastPass, Chrome, Firefox, Safari,
   KeePass, Dashlane en meer.
 - **Automatisch vergrendelen** en klembord wissen; ontgrendelen met Touch ID,
-  Face ID of Windows Hello.
+  Face ID, Windows Hello of, op Android, je vingerafdruk of gezicht.
+- **Automatisch invullen** zonder browserextensie: op iPhone, iPad en Mac
+  wachtwoorden, passkeys en verificatiecodes in Safari en andere apps na Face
+  ID of Touch ID; op Android (9 en nieuwer) gebruikersnamen en wachtwoorden in
+  andere apps en browsers na je vingerafdruk of gezicht.
 - **Icoon in de menubalk** (Mac) of het systeemvak (Windows, Linux) om 2Secret
   te openen, te vergrendelen of af te sluiten; als je het venster sluit, blijft
   2Secret daar actief. Het kan daar starten als je inlogt.
@@ -284,8 +288,9 @@ Windows, Linux, BSD, iOS, het web en je browser.
 
 ### Nog niet aanwezig
 
-Biometrisch ontgrendelen op Linux, Android en in de browser, passkeys aanmaken
-buiten de browserextensie, een Safari-extensie, automatisch invullen op Android, en een onafhankelijke
+Biometrisch ontgrendelen op Linux en in de browser, passkeys aanmaken buiten
+de browserextensie, een Safari-extensie, verificatiecodes invullen en nieuwe
+logins bewaren via automatisch invullen op Android, en een onafhankelijke
 beveiligingsaudit.
 
 ### Snel aan de slag

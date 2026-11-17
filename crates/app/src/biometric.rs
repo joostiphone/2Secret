@@ -1,5 +1,5 @@
-//! Touch ID, Face ID and Windows Hello: the platform side of
-//! [`twosecret_core::biometric`].
+//! Touch ID, Face ID, Windows Hello and Android's fingerprint or face
+//! unlock: the platform side of [`twosecret_core::biometric`].
 //!
 //! The operating system keeps a random 256-bit *device key* and releases it
 //! only after a biometric check:
@@ -13,6 +13,12 @@
 //! - **Windows**: the device key is derived from a Windows Hello signature
 //!   over a fixed challenge. The private key never leaves the TPM and the
 //!   device key is never stored.
+//! - **Android** (9 and newer): the device key is stored encrypted
+//!   (AES-256-GCM) with an Android Keystore key that only works after a
+//!   strong (class 3) fingerprint or face check, for every use, and that
+//!   Android deletes for good when a fingerprint or face is added or all are
+//!   removed. The prompt is the system's `BiometricPrompt`, bound to that
+//!   key's cipher (crates/app/android/Biometric.kt).
 //!
 //! All functions block (they may show a system prompt): call them through
 //! `platform::run_heavy`.
@@ -27,15 +33,22 @@ pub enum Kind {
     FaceId,
     OpticId,
     WindowsHello,
+    /// Android: whatever strong biometric the phone has (mostly a
+    /// fingerprint, on some phones the face).
+    AndroidBiometric,
 }
 
 impl Kind {
+    /// The method's name, for "{kind}" in texts (`state::with_kind`). Apple's
+    /// and Microsoft's names are the same in every language; Android's is a
+    /// plain description, so it is translated.
     pub fn label(self) -> &'static str {
         match self {
             Kind::TouchId => "Touch ID",
             Kind::FaceId => "Face ID",
             Kind::OpticId => "Optic ID",
             Kind::WindowsHello => "Windows Hello",
+            Kind::AndroidBiometric => crate::i18n::t("biometric.android"),
         }
     }
 }
@@ -356,7 +369,173 @@ mod imp {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
+#[cfg(target_os = "android")]
+mod imp {
+    use std::path::PathBuf;
+    use std::sync::{Mutex, TryLockError};
+    use std::time::{Duration, Instant};
+
+    use jni::objects::{JByteArray, JValue};
+    use twosecret_core::crypto::{sha256, SymmetricKey};
+    use zeroize::Zeroizing;
+
+    use super::{Error, Kind, Why};
+    use crate::android::{string, with_env};
+
+    // The answers of crates/app/android/Biometric.kt.
+    const OK: i32 = 0;
+    const CANCELLED: i32 = 1;
+    const NOT_NOW: i32 = 2;
+    const OFF: i32 = 3;
+    const LOCKOUT: i32 = 4;
+    const KEY_GONE: i32 = 5;
+
+    /// One prompt at a time: MainActivity keeps one answer.
+    static PROMPT: Mutex<()> = Mutex::new(());
+
+    /// Longer than any prompt stays open by itself.
+    const PATIENCE: Duration = Duration::from_secs(5 * 60);
+
+    /// The account in file and key names: a hash, so they hold no e-mail
+    /// address or other text of the account.
+    fn tag(account_id: &str) -> String {
+        sha256(account_id.as_bytes())[..16].iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// The Android Keystore key that wraps the device key.
+    fn alias(account_id: &str) -> String {
+        format!("2secret-biometric-{}", tag(account_id))
+    }
+
+    /// The wrapped device key: IV and ciphertext, in the app's no-backup
+    /// storage next to the profile.
+    fn file(account_id: &str) -> PathBuf {
+        crate::platform::data_dir().join(format!("biometric-{}.key", tag(account_id)))
+    }
+
+    pub fn available() -> Option<Kind> {
+        let yes = with_env(|env, activity| env.call_method(activity, "biometricAvailable", "()Z", &[])?.z());
+        yes.ok().filter(|y| *y).map(|_| Kind::AndroidBiometric)
+    }
+
+    /// The reason as the prompt's subtitle: a sentence ("Unlock your vault").
+    fn sentence(reason: &str) -> String {
+        let mut chars = reason.trim().chars();
+        chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+    }
+
+    /// Show the system's prompt for the key `alias` and let it encrypt
+    /// (`create`) or decrypt `input`. Blocks until the prompt closes.
+    fn prompt(alias: &str, create: bool, input: &[u8], reason: &str) -> Answer {
+        let _one = match PROMPT.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::Poisoned(e)) => e.into_inner(),
+            Err(TryLockError::WouldBlock) => return Err(Error::NotNow),
+        };
+        with_env(|env, activity| {
+            let alias = env.new_string(alias)?;
+            let input = env.byte_array_from_slice(input)?;
+            let reason = env.new_string(sentence(reason))?;
+            env.call_method(
+                activity,
+                "biometricStart",
+                "(Ljava/lang/String;Z[BLjava/lang/String;)V",
+                &[JValue::Object(&alias), JValue::Bool(create.into()), JValue::Object(&input), JValue::Object(&reason)],
+            )?;
+            Ok(())
+        })
+        .map_err(|e| Error::Failed(format!("Android: {e}")))?;
+        // Biometric.kt sets MainActivity.bioDone when the prompt has closed.
+        let started = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_millis(150));
+            match answer() {
+                Ok(Some(result)) => return result,
+                Ok(None) if started.elapsed() < PATIENCE => {}
+                Ok(None) => {
+                    let _ =
+                        with_env(|env, activity| env.call_method(activity, "biometricCancel", "()V", &[]).map(|_| ()));
+                    return Err(Error::Cancelled);
+                }
+                Err(e) => return Err(Error::Failed(format!("Android: {e}"))),
+            }
+        }
+    }
+
+    /// What the key's cipher made, or why it made nothing.
+    type Answer = Result<Zeroizing<Vec<u8>>, Error>;
+
+    /// The prompt's answer, once it has closed. The output is wiped in Java
+    /// once Rust has its copy.
+    fn answer() -> Result<Option<Answer>, String> {
+        with_env(|env, activity| {
+            let class = env.get_object_class(activity)?;
+            if !env.get_static_field(&class, "bioDone", "Z")?.z()? {
+                return Ok(None);
+            }
+            let code = env.get_static_field(&class, "bioError", "I")?.i()?;
+            let message = env.get_static_field(&class, "bioMessage", "Ljava/lang/String;")?.l()?;
+            let message = if message.is_null() { String::new() } else { string(env, message)? };
+            let output = env.get_static_field(&class, "bioOutput", "[B")?.l()?;
+            let output = if output.is_null() {
+                None
+            } else {
+                let array = JByteArray::from(output);
+                let bytes = Zeroizing::new(env.convert_byte_array(&array)?);
+                env.set_byte_array_region(&array, 0, &vec![0i8; bytes.len()])?;
+                Some(bytes)
+            };
+            Ok(Some(match (code, output) {
+                (OK, Some(bytes)) => Ok(bytes),
+                (OK, None) => Err(Error::Failed("no answer from the prompt".into())),
+                (CANCELLED, _) => Err(Error::Cancelled),
+                (NOT_NOW, _) => Err(Error::NotNow),
+                (OFF, _) => Err(Error::Unavailable(Why::Off)),
+                (LOCKOUT, _) => Err(Error::Unavailable(Why::Lockout)),
+                (KEY_GONE, _) => Err(Error::Unavailable(Why::KeyGone)),
+                _ if message.is_empty() => Err(Error::Failed(format!("biometric prompt ({code})"))),
+                _ => Err(Error::Failed(message)),
+            }))
+        })
+    }
+
+    pub fn create_device_key(account_id: &str, reason: &str) -> Result<SymmetricKey, Error> {
+        let key = SymmetricKey::generate();
+        // A new Keystore key; its cipher encrypts the device key.
+        let sealed = prompt(&alias(account_id), true, key.as_bytes(), reason)?;
+        let path = file(account_id);
+        let tmp = path.with_extension("key.tmp");
+        let written = std::fs::create_dir_all(crate::platform::data_dir())
+            .and_then(|()| std::fs::write(&tmp, &*sealed))
+            .and_then(|()| std::fs::rename(&tmp, &path));
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&tmp);
+            delete_device_key(account_id);
+            return Err(Error::Failed(format!("cannot store the key: {e}")));
+        }
+        Ok(key)
+    }
+
+    pub fn device_key(account_id: &str, reason: &str) -> Result<SymmetricKey, Error> {
+        let sealed = match std::fs::read(file(account_id)) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Error::Unavailable(Why::KeyGone)),
+            Err(e) => return Err(Error::Failed(format!("cannot read the key: {e}"))),
+        };
+        let bytes = prompt(&alias(account_id), false, &sealed, reason)?;
+        SymmetricKey::from_slice(&bytes).map_err(|_| Error::Unavailable(Why::KeyGone))
+    }
+
+    pub fn delete_device_key(account_id: &str) {
+        let _ = std::fs::remove_file(file(account_id));
+        let _ = with_env(|env, activity| {
+            let alias = env.new_string(alias(account_id))?;
+            env.call_method(activity, "biometricDelete", "(Ljava/lang/String;)V", &[JValue::Object(&alias)]).map(|_| ())
+        });
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios", windows, target_os = "android")))]
 mod imp {
     use super::{Error, Kind, Why};
     use twosecret_core::crypto::SymmetricKey;

@@ -1,5 +1,6 @@
 //! The AutoFill cache for iOS and macOS: what the AutoFill extension may
-//! fill, sealed for the extension.
+//! fill, sealed for the extension. Also what Android's AutoFill service may
+//! fill ([`AndroidAutofill`]), which the Android app seals itself.
 //!
 //! The extension runs outside the app and cannot unlock the vault, so the app
 //! (while unlocked, with Face ID / Touch ID unlock turned on) writes the
@@ -105,15 +106,7 @@ impl Session {
             .map(|(_, i)| (i, i.totp_secret().and_then(|t| Totp::parse(t).ok())))
             .filter(|(i, totp)| i.password().is_some_and(|p| !p.is_empty()) || !i.passkeys.is_empty() || totp.is_some())
             .map(|(i, totp)| {
-                let hosts: Vec<String> = i.urls.iter().filter_map(|u| web_host(u)).collect();
-                let (mut exact_hosts, hosts): (Vec<String>, Vec<String>) =
-                    hosts.into_iter().partition(|h| is_public_suffix(h));
-                let mut domains: Vec<String> = hosts.iter().map(|h| base_domain(h)).collect();
-                domains.extend(i.passkeys.iter().map(|p| base_domain(&p.rp_id)));
-                domains.sort();
-                domains.dedup();
-                exact_hosts.sort();
-                exact_hosts.dedup();
+                let (domains, exact_hosts) = websites(i);
                 AutofillLogin {
                     id: i.id.clone(),
                     title: i.title.clone(),
@@ -139,6 +132,108 @@ impl Session {
             .collect();
         logins.sort_by_key(|l| l.title.to_lowercase());
         AutofillCache {
+            version: 1,
+            account_id: self.account().id.clone(),
+            password_entered_at,
+            created_at: now(),
+            logins,
+        }
+    }
+}
+
+/// The registrable domains (`example.co.uk`) and the exact hosts (a host
+/// that is itself a public suffix, like `github.io`) of an item's websites
+/// and passkeys. App addresses (`androidapp://`, `iosapp://`) are no
+/// websites.
+fn websites(item: &crate::item::Item) -> (Vec<String>, Vec<String>) {
+    let hosts: Vec<String> = item.urls.iter().filter(|u| !is_app_address(u)).filter_map(|u| web_host(u)).collect();
+    let (mut exact_hosts, hosts): (Vec<String>, Vec<String>) = hosts.into_iter().partition(|h| is_public_suffix(h));
+    let mut domains: Vec<String> = hosts.iter().map(|h| base_domain(h)).collect();
+    domains.extend(item.passkeys.iter().map(|p| base_domain(&p.rp_id)));
+    domains.sort();
+    domains.dedup();
+    exact_hosts.sort();
+    exact_hosts.dedup();
+    (domains, exact_hosts)
+}
+
+fn is_app_address(url: &str) -> bool {
+    let url = url.trim().to_ascii_lowercase();
+    url.starts_with("androidapp://") || url.starts_with("iosapp://")
+}
+
+/// The Android package name of an `androidapp://com.example.app` address
+/// (the form Bitwarden and others use), if it is one.
+pub fn android_package(url: &str) -> Option<String> {
+    let url = url.trim();
+    let rest = url.get(..13).filter(|s| s.eq_ignore_ascii_case("androidapp://")).map(|_| &url[13..])?;
+    let name = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let valid = name.contains('.')
+        && name.split('.').all(|part| {
+            part.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        });
+    valid.then(|| name.to_string())
+}
+
+/// What Android's AutoFill service may fill: the logins with a password,
+/// outside the trash, with their websites and apps. No passkeys, one-time
+/// password secrets or icons: the service fills user names and passwords
+/// only. The Android app encrypts it before it leaves Rust's memory
+/// (crates/app/android/AutofillStore.kt).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+pub struct AndroidAutofill {
+    pub version: u32,
+    pub account_id: String,
+    /// When the master password was last entered on this device; the
+    /// service stops filling after `BiometricUnlock::MAX_DAYS`.
+    pub password_entered_at: i64,
+    pub created_at: i64,
+    pub logins: Vec<AndroidLogin>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+pub struct AndroidLogin {
+    pub id: String,
+    pub title: String,
+    pub username: String,
+    pub password: String,
+    /// Registrable domains of the item's websites: a page matches when its
+    /// host is one of them or ends in "." and one of them.
+    pub domains: Vec<String>,
+    /// Websites whose host is itself a public suffix (`github.io`): that
+    /// host only, never a subdomain.
+    pub exact_hosts: Vec<String>,
+    /// Package names of the item's `androidapp://` addresses: the apps it
+    /// is for.
+    pub packages: Vec<String>,
+}
+
+impl Session {
+    /// Everything Android's AutoFill service may fill.
+    pub fn android_autofill(&self, password_entered_at: i64) -> AndroidAutofill {
+        let mut logins: Vec<AndroidLogin> = self
+            .all_items()
+            .map(|(_, i)| i)
+            .filter(|i| !i.is_trashed() && i.password().is_some_and(|p| !p.is_empty()))
+            .map(|i| {
+                let (domains, exact_hosts) = websites(i);
+                let mut packages: Vec<String> = i.urls.iter().filter_map(|u| android_package(u)).collect();
+                packages.sort();
+                packages.dedup();
+                AndroidLogin {
+                    id: i.id.clone(),
+                    title: i.title.clone(),
+                    username: i.username().unwrap_or("").to_string(),
+                    password: i.password().unwrap_or("").to_string(),
+                    domains,
+                    exact_hosts,
+                    packages,
+                }
+            })
+            .collect();
+        logins.sort_by_key(|l| l.title.to_lowercase());
+        AndroidAutofill {
             version: 1,
             account_id: self.account().id.clone(),
             password_entered_at,
@@ -243,5 +338,66 @@ mod tests {
         let (again, key2) = cache.seal().unwrap();
         assert_ne!(again[..12], sealed[..12]);
         assert_ne!(key, key2);
+    }
+
+    #[test]
+    fn app_addresses_are_no_websites() {
+        let (mut s, _) = new_session();
+        let v = s.default_vault_id().unwrap();
+        let mut bank = Item::login("Bank", "jan", "pw", Some("https://www.mybank.nl/login"));
+        bank.urls.push("androidapp://nl.mybank.app".into());
+        s.add_item(&v, bank).unwrap();
+        let cache = s.autofill_cache(0);
+        assert_eq!(cache.logins[0].domains, ["mybank.nl"], "not \"mybank.app\"");
+    }
+
+    #[test]
+    fn android_package_names() {
+        assert_eq!(android_package("androidapp://com.example.app").as_deref(), Some("com.example.app"));
+        assert_eq!(android_package(" AndroidApp://com.example.app/ ").as_deref(), Some("com.example.app"));
+        assert_eq!(android_package("androidapp://nl.bank_app.v2?x=1").as_deref(), Some("nl.bank_app.v2"));
+        assert_eq!(android_package("https://com.example.app"), None);
+        assert_eq!(android_package("androidapp://nodot"), None);
+        assert_eq!(android_package("androidapp://com.1bad"), None);
+        assert_eq!(android_package("androidapp://com.ex ample"), None);
+        assert_eq!(android_package("androidapp://"), None);
+        assert_eq!(android_package("android"), None);
+    }
+
+    #[test]
+    fn android_store_holds_logins_with_a_password() {
+        let (mut s, _) = new_session();
+        let v = s.default_vault_id().unwrap();
+        let mut bank = Item::login("Bank", "jan", "pw-1", Some("https://login.mybank.co.uk/"));
+        bank.urls.push("androidapp://uk.mybank.mobile".into());
+        bank.urls.push("androidapp://uk.mybank.mobile/".into());
+        bank.set_value("totp", "otpauth://totp/Bank:jan?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+        s.add_item(&v, bank).unwrap();
+        s.add_item(&v, Item::login("Empty", "nobody", "", Some("https://example.com"))).unwrap();
+        let trashed = s.add_item(&v, Item::login("Old", "old", "pw-2", Some("https://old.example.com"))).unwrap();
+        s.trash_item(&trashed).unwrap();
+        let mut tenant = Item::login("Tenants", "t", "pw-3", Some("https://www.pythonanywhere.com/login"));
+        tenant.urls.push("https://github.io".into());
+        s.add_item(&v, tenant).unwrap();
+        s.add_item(&v, Item::login("app only", "a", "pw-4", Some("androidapp://com.example.app"))).unwrap();
+
+        let store = s.android_autofill(123);
+        assert_eq!(store.password_entered_at, 123);
+        assert_eq!(store.account_id, s.account().id);
+        let titles: Vec<&str> = store.logins.iter().map(|l| l.title.as_str()).collect();
+        assert_eq!(titles, ["app only", "Bank", "Tenants"]);
+        assert!(store.logins[0].domains.is_empty());
+        assert_eq!(store.logins[0].packages, ["com.example.app"]);
+        let bank = &store.logins[1];
+        assert_eq!((bank.username.as_str(), bank.password.as_str()), ("jan", "pw-1"));
+        assert_eq!(bank.domains, ["mybank.co.uk"]);
+        assert_eq!(bank.packages, ["uk.mybank.mobile"]);
+        assert_eq!(store.logins[2].domains, ["www.pythonanywhere.com"]);
+        assert_eq!(store.logins[2].exact_hosts, ["github.io"]);
+        // What the Kotlin side reads.
+        let json: serde_json::Value = serde_json::to_value(&store).unwrap();
+        assert_eq!(json["logins"][1]["packages"][0], "uk.mybank.mobile");
+        assert!(json["logins"][1].get("totp").is_none(), "no one-time password secrets");
+        assert_eq!(json["logins"][0]["exact_hosts"], serde_json::json!([]));
     }
 }
