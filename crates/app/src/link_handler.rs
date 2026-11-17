@@ -18,7 +18,9 @@
 //! 2Secret started again without a link does the same without the file: the
 //! running app shows its window (also when it is hidden in the system tray),
 //! so one 2Secret runs. Started with `--quick-access` it opens Quick Access
-//! instead, and started at login (`--hidden`) it shows nothing.
+//! instead, and started at login (`--hidden`) or by Windows for a passkey
+//! (`--windows-passkeys`, which the running 2Secret answers) it shows
+//! nothing.
 
 use crate::platform;
 
@@ -52,7 +54,7 @@ pub fn start() {
     let link = args.iter().find(|a| is_link(a)).cloned();
     let request = if args.iter().any(|a| a == crate::quick::ARG) {
         Some(QUICK)
-    } else if crate::autostart::started_hidden() {
+    } else if crate::autostart::started_hidden() || crate::windows_passkeys::started_by_windows() {
         Some(NOTHING)
     } else {
         None

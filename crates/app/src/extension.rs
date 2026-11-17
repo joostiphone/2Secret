@@ -214,9 +214,13 @@ pub struct PasskeyRequest {
     pub rid: String,
     /// "create" or "get".
     pub kind: String,
-    /// The page's origin, as reported by the browser.
+    /// The page's origin, as reported by the browser; for a request from
+    /// Windows the website (relying party ID) Windows passed on.
     pub origin: String,
     pub options: serde_json::Value,
+    /// From Windows rather than the extension (`windows_passkeys`).
+    #[serde(skip)]
+    pub system: Option<crate::windows_passkeys::SystemPasskey>,
 }
 
 /// How the window answers the page.

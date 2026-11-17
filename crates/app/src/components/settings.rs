@@ -725,6 +725,15 @@ fn AutofillRow() -> Element {
     rsx! {}
 }
 
+/// Windows 11: 2Secret as a passkey provider (`windows_passkeys`).
+#[cfg(all(windows, feature = "desktop"))]
+use crate::windows_passkeys::SettingsRow as WindowsPasskeysRow;
+#[cfg(not(all(windows, feature = "desktop")))]
+#[component]
+fn WindowsPasskeysRow() -> Element {
+    rsx! {}
+}
+
 /// Windows, Linux and the BSDs: whether `otpauth://` setup links open 2Secret
 /// (`link_handler`).
 #[cfg(all(feature = "desktop", not(target_os = "macos")))]
@@ -791,6 +800,7 @@ fn SecuritySection() -> Element {
             }
             BiometricRow {}
             AutofillRow {}
+            WindowsPasskeysRow {}
             SetupLinksRow {}
             if crate::extension::ENABLED {
                 PasskeysRow {}
