@@ -11,3 +11,8 @@
 /node_modules
 /.android-release.jks
 __pycache__/
+
+# Built and signed by scripts/windows-identity-package.ps1 (release workflow).
+/crates/app/windows/identity/*.msix
+/crates/app/windows/identity/*.pfx
+/crates/app/windows/identity/*.cer

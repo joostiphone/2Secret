@@ -31,3 +31,30 @@ Function .onInit
     ExecWait '"$SYSDIR\msiexec.exe" /x $1 /qb'
   done:
 FunctionEnd
+
+; Passkeys in Windows 11 (crates/app/src/windows_passkeys.rs): the signed
+; identity package and the logos it names, in releases built with a signing
+; certificate (scripts/windows-identity-package.ps1 writes the package
+; before `dx bundle`). Without it the setup is as before. 2Secret registers
+; the package itself, when the person turns the feature on.
+!if /FileExists "${__FILEDIR__}\identity\2Secret-identity.msix"
+Section "-PasskeysInWindows"
+    SetOutPath "$INSTDIR"
+    File "${__FILEDIR__}\identity\2Secret-identity.msix"
+    SetOutPath "$INSTDIR\Assets"
+    File "${__FILEDIR__}\identity\Assets\*.png"
+    SetOutPath "$INSTDIR"
+SectionEnd
+!endif
+
+; The registered identity package points at the folder that is gone now.
+; Nothing happens when it was never registered.
+Function un.onUninstSuccess
+    ${If} ${RunningX64}
+        StrCpy $0 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    ${Else}
+        StrCpy $0 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+    ${EndIf}
+    nsExec::Exec '"$0" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-AppxPackage -Name io.github.joostiphone.twosecret | Remove-AppxPackage"'
+    Pop $1
+FunctionEnd

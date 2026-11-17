@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The identity package of 2Secret for Windows, a package "with external
+  location": it holds no files, only 2Secret's package identity and its COM
+  server, connected to the folder where the setup installed 2Secret. Windows
+  only accepts a passkey provider with package identity (windows_passkeys.rs).
+  See https://learn.microsoft.com/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps
+
+  scripts/windows-identity-package.ps1 builds and signs it; the setup installs
+  it next to 2-secret.exe, and 2Secret registers it when the person turns on
+  Settings → Security → Passkeys in Windows.
+
+  Keep in step with:
+  - Publisher: the subject of the signing certificate, and `publisher` in
+    windows/2Secret.exe.manifest.
+  - Name and Application Id: `packageName` and `applicationId` there.
+  - Version: PACKAGE_VERSION in windows_passkeys.rs (raise both when this
+    file changes; 2Secret then registers the new package).
+  - The COM class: CLSID in windows_passkeys.rs.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap uap10 rescap com">
+  <Identity Name="io.github.joostiphone.twosecret" Publisher="CN=2Secret" Version="1.0.0.0" ProcessorArchitecture="neutral" />
+  <Properties>
+    <DisplayName>2Secret</DisplayName>
+    <PublisherDisplayName>2Secret</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Dependencies>
+    <!-- The passkey provider API needs Windows 11 24H2; the identity alone works from Windows 10 2004. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+  <Applications>
+    <!-- win32App and mediumIL: 2Secret runs as before (no container, no file or registry virtualization). -->
+    <Application Id="TwoSecret" Executable="2-secret.exe" uap10:TrustLevel="mediumIL" uap10:RuntimeBehavior="win32App">
+      <uap:VisualElements AppListEntry="none" DisplayName="2Secret" Description="2Secret password manager" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Windows starts this server for a passkey request when 2Secret does not run. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="2-secret.exe" Arguments="--windows-passkeys" DisplayName="2Secret">
+              <com:Class Id="5adf0732-2a4e-4752-bdd2-ed9260b39f46" DisplayName="2Secret passkeys" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>
