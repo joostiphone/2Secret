@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Desktop: *Check for Updates…* in the menu bar (the 2Secret menu on macOS,
+  *Help* on Windows and Linux), also before signing in and while 2Secret
+  is locked. It opens the update window and checks right away.
+- A rounder sidebar: on wide windows it is a card with rounded corners, and
+  its items are softer.
+- *Settings → Appearance → Sidebar*: a light sidebar for the light theme, a
+  soft grey panel with the open item as a white card. With the dark theme
+  the sidebar stays dark.
+
 ## 1.15.2
 
 - iPhone and iPad: no more black or white screen after the app was in the

@@ -852,6 +852,27 @@ fn AppearanceSection() -> Element {
             if !crate::extension::ENABLED {
                 div { class: "settings-row",
                     div { class: "k",
+                        div { class: "t", {t("settings.sidebar")} }
+                        div { class: "d", {t("settings.sidebar_desc")} }
+                    }
+                    select { class: "input",
+                        onchange: move |e| {
+                            if let Some(sidebar) = Sidebar::ALL.into_iter().find(|s| s.id() == e.value()) {
+                                PREFS.write().sidebar = sidebar;
+                                save_prefs();
+                            }
+                        },
+                        for sidebar in Sidebar::ALL {
+                            option { key: "{sidebar.id()}", value: "{sidebar.id()}", selected: prefs.sidebar == sidebar,
+                                {t(match sidebar { Sidebar::Dark => "settings.sidebar_dark", Sidebar::Light => "settings.sidebar_light" })}
+                            }
+                        }
+                    }
+                }
+            }
+            if !crate::extension::ENABLED {
+                div { class: "settings-row",
+                    div { class: "k",
                         div { class: "t", {t("settings.start_screen")} }
                         div { class: "d", {t("settings.start_screen_desc")} }
                     }
@@ -1255,12 +1276,46 @@ pub fn check_backup_password(password: &str, confirm: &str) -> Result<(), String
 
 #[component]
 fn UpdatesSection() -> Element {
-    use crate::updater::{self, Mode, Status, STATUS};
+    use crate::updater::{self, Mode};
     let mode = use_hook(updater::mode);
     if mode == Mode::Off {
         return rsx! {};
     }
     let auto = PREFS.read().auto_update;
+    let toggle = move |_| {
+        let on = !PREFS.peek().auto_update;
+        PREFS.write().auto_update = on;
+        save_prefs();
+        if on {
+            spawn(updater::check(true));
+        }
+    };
+    let (auto_title, auto_desc) = match mode {
+        Mode::Install => (t("update.auto_install"), t("update.auto_install_desc")),
+        _ => (t("update.auto_notify"), t("update.auto_notify_desc")),
+    };
+    rsx! {
+        div { class: "section",
+            SectionTitle { text: t("update.title") }
+            UpdateStatusRow {}
+            div { class: "settings-row",
+                div { class: "k",
+                    div { class: "t", {auto_title} }
+                    div { class: "d", {auto_desc} }
+                }
+                button { class: either(auto, "btn small", "btn small primary"), onclick: toggle,
+                    {either(auto, t("common.turn_off"), t("common.turn_on"))}
+                }
+            }
+        }
+    }
+}
+
+/// The version, what the last check found and what can be done about it:
+/// in Settings and in the window "Check for Updates…" of the menu bar opens.
+#[component]
+fn UpdateStatusRow() -> Element {
+    use crate::updater::{self, Status, STATUS};
     let status = STATUS.read().clone();
     let version = twosecret_core::VERSION;
     let with_version = |key: &str, v: &str| t(key).replace("{version}", v);
@@ -1280,58 +1335,47 @@ fn UpdatesSection() -> Element {
         Status::Available { notes, .. } | Status::Ready { notes, .. } => Some(notes.clone()),
         _ => None,
     };
-    let toggle = move |_| {
-        let on = !PREFS.peek().auto_update;
-        PREFS.write().auto_update = on;
-        save_prefs();
-        if on {
-            spawn(updater::check(true));
-        }
-    };
-    let (auto_title, auto_desc) = match mode {
-        Mode::Install => (t("update.auto_install"), t("update.auto_install_desc")),
-        _ => (t("update.auto_notify"), t("update.auto_notify_desc")),
-    };
     rsx! {
-        div { class: "section",
-            SectionTitle { text: t("update.title") }
-            div { class: "settings-row",
-                div { class: "k",
-                    div { class: "t", "2Secret {version}" }
-                    div { class: "d", "{text}" }
-                    if let Some(url) = notes {
-                        div { class: "d",
-                            a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&url); }, {t("update.whats_new")} }
-                        }
+        div { class: "settings-row",
+            div { class: "k",
+                div { class: "t", "2Secret {version}" }
+                div { class: "d", "{text}" }
+                if let Some(url) = notes {
+                    div { class: "d",
+                        a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&url); }, {t("update.whats_new")} }
                     }
                 }
-                match status {
-                    Status::Available { installable: true, .. } => rsx! {
-                        button { class: "btn small primary", onclick: move |_| { spawn(updater::install()); }, Icon { name: "download", size: 15 } {t("update.install")} }
-                    },
-                    Status::Available { download, .. } => rsx! {
-                        button { class: "btn small primary", onclick: move |_| platform::open_url(&download), Icon { name: "download", size: 15 } {t("update.download")} }
-                    },
-                    Status::Ready { .. } => rsx! {
-                        button { class: "btn small primary", onclick: move |_| updater::restart(), {t("update.restart")} }
-                    },
-                    Status::Checking | Status::Downloading { .. } => rsx! {
-                        button { class: "btn small", disabled: true, {t("update.check")} }
-                    },
-                    _ => rsx! {
-                        button { class: "btn small", onclick: move |_| { spawn(updater::check(false)); }, {t("update.check")} }
-                    },
-                }
             }
-            div { class: "settings-row",
-                div { class: "k",
-                    div { class: "t", {auto_title} }
-                    div { class: "d", {auto_desc} }
-                }
-                button { class: either(auto, "btn small", "btn small primary"), onclick: toggle,
-                    {either(auto, t("common.turn_off"), t("common.turn_on"))}
-                }
+            match status {
+                Status::Available { installable: true, .. } => rsx! {
+                    button { class: "btn small primary", onclick: move |_| { spawn(updater::install()); }, Icon { name: "download", size: 15 } {t("update.install")} }
+                },
+                Status::Available { download, .. } => rsx! {
+                    button { class: "btn small primary", onclick: move |_| platform::open_url(&download), Icon { name: "download", size: 15 } {t("update.download")} }
+                },
+                Status::Ready { .. } => rsx! {
+                    button { class: "btn small primary", onclick: move |_| updater::restart(), {t("update.restart")} }
+                },
+                Status::Checking | Status::Downloading { .. } => rsx! {
+                    button { class: "btn small", disabled: true, {t("update.check")} }
+                },
+                _ => rsx! {
+                    button { class: "btn small", onclick: move |_| { spawn(updater::check(false)); }, {t("update.check")} }
+                },
             }
+        }
+    }
+}
+
+/// Desktop: "Check for Updates…" in the menu bar, signed in or not.
+#[component]
+pub fn UpdatesModal() -> Element {
+    rsx! {
+        ModalFrame { title: t("update.title"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| *MODAL.write() = None, {t("common.close")} }
+            },
+            UpdateStatusRow {}
         }
     }
 }

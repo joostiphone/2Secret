@@ -8,6 +8,8 @@ mod agent_access;
 mod android;
 #[cfg(all(target_os = "android", feature = "mobile"))]
 mod android_folders;
+#[cfg(feature = "desktop")]
+mod app_menu;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple_autofill;
 #[cfg(feature = "desktop")]
@@ -149,6 +151,8 @@ pub fn run() {
             // `tray` decides what a click on the icon does.
             .with_tray_icon_show_window_on_click(false)
             .with_background_color((244, 245, 248, 255))
+            // Dioxus's menu, with "Check for Updates…" (app_menu).
+            .with_menu(app_menu::menu_bar())
             .with_data_directory(platform::data_dir().join("webview"))
             .with_custom_head(format!(
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>{STYLE}</style>{HIDDEN_UPDATES_JS}"
@@ -443,6 +447,8 @@ fn App() -> Element {
         spawn(code_setup::receive());
     });
     #[cfg(feature = "desktop")]
+    app_menu::use_app_menu();
+    #[cfg(feature = "desktop")]
     tray::use_tray();
     #[cfg(feature = "desktop")]
     quick::use_quick_access();
@@ -478,6 +484,7 @@ fn App() -> Element {
     #[cfg(all(target_os = "ios", feature = "mobile"))]
     use_effect(|| ios_view::follow_theme(PREFS.read().theme.id()));
     let theme = PREFS.read().theme.id();
+    let sidebar = PREFS.read().sidebar.id();
     let phase = PHASE.read().clone();
     rsx! {
         // Title and viewport come from index.html (web) or the window /
@@ -493,6 +500,7 @@ fn App() -> Element {
                 _ => "root",
             },
             "data-theme": theme,
+            "data-sidebar": sidebar,
             onclick: move |_| touch(),
             onkeydown: move |e: KeyboardEvent| {
                 touch();

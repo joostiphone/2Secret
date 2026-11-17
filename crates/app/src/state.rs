@@ -184,6 +184,10 @@ pub enum Modal {
     KeysChanged(twosecret_core::profile::KeyChange),
     /// Pair an AI agent on another computer (`remote_agents`).
     PairAgent,
+    /// Desktop: the update check from the menu bar (`app_menu`), also
+    /// before signing in and while locked.
+    #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+    Updates,
 }
 
 /// What a menu opened with a long press or a right click is for.
@@ -210,6 +214,27 @@ pub enum Theme {
     Dark,
 }
 
+/// The colour of the sidebar in the light theme; the dark theme always has
+/// a dark one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Sidebar {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Sidebar {
+    pub const ALL: [Sidebar; 2] = [Sidebar::Dark, Sidebar::Light];
+
+    pub fn id(&self) -> &'static str {
+        match self {
+            Sidebar::Dark => "dark",
+            Sidebar::Light => "light",
+        }
+    }
+}
+
 impl Theme {
     pub fn id(&self) -> &'static str {
         match self {
@@ -226,6 +251,7 @@ impl Theme {
 pub struct Prefs {
     pub lang: Option<Lang>,
     pub theme: Theme,
+    pub sidebar: Sidebar,
     /// Minutes of inactivity before locking; 0 = never.
     pub auto_lock_minutes: u32,
     /// Seconds before copied secrets are cleared; 0 = never.
@@ -276,6 +302,7 @@ impl Default for Prefs {
         Self {
             lang: None,
             theme: Theme::System,
+            sidebar: Sidebar::Dark,
             auto_lock_minutes: 10,
             clipboard_clear_secs: 90,
             generator: GeneratorOptions::default(),

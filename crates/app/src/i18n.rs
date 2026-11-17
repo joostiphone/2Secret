@@ -76,6 +76,13 @@ pub fn t_opt(key: &str) -> Option<&'static str> {
     lookup(*LANG.read(), key)
 }
 
+/// Translate a key into a given language, outside a running app (the menu
+/// bar is built before it starts).
+#[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+pub fn t_in(lang: Lang, key: &str) -> &'static str {
+    lookup(lang, key).unwrap_or_else(|| Box::leak(key.to_string().into_boxed_str()))
+}
+
 pub fn category_name(c: Category) -> String {
     t_opt(&format!("cat.{}", c.id())).unwrap_or(c.name()).to_string()
 }
@@ -926,6 +933,12 @@ static TABLE: &[Entry] = &[
     ("settings.theme_system", "System", "Systeem"),
     ("settings.theme_light", "Light", "Licht"),
     ("settings.theme_dark", "Dark", "Donker"),
+    ("settings.sidebar", "Sidebar", "Zijbalk"),
+    ("settings.sidebar_desc", "Light is for the light theme; with the dark theme the sidebar stays dark.", "Licht geldt bij het lichte thema; bij het donkere thema blijft de zijbalk donker."),
+    ("settings.sidebar_dark", "Dark", "Donker"),
+    ("settings.sidebar_light", "Light", "Licht"),
+    ("menu.check_updates", "Check for Updates…", "Zoeken naar updates…"),
+    ("menu.help", "Help", "Help"),
     ("settings.import", "Import", "Importeren"),
     ("settings.export", "Backup & export", "Back-up en export"),
     ("backup.last", "Last backup on this device", "Laatste back-up op dit apparaat"),
