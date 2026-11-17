@@ -1382,6 +1382,31 @@ pub fn UpdatesModal() -> Element {
 
 #[component]
 fn AboutSection() -> Element {
+    rsx! {
+        div { class: "section",
+            SectionTitle { text: t("settings.about") }
+            div { class: "section-body", AboutBody {} }
+        }
+    }
+}
+
+/// Desktop: "About 2Secret" in the menu bar, signed in or not.
+#[component]
+pub fn AboutModal() -> Element {
+    rsx! {
+        ModalFrame { title: t("menu.about"),
+            footer: rsx! {
+                button { class: "btn", onclick: move |_| *MODAL.write() = None, {t("common.close")} }
+            },
+            AboutBody {}
+        }
+    }
+}
+
+/// The version, what 2Secret is and its links: in Settings and in the
+/// window "About 2Secret" of the menu bar opens.
+#[component]
+fn AboutBody() -> Element {
     let version = twosecret_core::VERSION;
     let platform_name = match platform::kind() {
         platform::Kind::Desktop => std::env::consts::OS,
@@ -1389,9 +1414,6 @@ fn AboutSection() -> Element {
         platform::Kind::Mobile => "mobile",
     };
     rsx! {
-        div { class: "section",
-            SectionTitle { text: t("settings.about") }
-            div { class: "section-body",
                 p { style: "margin-top:0", strong { "2Secret {version}" } " · {platform_name}" }
                 InstallLocation {}
                 p { class: "small muted", style: "line-height:1.6", {t("about.text")} }
@@ -1404,8 +1426,6 @@ fn AboutSection() -> Element {
                     " · "
                     a { href: "#", onclick: move |e| { e.prevent_default(); platform::open_url(&legal_url("privacy")); }, {t("about.privacy")} }
                 }
-            }
-        }
     }
 }
 

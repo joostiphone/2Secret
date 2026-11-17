@@ -3,8 +3,15 @@
 ## Unreleased
 
 - Desktop: *Check for Updates…* in the menu bar (the 2Secret menu on macOS,
-  *Help* on Windows and Linux), also before signing in and while 2Secret
-  is locked. It opens the update window and checks right away.
+  *Help* on Windows and Linux) and in the menu of the icon in the menu bar
+  or system tray, also before signing in and while 2Secret is locked. It
+  opens the update window and checks right away. *About 2Secret* sits next
+  to it, with the version and the links of *Settings → About*.
+- Updates: when GitHub, where the releases are, answers with a server
+  error or does not answer, 2Secret tries twice more before giving up, and
+  then says so in plain words instead of "504 Gateway Timeout".
+- Importing a 1Password export (.1pux) refuses a zip file whose entries
+  read differently from what its directory says.
 - A rounder sidebar: on wide windows it is a card with rounded corners, and
   its items are softer.
 - *Settings → Appearance → Sidebar*: a light sidebar for the light theme, a

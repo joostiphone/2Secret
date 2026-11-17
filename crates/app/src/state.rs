@@ -188,6 +188,10 @@ pub enum Modal {
     /// before signing in and while locked.
     #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
     Updates,
+    /// Desktop: "About 2Secret" from the menu bar: the version and the
+    /// links of Settings → About, also before signing in.
+    #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+    About,
 }
 
 /// What a menu opened with a long press or a right click is for.

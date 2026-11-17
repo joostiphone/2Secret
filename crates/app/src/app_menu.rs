@@ -1,7 +1,8 @@
-//! Desktop: the menu bar. Dioxus's own menu, with "Check for Updates…": in
-//! the app menu on macOS (the first menu, which macOS names after the app),
-//! in a Help menu on Windows and Linux. It works before signing in and while
-//! locked, so an update that fixes signing in can still be found.
+//! Desktop: the menu bar. Dioxus's own menu, with "About 2Secret" and
+//! "Check for Updates…": in the app menu on macOS (the first menu, which
+//! macOS names after the app), in a Help menu on Windows and Linux. Both
+//! work before signing in and while locked, so an update that fixes
+//! signing in can still be found.
 
 use dioxus::desktop::muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use dioxus::prelude::*;
@@ -10,20 +11,24 @@ use crate::i18n::{t_in, Lang};
 use crate::state::{Modal, MODAL};
 use crate::{platform, state, updater};
 
-const CHECK_UPDATES: &str = "2secret-check-updates";
+pub const CHECK_UPDATES: &str = "2secret-check-updates";
+const ABOUT: &str = "2secret-about";
 
 /// The menu bar, in the language of the preferences (or the system's).
 pub fn menu_bar() -> Menu {
     let lang = state::stored_prefs().lang.unwrap_or_else(|| Lang::from_code(&platform::system_language()));
     let updates = (updater::mode() != updater::Mode::Off)
         .then(|| MenuItem::with_id(CHECK_UPDATES, t_in(lang, "menu.check_updates"), true, None));
+    let about = MenuItem::with_id(ABOUT, t_in(lang, "menu.about"), true, None);
 
     let menu = Menu::new();
     let window_menu = Submenu::new("Window", true);
     if cfg!(target_os = "macos") {
+        let _ = window_menu.append(&about);
         if let Some(item) = &updates {
-            let _ = window_menu.append_items(&[item, &PredefinedMenuItem::separator()]);
+            let _ = window_menu.append(item);
         }
+        let _ = window_menu.append(&PredefinedMenuItem::separator());
     }
     let _ = window_menu.append_items(&[
         &PredefinedMenuItem::fullscreen(None),
@@ -52,11 +57,12 @@ pub fn menu_bar() -> Menu {
     let _ = menu.append_items(&[&window_menu, &edit_menu]);
 
     if !cfg!(target_os = "macos") {
+        let help_menu = Submenu::new(t_in(lang, "menu.help"), true);
         if let Some(item) = &updates {
-            let help_menu = Submenu::new(t_in(lang, "menu.help"), true);
             let _ = help_menu.append(item);
-            let _ = menu.append(&help_menu);
         }
+        let _ = help_menu.append(&about);
+        let _ = menu.append(&help_menu);
     }
 
     #[cfg(target_os = "macos")]
@@ -74,9 +80,16 @@ pub fn use_app_menu() {
 }
 
 fn chosen(id: &str) {
-    if id != CHECK_UPDATES {
-        return;
+    match id {
+        CHECK_UPDATES => check_updates(),
+        ABOUT => *MODAL.write() = Some(Modal::About),
+        _ => {}
     }
+}
+
+/// Open the update window and check, unless a check, download or restart
+/// is already under way.
+pub fn check_updates() {
     *MODAL.write() = Some(Modal::Updates);
     let busy = matches!(
         *updater::STATUS.peek(),

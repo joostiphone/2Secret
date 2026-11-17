@@ -256,14 +256,14 @@ mod imp {
             }
         }
         *STATUS.write() = Status::Checking;
-        let update = match twosecret_client::update::latest().await {
+        let update = match retrying(twosecret_client::update::latest).await {
             Ok(Some(update)) if update.manifest.is_newer_than(VERSION) => update,
             Ok(_) => {
                 *STATUS.write() = Status::UpToDate;
                 return;
             }
             Err(e) => {
-                *STATUS.write() = Status::Failed(client_error(&e));
+                *STATUS.write() = Status::Failed(failure(&e));
                 return;
             }
         };
@@ -290,6 +290,45 @@ mod imp {
         }
     }
 
+    /// GitHub, where the releases are, now and then answers 502, 503 or 504
+    /// or times out for a moment: try twice more, after 2 and 6 seconds,
+    /// before giving up.
+    async fn retrying<T, F, Fut>(mut fetch: F) -> twosecret_client::Result<T>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = twosecret_client::Result<T>>,
+    {
+        let mut wait = 2_000;
+        let mut tries = 1;
+        loop {
+            match fetch().await {
+                Err(e) if tries < 3 && transient(&e) => {
+                    platform::sleep_ms(wait).await;
+                    wait *= 3;
+                    tries += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    /// A failure that may be gone in a moment: no connection, too many
+    /// requests, or a server error at GitHub.
+    fn transient(e: &twosecret_client::Error) -> bool {
+        matches!(e, twosecret_client::Error::Network(_))
+            || e.status().is_some_and(|status| status == 429 || (500..600).contains(&status))
+    }
+
+    /// What the person reads: a temporary problem at GitHub in plain words,
+    /// anything else as it is.
+    fn failure(e: &twosecret_client::Error) -> String {
+        if transient(e) {
+            t("update.unreachable").into()
+        } else {
+            client_error(e)
+        }
+    }
+
     /// Download the update found by [`check`] and keep it for the next start.
     pub async fn install() {
         let Some(update) = LATEST.with(|l| l.borrow().clone()) else { return };
@@ -298,10 +337,10 @@ mod imp {
             return;
         };
         *STATUS.write() = Status::Downloading { version: update.manifest.version.clone() };
-        let bytes = match twosecret_client::update::download(&asset).await {
+        let bytes = match retrying(|| twosecret_client::update::download(&asset)).await {
             Ok(b) => b,
             Err(e) => {
-                *STATUS.write() = Status::Failed(client_error(&e));
+                *STATUS.write() = Status::Failed(failure(&e));
                 return;
             }
         };

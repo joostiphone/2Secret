@@ -1,6 +1,10 @@
 # `cargo deny check advisories` (CI): the RustSec advisories for Cargo.lock.
 # Every ignored advisory says why it does not affect 2Secret; remove it once
 # the fixed version is in.
+# "Unsound" advisories count only for crates the workspace depends on
+# directly (cargo-deny's default), so glib 0.18 (RUSTSEC-2024-0429, through
+# gtk in Dioxus 0.7) and rand 0.7 (RUSTSEC-2026-0097, build time through wry)
+# need no entry; `cargo audit` still lists them.
 [advisories]
 ignore = [
     # rsa: Marvin timing side channel. Fixed in rsa 0.10, which only ssh-key
@@ -16,11 +20,11 @@ ignore = [
     # signatures after consent over a local socket; the server never uses it.
     # Move to p256 0.14 and ssh-key 0.7 together once ssh-key 0.7 is out.
     { id = "RUSTSEC-2026-0387", reason = "fix needs ssh-key 0.7 (release candidate); device-local signing only" },
-    # glib 0.18: VariantStrIter is never used. gtk-rs 0.18 comes with
-    # wry/tao in Dioxus 0.7; gone with Dioxus 0.8.
-    { id = "RUSTSEC-2024-0429", reason = "not called; comes with Dioxus 0.7" },
-    # rand 0.7: build time only (phf_generator in wry), needs a custom logger.
-    { id = "RUSTSEC-2026-0097", reason = "build-time only, through wry" },
+    # chrono: unmaintained since November 2026, no known vulnerability. The
+    # app only formats local dates and the hour with it (platform.rs), and
+    # zxcvbn uses it. Move to jiff once its local time zone is checked on
+    # every platform the app runs on (iOS and Android in particular).
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained, no known issue; local date formatting only" },
     # Unmaintained, no known issue: fxhash (through wry), paste and
     # proc-macro-error (compile-time macros).
     { id = "RUSTSEC-2025-0057", reason = "unmaintained; through wry" },

@@ -126,6 +126,8 @@ mod icon {
         open: MenuItem,
         quick: MenuItem,
         lock: MenuItem,
+        /// "Check for Updates…", where the app updates itself (`app_menu`).
+        updates: Option<MenuItem>,
         quit: MenuItem,
     }
 
@@ -152,6 +154,9 @@ mod icon {
                 if let Some(tray) = tray {
                     for (item, text) in [&tray.open, &tray.quick, &tray.lock, &tray.quit].into_iter().zip(texts) {
                         item.set_text(text);
+                    }
+                    if let Some(updates) = &tray.updates {
+                        updates.set_text(t("menu.check_updates"));
                     }
                     tray.lock.set_enabled(phase == Phase::Unlocked);
                 }
@@ -194,6 +199,10 @@ mod icon {
             QUICK => crate::quick::request(),
             LOCK if *PHASE.peek() == Phase::Unlocked && BUSY.peek().is_none() => lock(),
             QUIT => quit(),
+            crate::app_menu::CHECK_UPDATES => {
+                super::show();
+                crate::app_menu::check_updates();
+            }
             _ => {}
         }
     }
@@ -212,8 +221,14 @@ mod icon {
         let quick = MenuItem::with_id(QUICK, t("tray.quick"), true, "CmdOrCtrl+Shift+Space".parse().ok());
         let lock = MenuItem::with_id(LOCK, t("tray.lock"), false, None);
         let quit = MenuItem::with_id(QUIT, t("tray.quit"), true, None);
+        let updates = (crate::updater::mode() != crate::updater::Mode::Off)
+            .then(|| MenuItem::with_id(crate::app_menu::CHECK_UPDATES, t("menu.check_updates"), true, None));
         let menu = Menu::new();
-        menu.append_items(&[&open, &quick, &lock, &PredefinedMenuItem::separator(), &quit]).ok()?;
+        menu.append_items(&[&open, &quick, &lock]).ok()?;
+        if let Some(updates) = &updates {
+            menu.append(updates).ok()?;
+        }
+        menu.append_items(&[&PredefinedMenuItem::separator(), &quit]).ok()?;
         // Linux: the name panels show for the icon (else the program's name).
         // GLib warns when it is set twice.
         #[cfg(target_os = "linux")]
@@ -229,7 +244,7 @@ mod icon {
             .with_tooltip("2Secret")
             .build()
             .ok()?;
-        Some(Tray { _icon: icon, open, quick, lock, quit })
+        Some(Tray { _icon: icon, open, quick, lock, updates, quit })
     }
 
     /// macOS: a black template image, which the menu bar colours like its

@@ -615,8 +615,11 @@ fn import_1pux(data: &[u8]) -> Result<ImportResult> {
     // At most this much unpacked: a small file can unpack to gigabytes.
     const MAX_EXPORT_DATA: u64 = 256 * 1024 * 1024;
     let mut json = String::new();
+    // The local header must agree with the central directory, so the file
+    // reads the same here as in any other zip program.
+    let options = zip::ZipReadOptions::new().enforce_header_consistency(true);
     let read = zip
-        .by_name("export.data")
+        .by_name_with_options("export.data", options)
         .map_err(|_| Error::Import("export.data missing from .1pux file".into()))?
         .take(MAX_EXPORT_DATA + 1)
         .read_to_string(&mut json)?;

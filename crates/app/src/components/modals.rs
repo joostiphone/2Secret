@@ -41,6 +41,7 @@ pub fn ModalHost() -> Element {
         Some(Modal::KeysChanged(change)) => rsx! { KeysChangedModal { change } },
         Some(Modal::PairAgent) => rsx! { PairAgentModal {} },
         Some(Modal::Updates) => rsx! { crate::components::settings::UpdatesModal {} },
+        Some(Modal::About) => rsx! { crate::components::settings::AboutModal {} },
     }
 }
 
