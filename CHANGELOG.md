@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.16.1
+
+- Importing a 1Password export (.1pux) works again. 1.16.0 refused exports
+  that 1Password wrote, with "export.data missing from .1pux file": its
+  stricter zip check also refuses zip files that are fine, such as one that
+  lists a folder twice. That check is gone; the size limit, the zip
+  reader's checksum check and the JSON parser still keep a damaged file
+  out. When export.data cannot be read, the message now says why instead of
+  calling it missing.
+
 ## 1.16.0
 
 - Windows 11: 2Secret can be a passkey provider for Windows (*Settings →

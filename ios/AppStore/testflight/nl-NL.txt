@@ -1,14 +1,12 @@
-2Secret 1.16.0
+2Secret 1.16.1
 
 WAT IS ER NIEUW
-- Een lichte zijbalk: Instellingen → Weergave → Zijbalk → Licht. Hij geldt bij het lichte thema: een zacht grijs paneel met het geopende item als witte kaart. Bij het donkere thema blijft de zijbalk donker.
-- Op een iPad in liggende stand en andere brede schermen is de zijbalk een kaart met afgeronde hoeken, en zijn de items zachter.
-- Het importeren van een 1Password-export (.1pux) weigert een bestand waarvan de inhoud niet klopt met zijn eigen inhoudsopgave.
-- Nieuw in de andere apps van deze versie: ontgrendelen met vingerafdruk of gezicht en automatisch invullen op Android, passkeys voor Windows 11, en "Zoeken naar updates…" in het menu van de desktop-app.
+- Een export van 1Password (.1pux) importeren werkt weer. 1.16.0 weigerde exports uit 1Password met "export.data missing from .1pux file".
+- Verder is alles als in 1.16.0: een lichte zijbalk (Instellingen → Weergave → Zijbalk), en op de iPad in liggende stand een zijbalk met afgeronde hoeken.
 
 TEST ALSJEBLIEFT
-1. Instellingen → Weergave → Zijbalk: wissel tussen Donker en Licht, met het lichte en het donkere thema. De zijbalk en het geopende item horen in elke combinatie goed leesbaar te blijven.
-2. Op een iPad in liggende stand: de zijbalk hoort een afgeronde kaart te zijn met wat ruimte eromheen; in staande stand en op de iPhone hoort er niets te veranderen.
+1. Exporteer uit 1Password op een computer (formaat 1PUX) en importeer het bestand in 2Secret onder Instellingen → Importeren. Je logins, kaarten en notities horen binnen te komen, met hun eenmalige wachtwoorden.
+2. Instellingen → Weergave → Zijbalk: wissel tussen Donker en Licht, met het lichte en het donkere thema.
 3. Zoals altijd: automatisch invullen in Safari met Face ID of Touch ID, de app openen nadat hij op de achtergrond stond, synchroniseren met je andere apparaten, en uitnodigingen voor gedeelde kluizen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.
