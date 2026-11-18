@@ -615,14 +615,18 @@ fn import_1pux(data: &[u8]) -> Result<ImportResult> {
     // At most this much unpacked: a small file can unpack to gigabytes.
     const MAX_EXPORT_DATA: u64 = 256 * 1024 * 1024;
     let mut json = String::new();
-    // The local header must agree with the central directory, so the file
-    // reads the same here as in any other zip program.
-    let options = zip::ZipReadOptions::new().enforce_header_consistency(true);
-    let read = zip
-        .by_name_with_options("export.data", options)
-        .map_err(|_| Error::Import("export.data missing from .1pux file".into()))?
-        .take(MAX_EXPORT_DATA + 1)
-        .read_to_string(&mut json)?;
+    // No `enforce_header_consistency`: 1Password's own exports fail it (1.16.0
+    // refused them all), and the person picks their own export here. What
+    // keeps a bad file out is the size limit below, the CRC check the zip
+    // reader does at the end of the entry, and the JSON parser.
+    let read = match zip.by_name("export.data") {
+        Ok(entry) => entry.take(MAX_EXPORT_DATA + 1).read_to_string(&mut json),
+        Err(zip::result::ZipError::FileNotFound) => {
+            return Err(Error::Import("export.data missing from .1pux file".into()));
+        }
+        Err(e) => return Err(Error::Import(format!("export.data in the .1pux file cannot be read: {e}"))),
+    }
+    .map_err(|e| Error::Import(format!("export.data in the .1pux file cannot be read: {e}")))?;
     if read as u64 > MAX_EXPORT_DATA {
         return Err(Error::Import("export.data is too large".into()));
     }
@@ -1111,6 +1115,58 @@ mod tests {
         assert_eq!(card.value("number"), Some("4111"));
         assert_eq!(card.value("expiry"), Some("04/2030"));
         assert_eq!(card.tags, vec!["archived"]);
+    }
+
+    /// A .1pux as other zip writers make them: the local header's time differs
+    /// from the central directory's, and a folder entry appears twice. 2Secret
+    /// 1.16.0 refused such files ("export.data missing from .1pux file").
+    #[test]
+    fn onepux_from_other_zip_writers() {
+        let export_data = r#"{"accounts":[{"attrs":{},"vaults":[{"attrs":{"name":"Private"},"items":[
+            {"uuid":"a","categoryUuid":"001","overview":{"title":"GitHub"},
+             "details":{"loginFields":[{"value":"octo","designation":"username"}]}}]}]}]}"#;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            let opts: zip::write::SimpleFileOptions = Default::default();
+            zip.add_directory("files/", opts).unwrap();
+            zip.add_directory("filez/", opts).unwrap();
+            zip.start_file("export.data", opts).unwrap();
+            std::io::Write::write_all(&mut zip, export_data.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let mut bytes = buf.into_inner();
+        // The same folder twice: rename "filez/" to "files/" in both headers.
+        let mut renamed = 0;
+        for i in 0..bytes.len().saturating_sub(6) {
+            if &bytes[i..i + 6] == b"filez/" {
+                bytes[i + 4] = b's';
+                renamed += 1;
+            }
+        }
+        assert_eq!(renamed, 2);
+        // Another time in the local header of export.data than in the central directory.
+        let local = (0..bytes.len() - 41)
+            .find(|&i| bytes[i..i + 4] == *b"PK\x03\x04" && bytes[i + 30..i + 41] == *b"export.data")
+            .unwrap();
+        bytes[local + 10] ^= 0x01;
+
+        let r = import(&bytes, ImportFormat::OnePasswordPux, None).unwrap();
+        assert_eq!(r.vaults[0].items[0].username(), Some("octo"));
+    }
+
+    #[test]
+    fn onepux_without_export_data() {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            let opts: zip::write::SimpleFileOptions = Default::default();
+            zip.start_file("export.attributes", opts).unwrap();
+            std::io::Write::write_all(&mut zip, b"{}").unwrap();
+            zip.finish().unwrap();
+        }
+        let err = import(&buf.into_inner(), ImportFormat::OnePasswordPux, None).unwrap_err();
+        assert!(err.to_string().contains("export.data missing"), "{err}");
     }
 
     #[test]
