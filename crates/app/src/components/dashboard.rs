@@ -72,7 +72,7 @@ pub fn DashboardPage() -> Element {
     let favorite_count = favorites.len();
 
     rsx! {
-        div { class: "toolbar",
+        div { class: "toolbar dash-bar",
             button { class: "icon-btn mobile-only", onclick: move |_| *PANE.write() = Pane::Nav, Icon { name: "menu" } }
             span { class: "grow", style: "font-weight:600;font-size:16px", {t("nav.home")} }
             if can_add {

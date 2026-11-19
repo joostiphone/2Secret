@@ -178,6 +178,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 /* Wide windows: the sidebar is a rounded card beside the list. */
 @media (min-width: 900px) {
   .root:not(.ext) .shell > .sidebar { margin: 8px 0 8px 8px; border-radius: 16px; border: 1px solid var(--sidebar-edge); overflow: hidden; }
+  /* The list is a card too, rounded like the banners. */
+  .root:not(.ext) .shell > .list-pane { margin: 8px 0 8px 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  /* The bar above a page or an item is a card as wide as the content below
+     it (.detail-inner, or .dash on the dashboard, inside the 28px padding of
+     .detail-scroll), so on the dashboard it lines up with the search field. */
+  .root:not(.ext) .detail-pane > .toolbar { flex: none; box-sizing: border-box; width: calc(100% - 56px); max-width: 760px; margin: 8px auto 0;
+    border: 1px solid var(--border); border-radius: 10px; }
+  .root:not(.ext) .detail-pane > .toolbar.dash-bar { max-width: 1040px; }
 }
 .sidebar-head { padding: 14px 12px 10px; display: flex; align-items: center; gap: 10px; position: relative; }
 .who-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px; margin: -4px; border: none; border-radius: 10px;
