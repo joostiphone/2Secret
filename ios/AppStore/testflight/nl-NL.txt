@@ -1,12 +1,15 @@
-2Secret 1.16.1
+2Secret 1.16.2
 
 WAT IS ER NIEUW
-- Een export van 1Password (.1pux) importeren werkt weer. 1.16.0 weigerde exports uit 1Password met "export.data missing from .1pux file".
-- Verder is alles als in 1.16.0: een lichte zijbalk (Instellingen → Weergave → Zijbalk), en op de iPad in liggende stand een zijbalk met afgeronde hoeken.
+- Op de iPad in liggende stand is de balk bovenaan het dashboard en andere pagina's een afgeronde kaart, precies zo breed als de inhoud eronder: op het dashboard lijnt hij uit met de zoekbalk.
+- De lijst met items is een afgeronde kaart naast de zijbalk, met dezelfde ronding als de blauwe meldingen.
+- Ook in deze versie: een export van 1Password (.1pux) importeren werkt weer (1.16.1).
 
 TEST ALSJEBLIEFT
-1. Exporteer uit 1Password op een computer (formaat 1PUX) en importeer het bestand in 2Secret onder Instellingen → Importeren. Je logins, kaarten en notities horen binnen te komen, met hun eenmalige wachtwoorden.
-2. Instellingen → Weergave → Zijbalk: wissel tussen Donker en Licht, met het lichte en het donkere thema.
-3. Zoals altijd: automatisch invullen in Safari met Face ID of Touch ID, de app openen nadat hij op de achtergrond stond, synchroniseren met je andere apparaten, en uitnodigingen voor gedeelde kluizen.
+1. Op de iPad in liggende stand: open het dashboard. De balk met "Dashboard" en "Nieuw" hoort even breed te zijn als de zoekbalk, met dezelfde afgeronde hoeken als de melding over de back-up.
+2. Open Alle items: de lijst hoort een afgeronde kaart te zijn, met wat ruimte tussen de lijst en de zijbalk. Scrol door de lijst: de items horen binnen de afgeronde hoeken te blijven.
+3. Open een item, Instellingen, Watchtower en de wachtwoordgenerator: hun bovenste balk hoort een afgeronde kaart te zijn, even breed als de inhoud eronder.
+4. Op de iPhone hoort er niets te veranderen; een smal venster op de iPad houdt de indeling die het had.
+5. Probeer het lichte en het donkere thema, en Instellingen → Weergave → Zijbalk → Licht.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

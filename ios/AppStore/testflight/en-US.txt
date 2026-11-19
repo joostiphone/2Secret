@@ -1,12 +1,15 @@
-2Secret 1.16.1
+2Secret 1.16.2
 
 WHAT'S NEW
-- Importing a 1Password export (.1pux) works again. 1.16.0 refused exports from 1Password with "export.data missing from .1pux file".
-- Everything else is as in 1.16.0: a light sidebar (Settings → Appearance → Sidebar), and on iPad in landscape a sidebar with rounded corners.
+- On iPad in landscape, the bar at the top of the dashboard and of other pages is a rounded card, exactly as wide as the content below it: on the dashboard it lines up with the search field.
+- The item list is a rounded card next to the sidebar, with the same rounding as the blue banners.
+- Also in this version: importing a 1Password export (.1pux) works again (1.16.1).
 
 PLEASE TEST
-1. Export from 1Password on a computer (format 1PUX), and import the file into 2Secret under Settings → Import. Your logins, cards and notes should arrive, with their one-time passwords.
-2. Settings → Appearance → Sidebar: switch between Dark and Light, with the light and the dark theme.
-3. As always: AutoFill in Safari with Face ID or Touch ID, opening the app after it was in the background, syncing with your other devices, and shared-vault invitations.
+1. On iPad in landscape: open the dashboard. The top bar with "Dashboard" and "New" should be as wide as the search field and have the same rounded corners as the backup banner.
+2. Open All items: the list should be a rounded card with some space between it and the sidebar. Scroll the list: the items should stay inside the rounded corners.
+3. Open an item, Settings, Watchtower and the password generator: their top bar should be a rounded card as wide as the content below it.
+4. On iPhone nothing should change; a narrow window on iPad keeps the layout it had.
+5. Try the light and the dark theme, and Settings → Appearance → Sidebar → Light.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

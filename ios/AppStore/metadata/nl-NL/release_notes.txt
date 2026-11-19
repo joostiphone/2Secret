@@ -14,6 +14,6 @@ Nieuw sinds versie 1.12.1:
 - "Kan de server niet bereiken" zegt nu waarom.
 - Gebruiksvoorwaarden: wie 2Secret gebruikt, gaat ermee akkoord; Instellingen → Over linkt ernaar en naar het privacybeleid.
 - Geen zwart of wit scherm meer nadat de app een tijd op de achtergrond stond.
-- Een lichte zijbalk (Instellingen → Weergave), en een rondere zijbalk op de iPad.
+- Een lichte zijbalk (Instellingen → Weergave), en op de iPad een rondere zijbalk, lijst met items en bovenbalk.
 
 De apps van Dropbox, Google Drive en OneDrive laten andere apps op iPhone en iPad geen map kiezen; een directe koppeling met die diensten staat op de planning.

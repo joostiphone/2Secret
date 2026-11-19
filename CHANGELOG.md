@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.16.2
+
+- Wide windows (iPad in landscape, the desktop apps, the web vault): the bar
+  at the top of a page or an item is a rounded card as wide as the content
+  below it, so on the dashboard it lines up with the search field, and the
+  item list is a rounded card next to the sidebar. Both have the rounding of
+  the banners.
+
 ## 1.16.1
 
 - Importing a 1Password export (.1pux) works again. 1.16.0 refused exports
