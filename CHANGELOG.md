@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.16.3
+
+- Shared vaults: a replaced vault key proves that whoever made it had the key
+  before it. The vault's new metadata, encrypted with the new key, lists the
+  keys it replaced, and a device takes a new key only if its own current key
+  is on that list. A server, which never has a vault key, can therefore no
+  longer put in a key of its own and read what the members write from then
+  on. Vaults whose key was last replaced by 2Secret 1.16.2 or older take
+  their next key as before, and ask for proof from then on; a key replaced
+  with 1.16.2 or older is refused by updated devices, so members should
+  update. See *Revocation and key rotation* in docs/SECURITY.md.
+- Medium windows (iPad in portrait, Split View, a narrow window on the
+  desktop): the sidebar, the item list and the bar at the top are rounded
+  cards, as in wide windows since 1.16.2.
+- *Settings → About* links to the community on Reddit, r/2Secret.
+
 ## 1.16.2
 
 - Wide windows (iPad in landscape, the desktop apps, the web vault): the bar

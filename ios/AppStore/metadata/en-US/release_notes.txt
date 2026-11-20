@@ -1,4 +1,5 @@
-Importing from 1Password works again, and a tidier layout on iPad.
+Safer shared vaults, and the new iPad layout in portrait too.
 
-- Importing a 1Password export (.1pux) works again. 1.16.0 refused such files with "export.data missing from .1pux file".
-- On iPad in landscape, the item list is a rounded card next to the sidebar, and the bar at the top is a rounded card that lines up with the content below it.
+- When a shared vault gets a new key, the key proves it was made by someone who had the old one; a key without that proof is refused. Update 2Secret on every member's device.
+- On iPad in portrait and in Split View, the item list and the top bar are rounded cards, as in landscape.
+- Settings → About links to the 2Secret community on Reddit.

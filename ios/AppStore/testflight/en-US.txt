@@ -1,15 +1,14 @@
-2Secret 1.16.2
+2Secret 1.16.3
 
 WHAT'S NEW
-- On iPad in landscape, the bar at the top of the dashboard and of other pages is a rounded card, exactly as wide as the content below it: on the dashboard it lines up with the search field.
-- The item list is a rounded card next to the sidebar, with the same rounding as the blue banners.
-- Also in this version: importing a 1Password export (.1pux) works again (1.16.1).
+- Shared vaults are safer: when a vault gets a new key (after you remove someone, or with Replace vault key), the new key proves that it was made by someone who had the old one. Your devices refuse a key without that proof, so the server cannot slip in a key of its own.
+- On iPad in portrait, in Split View and in narrow windows, the sidebar, the item list and the top bar are rounded cards, as in landscape.
+- Settings → About links to the 2Secret community on Reddit (r/2Secret).
 
 PLEASE TEST
-1. On iPad in landscape: open the dashboard. The top bar with "Dashboard" and "New" should be as wide as the search field and have the same rounded corners as the backup banner.
-2. Open All items: the list should be a rounded card with some space between it and the sidebar. Scroll the list: the items should stay inside the rounded corners.
-3. Open an item, Settings, Watchtower and the password generator: their top bar should be a rounded card as wide as the content below it.
-4. On iPhone nothing should change; a narrow window on iPad keeps the layout it had.
-5. Try the light and the dark theme, and Settings → Appearance → Sidebar → Light.
+1. In a vault you share with someone: remove a member, or use Replace vault key. Your other devices and the remaining members should get the new key and keep working, without a message that a key was refused.
+2. Members who still have 2Secret 1.16.2 or older: a key they replace is refused by updated devices. Update everyone, then replace the key again.
+3. iPad in portrait and in Split View: the list and the top bar should be rounded cards; in landscape it should look as in 1.16.2.
+4. Settings → About: the r/2Secret link should open Reddit.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.
