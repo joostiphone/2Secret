@@ -12,10 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::VaultSyncResult;
 use crate::api::{ItemChange, ItemDto, SyncRequest, SyncResponse, VaultDto, VaultSyncRequest};
-use crate::crypto::SymmetricKey;
+use crate::crypto::{decrypt_json, SymmetricKey};
 use crate::item::{Item, PasswordHistoryEntry, MAX_PASSWORD_HISTORY};
 use crate::profile::{
-    aad, retired_key_id, ItemRecord, KeyChange, Leftover, Role, SyncState, VaultLocation, VaultRecord, RETIRED_KEYS,
+    aad, ancestor_key_id, retired_key_id, ItemRecord, KeyChange, Leftover, Role, SyncState, VaultLocation, VaultMeta,
+    VaultRecord, RETIRED_KEYS,
 };
 use crate::session::Session;
 use crate::util::now;
@@ -83,6 +84,7 @@ pub(crate) fn vault_record(dto: &VaultDto, account_id: &str) -> VaultRecord {
         created_at: dto.created_at,
         key_rev: dto.key_rev,
         retired_keys: Vec::new(),
+        key_chained: false,
         location: VaultLocation::Account,
         leftovers: Vec::new(),
         on_server: false,
@@ -284,6 +286,22 @@ impl Session {
             link.last_sync_at = Some(now());
         }
         self.reload()?;
+        // A vault whose key came with proof of the key before it (a
+        // replacement by 2Secret 1.16.3 or newer) needs that proof for its
+        // next key too, also on a device that first saw it after that.
+        let chained: Vec<String> = self
+            .profile()
+            .vaults
+            .iter()
+            .filter(|v| v.location.is_account() && !v.key_chained)
+            .filter(|v| self.vault_meta(&v.id).is_some_and(|m| !m.key_ancestors.is_empty()))
+            .map(|v| v.id.clone())
+            .collect();
+        for id in chained {
+            if let Some(v) = self.profile_mut().vault_mut(&id) {
+                v.key_chained = true;
+            }
+        }
         if self.profile().items.iter().any(|i| i.dirty) && report.conflicts > 0 {
             report.needs_another_round = true;
         }
@@ -316,7 +334,12 @@ impl Session {
             if old_key == &new_key {
                 continue;
             }
-            if local.retired_keys.contains(&retired_key_id(&new_key)) {
+            // Proof that whoever made the new key knew the old one: the new
+            // metadata lists it among the keys it replaced. A server, which
+            // never has a vault key, cannot make that.
+            let proven = decrypt_json::<VaultMeta>(&new_key, &dto.meta, &aad::vault_meta(&dto.id))
+                .is_ok_and(|meta| meta.key_ancestors.contains(&ancestor_key_id(old_key)));
+            if local.retired_keys.contains(&retired_key_id(&new_key)) || (local.key_chained && !proven) {
                 refused.push(dto.id.clone());
             } else {
                 let retired = retired_key_id(old_key);
@@ -325,6 +348,7 @@ impl Session {
                     v.retired_keys.push(retired);
                     let excess = v.retired_keys.len().saturating_sub(RETIRED_KEYS);
                     v.retired_keys.drain(..excess);
+                    v.key_chained |= proven;
                 }
                 replaced.push((dto.id.clone(), new_key));
             }
@@ -770,10 +794,12 @@ mod tests {
         assert_eq!(a.item(&id).unwrap().password(), Some("p1"));
 
         // A key rotated in later by a member (the vault is shared) is taken,
-        // and the one before it retired.
+        // with proof that they had the current key, and the one before it
+        // retired.
         let newer = SymmetricKey::generate();
         let meta_aad = aad::vault_meta(&v);
-        let meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
+        let mut meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
+        meta.key_ancestors.insert(0, ancestor_key_id(&key));
         server.vaults[0].meta = encrypt_json(&newer, &meta, &meta_aad).unwrap();
         server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &newer, &aad::vault_key(&v));
         server.vaults[0].member_count = 2;
@@ -810,6 +836,92 @@ mod tests {
         let report = server.full_sync(&mut a);
         assert_eq!((report.keys_refused, report.keys_replaced), (0, vec![v.clone()]));
         assert_eq!(a.vault_key(&v), Some(&other));
+        // Without proof of the key before it, as replacements by 2Secret
+        // 1.16.2 and older come: the vault does not ask for proof yet.
+        assert!(!a.profile().vault(&v).unwrap().key_chained);
+    }
+
+    /// A shared vault with one item, whose key `a` replaced (with proof),
+    /// and the server that holds it.
+    fn chained_vault() -> (Session, FakeServer, String, String, SymmetricKey) {
+        let (mut a, _) = new_session();
+        let mut server = FakeServer::default();
+        let v = a.default_vault_id().unwrap();
+        let item = a.add_item(&v, Item::login("Site", "u", "p1", None)).unwrap();
+        server.full_sync(&mut a);
+        let req = a.rotate_vault_key_request(&v, &[me(&a)]).unwrap();
+        server.rotate(&v, req);
+        server.vaults[0].member_count = 2;
+        assert_eq!(server.full_sync(&mut a).keys_replaced, vec![v.clone()]);
+        assert!(a.profile().vault(&v).unwrap().key_chained);
+        let key = a.vault_key(&v).unwrap().clone();
+        (a, server, v, item, key)
+    }
+
+    /// The server puts `new` in as the vault's key, sealed to `a`, with `meta`
+    /// and `ancestors` as the proof.
+    fn offer_key(
+        server: &mut FakeServer,
+        a: &Session,
+        v: &str,
+        meta: &VaultMeta,
+        new: &SymmetricKey,
+        ancestors: Vec<String>,
+    ) {
+        let meta = VaultMeta { key_ancestors: ancestors, ..meta.clone() };
+        server.vaults[0].meta = encrypt_json(new, &meta, &aad::vault_meta(v)).unwrap();
+        server.vaults[0].wrapped_key = WrappedKey::wrap_for(&a.public_keys(), new, &aad::vault_key(v)).unwrap();
+        server.vaults[0].key_rev += 1;
+    }
+
+    #[test]
+    fn a_replaced_key_needs_proof_of_the_old_one() {
+        let (mut a, mut server, v, item, key) = chained_vault();
+        // The rotation put the key before it in the metadata.
+        let meta = a.vault_meta(&v).unwrap().clone();
+        assert_eq!(meta.key_ancestors.len(), 1);
+        assert_ne!(meta.key_ancestors[0], ancestor_key_id(&key));
+
+        // A key the server made: it cannot list the current key, which it
+        // never had. Neither without proof, nor with made-up or old proof.
+        let forged = SymmetricKey::generate();
+        for ancestors in [vec![], vec![ancestor_key_id(&SymmetricKey::generate())], meta.key_ancestors.clone()] {
+            offer_key(&mut server, &a, &v, &meta, &forged, ancestors);
+            let report = server.full_sync(&mut a);
+            assert_eq!((report.keys_refused, report.keys_replaced.len()), (1, 0));
+            assert_eq!(a.vault_key(&v), Some(&key));
+            assert_eq!(a.item(&item).unwrap().password(), Some("p1"));
+        }
+
+        // A member who had the current key: taken.
+        let newer = SymmetricKey::generate();
+        let mut ancestors = meta.key_ancestors.clone();
+        ancestors.insert(0, ancestor_key_id(&key));
+        offer_key(&mut server, &a, &v, &meta, &newer, ancestors);
+        assert_eq!(server.full_sync(&mut a).keys_replaced, vec![v.clone()]);
+        assert_eq!(a.vault_key(&v), Some(&newer));
+        assert!(a.profile().vault(&v).unwrap().key_chained);
+    }
+
+    #[test]
+    fn a_device_that_missed_replacements_still_finds_its_key_in_the_proof() {
+        let (mut a, mut server, v, _, _) = chained_vault();
+        // A device that first sees the vault after the replacement (as a
+        // copy of the profile from before it would).
+        let mut profile = a.profile().clone();
+        profile.vaults.iter_mut().for_each(|v| v.key_chained = false);
+        let mut b = Session::open_with_account_key(profile, a.account_key().clone()).unwrap();
+        server.full_sync(&mut b);
+        assert!(b.profile().vault(&v).unwrap().key_chained, "proof seen after the replacement counts too");
+        // Two more replacements while B is away.
+        for _ in 0..2 {
+            let req = a.rotate_vault_key_request(&v, &[me(&a)]).unwrap();
+            server.rotate(&v, req);
+            server.full_sync(&mut a);
+        }
+        assert_eq!(a.vault_meta(&v).unwrap().key_ancestors.len(), 3);
+        assert_eq!(server.full_sync(&mut b).keys_replaced, vec![v.clone()]);
+        assert_eq!(b.vault_key(&v), a.vault_key(&v));
     }
 
     #[test]

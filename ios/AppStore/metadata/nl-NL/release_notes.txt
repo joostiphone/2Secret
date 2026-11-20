@@ -1,4 +1,5 @@
-Importeren uit 1Password werkt weer, en de iPad krijgt een nettere indeling.
+Veiligere gedeelde kluizen, en de nieuwe iPad-indeling nu ook staand.
 
-- Een export van 1Password (.1pux) importeren werkt weer. 1.16.0 weigerde zulke bestanden met "export.data missing from .1pux file".
-- Op de iPad in liggende stand is de lijst met items een afgeronde kaart naast de zijbalk, en is de balk bovenaan een afgeronde kaart die uitlijnt met de inhoud eronder.
+- Krijgt een gedeelde kluis een nieuwe sleutel, dan bewijst die dat hij is gemaakt door iemand die de oude had; een sleutel zonder dat bewijs wordt geweigerd. Werk 2Secret bij op de apparaten van alle leden.
+- Op de iPad in staande stand en in Split View zijn de lijst met items en de bovenbalk afgeronde kaarten, net als liggend.
+- Instellingen → Over linkt naar de 2Secret-community op Reddit.

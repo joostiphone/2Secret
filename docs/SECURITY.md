@@ -272,10 +272,28 @@ knows. It also refuses a key sealed to its public key for a vault that has
 no other members: only the account's own devices could replace that key,
 and they wrap it with the account key, so such a key can only be a server's
 doing (anyone can seal to a public key). The apps mention every replaced
-and every refused key. A replaced key for a vault with other members is
-taken as it comes, since replacements are not signed: a server could offer
-one for such a vault and read what the members write from then on (not
-what the vault held). Signed replacements are planned. (After restoring a server backup from before a key was replaced, such
+and every refused key.
+
+**Proof of the old key.** Whoever replaces a vault's key lists the keys it
+replaced in the vault's new metadata, which is encrypted with the new key:
+newest first, at most 16, each as
+`SHA-256("2secret/v1/vault-key-ancestor" ‖ key)`, cut to 128 bits. A device
+takes a replaced key only if that list holds the key the device has now. Only
+someone who had that key can work out its entry, and a server never has a
+vault key, so a key a server makes up for a shared vault is refused: it
+cannot read what the members write from then on. A device that missed a
+replacement or two still finds its key further down the list.
+
+Vaults whose key was last replaced by 2Secret 1.16.2 or older have no such
+list: a device takes their next key as it comes, as before, and asks for
+proof once a replacement brings it (a device that first sees the vault after
+such a replacement too). A member who replaces a key with 2Secret 1.16.2 or
+older makes one without proof, which updated devices refuse; updating and
+replacing the key again fixes that. The proof shows that whoever made the key
+had the one before it, not who they are: a removed member, who still knows
+the key from before their removal, could make a key with valid proof
+together with a server that hands it to the other members instead of the
+replacement that removed them. (After restoring a server backup from before a key was replaced, such
 a vault does not sync on the devices that have the newer key; export it there
 and import it into a new vault.)
 
@@ -731,8 +749,10 @@ the apps warn about this.
 - The first time a device seals a vault key to an account (sharing, an
   emergency contact, a member it had not seen before when replacing a key),
   it takes that account's public keys as the server reports them; compare
-  the fingerprint then (see *Fingerprints*). Replaced vault keys are not
-  signed (see *Revocation and key rotation*).
+  the fingerprint then (see *Fingerprints*). A replaced vault key proves
+  that whoever made it had the key before it, not who they are, and vaults
+  whose key was last replaced by 2Secret 1.16.2 or older take their next key
+  without proof (see *Revocation and key rotation*).
 - Metadata listed above (counts, size classes, timestamps, sharing graph,
   e-mail addresses) is visible to the server operator.
 - Login uses TLS from the operating system or browser; whether that
