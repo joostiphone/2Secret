@@ -16,8 +16,8 @@ use crate::crypto::{
 use crate::item::{Category, Item, ItemSummary};
 use crate::passkey::Passkey;
 use crate::profile::{
-    aad, AccountRecord, ItemRecord, KeyChange, KnownAccount, MovedTo, Profile, Role, ServerLink, SyncState,
-    VaultLocation, VaultMeta, VaultRecord, PROFILE_FORMAT, PROFILE_VERSION,
+    aad, ancestor_key_id, AccountRecord, ItemRecord, KeyChange, KnownAccount, MovedTo, Profile, Role, ServerLink,
+    SyncState, VaultLocation, VaultMeta, VaultRecord, PROFILE_FORMAT, PROFILE_VERSION, RETIRED_KEYS,
 };
 use crate::util::{b64, new_id, normalize_email, now, random_bytes, unb64, url_matches};
 use crate::{Error, Result};
@@ -509,6 +509,14 @@ impl Session {
         }
 
         let open = self.vaults.get(vault_id).ok_or(Error::Decryption)?;
+        // The proof that this key comes from someone who had the old one
+        // (see `VaultMeta::key_ancestors`): the old key first, then the ones
+        // it replaced, for devices that missed a replacement or two.
+        let mut meta = open.meta.clone();
+        let old = ancestor_key_id(&open.key);
+        meta.key_ancestors.retain(|k| *k != old);
+        meta.key_ancestors.insert(0, old);
+        meta.key_ancestors.truncate(RETIRED_KEYS);
         let mut items = Vec::new();
         for rec in self.profile.items.iter().filter(|i| i.vault_id == vault_id) {
             if let Some(data) = &rec.data {
@@ -522,7 +530,7 @@ impl Session {
 
         Ok(RotateVaultKeyRequest {
             key_rev,
-            meta: encrypt_json(&key, &open.meta, &aad::vault_meta(vault_id))?,
+            meta: encrypt_json(&key, &meta, &aad::vault_meta(vault_id))?,
             members: wrapped,
             items,
         })
@@ -759,6 +767,7 @@ impl Session {
             description: description.trim().to_string(),
             icon: String::new(),
             moved: None,
+            key_ancestors: Vec::new(),
         };
         let sync_state = match location {
             VaultLocation::Account => SyncState::PendingCreate,
@@ -778,6 +787,7 @@ impl Session {
             created_at: now(),
             key_rev: 0,
             retired_keys: Vec::new(),
+            key_chained: false,
             location,
             leftovers: Vec::new(),
             on_server: false,

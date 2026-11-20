@@ -733,6 +733,7 @@ impl Session {
                 created_at: file.created_at,
                 key_rev: 0,
                 retired_keys: Vec::new(),
+                key_chained: false,
                 location,
                 leftovers: Vec::new(),
                 on_server: false,

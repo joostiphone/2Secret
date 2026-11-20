@@ -257,6 +257,12 @@ pub struct VaultRecord {
     /// refused, so a removed member's old key cannot come back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retired_keys: Vec<String>,
+    /// The vault's key was replaced with proof that whoever made the new key
+    /// knew the old one ([`VaultMeta::key_ancestors`]). From then on this
+    /// device takes a replaced key only with that proof; before (vaults whose
+    /// key was last replaced by 2Secret 1.16.2 or older), as it comes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub key_chained: bool,
     /// Where the vault is kept: with the account (its server), only on this
     /// device, or in a storage folder.
     #[serde(default, skip_serializing_if = "VaultLocation::is_account")]
@@ -419,6 +425,15 @@ pub fn retired_key_id(key: &crate::crypto::SymmetricKey) -> String {
     crate::util::b64(&crate::crypto::sha256(key.as_bytes())[..16])
 }
 
+/// The fingerprint of a vault key in [`VaultMeta::key_ancestors`]: 128 bits
+/// of SHA-256 over a label and the key, which only someone who has the key
+/// can work out.
+pub fn ancestor_key_id(key: &crate::crypto::SymmetricKey) -> String {
+    let mut data = b"2secret/v1/vault-key-ancestor".to_vec();
+    data.extend_from_slice(key.as_bytes());
+    crate::util::b64(&crate::crypto::sha256(&data)[..16])
+}
+
 fn one() -> u32 {
     1
 }
@@ -437,6 +452,13 @@ pub struct VaultMeta {
     /// folder take the vault from there; others show where it went.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub moved: Option<MovedTo>,
+    /// The keys this vault's key replaced, newest first, as
+    /// [`ancestor_key_id`]s (at most [`RETIRED_KEYS`]). Whoever replaces the
+    /// key puts the one before it here; only someone who knew that key can,
+    /// so a device takes a new key only if its own current key is listed
+    /// (see `VaultRecord::key_chained`). A server never has a vault key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_ancestors: Vec<String>,
 }
 
 /// Where a vault went (in a server placeholder or a folder's `moved.json`).
