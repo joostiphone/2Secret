@@ -492,6 +492,17 @@ button.tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(20,
     border: 1px solid var(--border); border-radius: 10px; }
   .root:not(.ext) .detail-pane > .toolbar.dash-bar { max-width: 1040px; }
 }
+/* Wider than a phone: the pane scrolls as a whole, under its bar, which
+   sticks as a card. The bar and the content then share one width, also next
+   to a scroll bar that takes room (macOS set to always show them, Windows,
+   Linux): with only the content scrolling, the content was centred in less
+   room than the bar above it. The band of background around the top of the
+   bar hides what scrolls past it. */
+@media (min-width: 600px) {
+  .root:not(.ext) .detail-pane { overflow-y: auto; }
+  .root:not(.ext) .detail-pane > .detail-scroll { flex: none; overflow: visible; }
+  .root:not(.ext) .detail-pane > .toolbar { position: sticky; top: 8px; z-index: 5; box-shadow: 0 -8px 0 8px var(--bg); }
+}
 /* A foldable that reports where its fold is (CSS Viewport Segments): the list
    ends at the fold and the item starts after it. */
 @media (min-width: 600px) and (horizontal-viewport-segments: 2) {

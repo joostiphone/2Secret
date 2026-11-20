@@ -14,6 +14,11 @@
 - Medium windows (iPad in portrait, Split View, a narrow window on the
   desktop): the sidebar, the item list and the bar at the top are rounded
   cards, as in wide windows since 1.16.2.
+- The bar at the top of a page or an item lines up with the content below it
+  also when the system shows scroll bars that take room (a Mac set to always
+  show them, Windows, Linux): the content was centred in the room left next
+  to the scroll bar, a few points left of the bar. The whole pane now scrolls,
+  under the bar, which stays at the top.
 - *Settings → About* links to the community on Reddit, r/2Secret.
 
 ## 1.16.2
