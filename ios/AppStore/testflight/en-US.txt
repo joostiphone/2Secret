@@ -1,16 +1,11 @@
-2Secret 1.16.3
+2Secret 1.16.4
 
 WHAT'S NEW
-- Shared vaults are safer: when a vault gets a new key (after you remove someone, or with Replace vault key), the new key proves that it was made by someone who had the old one. Your devices refuse a key without that proof, so the server cannot slip in a key of its own.
-- On iPad in portrait, in Split View and in narrow windows, the sidebar, the item list and the top bar are rounded cards, as in landscape.
-- On a Mac that always shows scroll bars, the top bar now lines up with the content below it; the page scrolls under the bar, which stays at the top.
-- Settings → About links to the 2Secret community on Reddit (r/2Secret).
+- A security update of a building block 2Secret uses for web addresses (url 2.5.9): a web address with thousands of nested "blob:" prefixes could crash a program that asked for its origin. 2Secret itself never asks for that, so you will not notice a difference.
+- Everything else is as in 1.16.3: safer shared vaults, rounded cards on iPad in every orientation, a top bar that lines up next to scroll bars, and a link to r/2Secret.
 
 PLEASE TEST
-1. In a vault you share with someone: remove a member, or use Replace vault key. Your other devices and the remaining members should get the new key and keep working, without a message that a key was refused.
-2. Members who still have 2Secret 1.16.2 or older: a key they replace is refused by updated devices. Update everyone, then replace the key again.
-3. iPad in portrait and in Split View: the list and the top bar should be rounded cards; in landscape it should look as in 1.16.2.
-4. Mac with System Settings → Appearance → Show scroll bars → Always: on the dashboard, the top bar should line up exactly with the search field and the sections. Scroll down: the bar stays at the top and the page slides under it.
-5. Settings → About: the r/2Secret link should open Reddit.
+1. As in 1.16.3: in a shared vault, remove a member or use Replace vault key. Your other devices and the remaining members should take the new key without a message that a key was refused.
+2. As always: syncing with your other devices, AutoFill in Safari with Face ID or Touch ID, and opening the website of an item.
 
 Found something? Take a screenshot and share it as beta feedback, or send feedback from the TestFlight app.

@@ -1,16 +1,11 @@
-2Secret 1.16.3
+2Secret 1.16.4
 
 WAT IS ER NIEUW
-- Gedeelde kluizen zijn veiliger: als een kluis een nieuwe sleutel krijgt (nadat je iemand verwijdert, of met Kluissleutel vervangen), bewijst de nieuwe sleutel dat hij is gemaakt door iemand die de oude had. Je apparaten weigeren een sleutel zonder dat bewijs, dus de server kan er geen eigen sleutel tussen schuiven.
-- Op de iPad in staande stand, in Split View en in smalle vensters zijn de zijbalk, de lijst met items en de bovenste balk afgeronde kaarten, net als in liggende stand.
-- Op een Mac die schuifbalken altijd toont, lijnt de bovenste balk nu uit met de inhoud eronder; de pagina scrolt onder de balk door, die bovenaan blijft staan.
-- Instellingen → Over linkt naar de 2Secret-community op Reddit (r/2Secret).
+- Een beveiligingsupdate van een bouwsteen die 2Secret voor webadressen gebruikt (url 2.5.9): een webadres met duizenden geneste "blob:"-voorvoegsels kon een programma laten vastlopen dat om de herkomst ervan vroeg. 2Secret vraagt daar zelf nooit om, dus je merkt geen verschil.
+- Verder is alles als in 1.16.3: veiligere gedeelde kluizen, afgeronde kaarten op de iPad in elke stand, een bovenste balk die uitlijnt naast schuifbalken, en een link naar r/2Secret.
 
 TEST ALSJEBLIEFT
-1. In een kluis die je met iemand deelt: verwijder een lid, of gebruik Kluissleutel vervangen. Je andere apparaten en de overige leden horen de nieuwe sleutel te krijgen en gewoon verder te kunnen, zonder melding dat een sleutel is geweigerd.
-2. Leden die nog 2Secret 1.16.2 of ouder hebben: een sleutel die zij vervangen, wordt door bijgewerkte apparaten geweigerd. Werk iedereen bij en vervang de sleutel daarna opnieuw.
-3. iPad in staande stand en in Split View: de lijst en de bovenste balk horen afgeronde kaarten te zijn; in liggende stand hoort het eruit te zien als in 1.16.2.
-4. Mac met Systeeminstellingen → Weergave → Toon schuifbalken → Altijd: op het dashboard hoort de bovenste balk precies uit te lijnen met de zoekbalk en de secties. Scrol omlaag: de balk blijft bovenaan en de pagina schuift eronder door.
-5. Instellingen → Over: de link r/2Secret hoort Reddit te openen.
+1. Zoals in 1.16.3: verwijder in een gedeelde kluis een lid, of gebruik Kluissleutel vervangen. Je andere apparaten en de overige leden horen de nieuwe sleutel aan te nemen zonder melding dat een sleutel is geweigerd.
+2. Zoals altijd: synchroniseren met je andere apparaten, automatisch invullen in Safari met Face ID of Touch ID, en de website van een item openen.
 
 Iets gevonden? Maak een schermafbeelding en deel die als bètafeedback, of stuur feedback vanuit de TestFlight-app.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.4
+
+- url 2.5.9 (RUSTSEC-2026-0592): `Url::origin()` on a `blob:` URL called
+  itself without a limit, so a URL with thousands of `blob:` prefixes
+  overflowed the stack and aborted the process. 2Secret's own code does not
+  call it; reqwest, tao and tower-http use `url`.
+
 ## 1.16.3
 
 - Shared vaults: a replaced vault key proves that whoever made it had the key
