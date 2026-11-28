@@ -512,12 +512,25 @@ fn sealed_box_key(shared: &[u8; 32], epk: &PublicKey, rpk: &PublicKey) -> Symmet
 }
 
 /// Encrypt `plaintext` so that only the owner of `recipient` can read it.
-pub fn seal(recipient: &PublicKey, plaintext: &[u8], aad: &[u8]) -> SealedBox {
+///
+/// Refuses a recipient key of small order (see [`low_order_recipient`]).
+pub fn seal(recipient: &PublicKey, plaintext: &[u8], aad: &[u8]) -> Result<SealedBox> {
     let eph = PrivateKey::generate();
     let epk = eph.public_key();
     let shared = eph.0.diffie_hellman(&x25519_dalek::PublicKey::from(recipient.0));
+    if !shared.was_contributory() {
+        return Err(low_order_recipient());
+    }
     let key = sealed_box_key(shared.as_bytes(), &epk, recipient);
-    SealedBox { epk: epk.to_b64(), ct: encrypt(&key, plaintext, aad) }
+    Ok(SealedBox { epk: epk.to_b64(), ct: encrypt(&key, plaintext, aad) })
+}
+
+/// An X25519 public key of small order gives the same shared secret whatever
+/// the ephemeral key, so anyone could work out the key of a box sealed to it.
+/// No key that an account generated is one; only a forged key is. `open`
+/// refuses such a box too.
+fn low_order_recipient() -> Error {
+    Error::invalid("the recipient's public key is not a usable X25519 key (it has a small order)")
 }
 
 /// Open a [`SealedBox`] with the recipient's private key.
@@ -674,6 +687,9 @@ pub fn seal_hybrid(
     let eph = PrivateKey::generate();
     let epk = eph.public_key();
     let x_shared = eph.0.diffie_hellman(&x25519_dalek::PublicKey::from(recipient.0));
+    if !x_shared.was_contributory() {
+        return Err(low_order_recipient());
+    }
     let key =
         hybrid_box_key(x_shared.as_bytes(), pq_shared.as_slice(), &epk, recipient, recipient_pq, kem_ct.as_slice());
     Ok(HybridSealedBox { epk: epk.to_b64(), kem_ct: b64(kem_ct.as_slice()), ct: encrypt(&key, plaintext, aad) })
@@ -837,9 +853,9 @@ impl WrappedKey {
         WrappedKey::Symmetric { ct: encrypt(wrapping_key, key.as_bytes(), aad) }
     }
 
-    pub fn wrap_sealed(recipient: &PublicKey, key: &SymmetricKey, aad: &[u8]) -> Self {
-        let sealed = seal(recipient, key.as_bytes(), aad);
-        WrappedKey::Sealed { epk: sealed.epk, ct: sealed.ct }
+    pub fn wrap_sealed(recipient: &PublicKey, key: &SymmetricKey, aad: &[u8]) -> Result<Self> {
+        let sealed = seal(recipient, key.as_bytes(), aad)?;
+        Ok(WrappedKey::Sealed { epk: sealed.epk, ct: sealed.ct })
     }
 
     /// Wrap for another account: hybrid post-quantum when the recipient has
@@ -850,7 +866,7 @@ impl WrappedKey {
                 let sealed = seal_hybrid(&recipient.x25519, pq, key.as_bytes(), aad)?;
                 WrappedKey::HybridSealed { epk: sealed.epk, kem_ct: sealed.kem_ct, ct: sealed.ct }
             }
-            None => Self::wrap_sealed(&recipient.x25519, key, aad),
+            None => Self::wrap_sealed(&recipient.x25519, key, aad)?,
         })
     }
 
@@ -961,7 +977,7 @@ mod tests {
         let alice = Keyset::generate();
         let key = SymmetricKey::generate();
         let symmetric = WrappedKey::wrap_symmetric(&alice.account_key, &key, b"aad");
-        let sealed = WrappedKey::wrap_sealed(&alice.public_key(), &key, b"aad");
+        let sealed = WrappedKey::wrap_sealed(&alice.public_key(), &key, b"aad").unwrap();
         let hybrid = WrappedKey::wrap_for(&alice.public_keys(), &key, b"aad").unwrap();
         for k in [&symmetric, &sealed, &hybrid] {
             assert!(k.is_well_formed(), "{k:?}");
@@ -1140,11 +1156,32 @@ mod tests {
     }
 
     #[test]
+    fn nothing_is_sealed_to_a_low_order_key() {
+        let key = SymmetricKey::generate();
+        let pq = Keyset::generate().public_keys().ml_kem.unwrap();
+        let mut one = [0u8; 32];
+        one[0] = 1;
+        // Points of small order: the shared secret with them doesn't depend on
+        // the ephemeral key, so the key of the box would be public.
+        for point in [[0u8; 32], one] {
+            let forged = PublicKey(point);
+            assert!(seal(&forged, b"secret", b"aad").is_err());
+            assert!(seal_hybrid(&forged, &pq, b"secret", b"aad").is_err());
+            assert!(WrappedKey::wrap_sealed(&forged, &key, b"aad").is_err());
+            let classic_only = AccountPublicKeys { x25519: forged, ml_kem: None };
+            assert!(WrappedKey::wrap_for(&classic_only, &key, b"aad").is_err());
+        }
+        // Real keys still work.
+        let bob = Keyset::generate();
+        assert!(seal(&bob.public_key(), b"secret", b"aad").is_ok());
+    }
+
+    #[test]
     fn sealed_boxes() {
         let alice = Keyset::generate();
         let bob = Keyset::generate();
         let vk = SymmetricKey::generate();
-        let wrapped = WrappedKey::wrap_sealed(&bob.public_key(), &vk, b"vault-1");
+        let wrapped = WrappedKey::wrap_sealed(&bob.public_key(), &vk, b"vault-1").unwrap();
         assert_eq!(wrapped.unwrap(&bob, b"vault-1").unwrap(), vk);
         assert!(wrapped.unwrap(&alice, b"vault-1").is_err());
         assert!(wrapped.unwrap(&bob, b"vault-2").is_err());

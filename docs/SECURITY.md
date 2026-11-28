@@ -218,6 +218,12 @@ key, so recording shared vaults today and decrypting them with a future
 quantum computer ("harvest now, decrypt later") does not work, and a flaw in
 the young ML-KEM would still leave X25519's protection in place.
 
+Nothing is sealed to an X25519 public key of small order, and no box whose
+ephemeral key has a small order is opened: with such a key the X25519 shared
+secret does not depend on the other side's private key, so anyone could work
+it out. Keys that 2Secret generates never have a small order; only a forged
+key does.
+
 The hybrid ciphertext only lives on the server until the recipient's next
 sync: their device then re-wraps the vault key with its own account key
 (256-bit symmetric) and replaces its copy on the server. Personal and shared
