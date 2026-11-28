@@ -801,7 +801,7 @@ mod tests {
         let mut meta: crate::profile::VaultMeta = decrypt_json(&key, &server.vaults[0].meta, &meta_aad).unwrap();
         meta.key_ancestors.insert(0, ancestor_key_id(&key));
         server.vaults[0].meta = encrypt_json(&newer, &meta, &meta_aad).unwrap();
-        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &newer, &aad::vault_key(&v));
+        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &newer, &aad::vault_key(&v)).unwrap();
         server.vaults[0].member_count = 2;
         let report = server.full_sync(&mut a);
         assert_eq!((report.keys_refused, report.keys_replaced), (0, vec![v.clone()]));
@@ -820,7 +820,7 @@ mod tests {
         // Only our own devices could replace this key, and they would wrap
         // it with the account key: a sealed one is a server's doing.
         let other = SymmetricKey::generate();
-        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &other, &aad::vault_key(&v));
+        server.vaults[0].wrapped_key = WrappedKey::wrap_sealed(&a.public_key(), &other, &aad::vault_key(&v)).unwrap();
         server.vaults[0].key_rev += 1;
         let report = server.full_sync(&mut a);
         assert_eq!((report.keys_refused, report.keys_refused_in.clone()), (1, vec![v.clone()]));
